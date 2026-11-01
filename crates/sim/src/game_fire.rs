@@ -948,6 +948,23 @@ impl FireWorld for MatchFireWorld<'_, '_> {
         Some(entnum)
     }
 
+    fn guided_input(&mut self, entity: i32) -> Option<game_api::fire::GuidedInput> {
+        let id = self.client(entity)?;
+        Some(crate::script::host::natives::t5_guided::guided_input(
+            self.world, id,
+        ))
+    }
+
+    fn set_guided_missile(&mut self, entity: i32, missile: Option<i32>) {
+        if let Some(id) = self.client(entity) {
+            crate::script::host::natives::t5_guided::set_guided_missile(
+                self.world.ecs(),
+                id,
+                missile,
+            );
+        }
+    }
+
     fn push_player(&mut self, entity: i32, velocity: [f32; 3]) {
         let Some(id) = self.client(entity) else {
             return;
@@ -1554,6 +1571,45 @@ pub(crate) fn think_game_missile(world: &mut FrameWorld, tick: Tick, entnum: i32
         };
         let mut around = MatchFireWorld::new(world, tick, owner);
         movement.run_missile(&mut missile, &mut around)
+    };
+    for gap in gaps {
+        world.report_game_gap(gap);
+    }
+    if let Some(owner) = owner
+        && let Some(link) = world
+            .client_meta(owner)
+            .and_then(|meta| meta.remote_missile)
+            .filter(|link| link.guided && link.entnum == entnum)
+    {
+        world.client_meta_mut(owner).remote_missile = Some(crate::RemoteMissile {
+            angles: missile.angles.base,
+            ..link
+        });
+    }
+    apply_missile_run(world, entnum, missile, run);
+    true
+}
+
+/// A missile exploding now (`detonate`) by the game's movement rules; false
+/// when the game does not explode this one that way.
+pub(crate) fn detonate_moved_missile(world: &mut FrameWorld, tick: Tick, entnum: i32) -> bool {
+    let Some(mut missile) = world
+        .ecs()
+        .get_resource::<GameMissiles>()
+        .and_then(|missiles| missiles.0.get(&entnum).copied())
+    else {
+        return false;
+    };
+    let Some(movement) = crate::game_move::rules(world) else {
+        return false;
+    };
+    let owner = u32::try_from(missile.owner).ok().map(ClientId);
+    let result = {
+        let mut around = MatchFireWorld::new(world, tick, owner);
+        movement.detonate_missile(&mut missile, &mut around)
+    };
+    let Some((run, gaps)) = result else {
+        return false;
     };
     for gap in gaps {
         world.report_game_gap(gap);

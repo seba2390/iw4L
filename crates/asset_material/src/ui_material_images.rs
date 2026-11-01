@@ -283,6 +283,26 @@ impl UiImagePublication {
             .and_then(|image| image.state)
     }
 
+    pub fn zone_sampler(&self, namespace: AssetNamespace, material: &str) -> Option<u8> {
+        self.0
+            .build
+            .zone
+            .get(&key(namespace, material))
+            .and_then(|image| image.sampler)
+    }
+
+    pub fn zone_scanline(
+        &self,
+        namespace: AssetNamespace,
+        material: &str,
+    ) -> Option<crate::ScanlineOverlay> {
+        self.0
+            .build
+            .zone
+            .get(&key(namespace, material))
+            .and_then(|image| image.scanline)
+    }
+
     pub fn zone_image(&self, namespace: AssetNamespace, material: &str) -> Option<ZoneUiRgba> {
         let image = self.0.build.zone.get(&key(namespace, material))?;
         if image.rgba.is_some() {

@@ -67,7 +67,7 @@ fn with_entity(
     Ok(Value::Undefined)
 }
 
-fn vector_field(world: &mut World, id: u64, name: &str) -> [f32; 3] {
+pub(crate) fn vector_field(world: &mut World, id: u64, name: &str) -> [f32; 3] {
     match super::super::players::entity_field(world, id, name) {
         Value::Vector(v) => v,
         _ => ZERO,

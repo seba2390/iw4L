@@ -208,6 +208,79 @@ fn place_waypoint(
 /// A script text elem drawn with the game's menu fonts and menu text
 /// measures: the elem's scale is taken to screen pixels, its font picked
 /// from that, and its line height and width rounded as the menu engine does.
+/// Black Ops' scanline overlay shader in two premultiplied quads: its lines
+/// scroll with the game's time and its noise jumps every frame by the
+/// shader's own hash of that time. The element's alpha scales both; its colour
+/// is not read.
+#[allow(clippy::too_many_arguments)]
+fn scanline_overlay(
+    cmds: &mut Vec<Draw2dCmd>,
+    material_namespace: asset_core::AssetNamespace,
+    material: String,
+    overlay: asset_material::ScanlineOverlay,
+    [x, y, w, h]: [f32; 4],
+    alpha: u8,
+    cg_time: i32,
+    provenance: Draw2dProvenance,
+) {
+    let time = cg_time as f32 * 0.001;
+    let scroll = time * overlay.scroll_speed;
+    let [noise_s, noise_t] = overlay_noise(time);
+    let static_scale = 1.0 / overlay.static_size;
+    let alpha = f32::from(alpha) / 255.0;
+    let quad = |material: String, st: [f32; 4], value: f32| Draw2dCmd {
+        material_namespace,
+        x,
+        y,
+        w,
+        h,
+        s0: st[0],
+        t0: st[1],
+        s1: st[2],
+        t1: st[3],
+        color: [value; 4],
+        material,
+        op: Draw2dOp::StretchPic,
+        provenance: provenance.clone(),
+        layer: 1,
+    };
+    let scale = overlay.line_scale;
+    cmds.push(quad(
+        asset_material::scanline_static_image(&material),
+        [
+            noise_s,
+            noise_t,
+            static_scale + noise_s,
+            static_scale + noise_t,
+        ],
+        alpha * overlay.static_amount,
+    ));
+    cmds.push(quad(
+        material,
+        [
+            scroll * scale,
+            scroll * scale,
+            (1.0 + scroll) * scale,
+            (1.0 + scroll) * scale,
+        ],
+        alpha,
+    ));
+}
+
+/// The scanline overlay's vertex shader's noise offset.
+fn overlay_noise(time: f32) -> [f32; 2] {
+    const SEED: [f32; 4] = [81.239_49, 17.348_024, 37.349_84, 59.394_84];
+    let dot = |v: [f32; 4]| v[0] * SEED[0] + v[1] * SEED[1] + v[2] * SEED[2] + v[3] * SEED[3];
+    let mut r = [dot([time; 4]).fract(), SEED[1], SEED[2], time];
+    r[1] = dot([r[0], time, time, time]).fract();
+    r[2] = dot([r[0], r[1], time, time]).fract();
+    r[3] = dot(r).fract();
+    r[0] = dot(r).fract();
+    r[1] = dot(r).fract();
+    r[2] = dot(r).fract();
+    [r[2], dot(r).fract()]
+}
+
 #[allow(clippy::too_many_arguments)]
 fn menu_font_text<'c>(
     menu_font: fn(i32) -> (i32, f32),
@@ -446,6 +519,19 @@ pub(crate) fn update_hud_elems(
                 };
                 hud_elem_placement(surface.placement(), elem, cg_time, 0.0, floor)
             };
+            if let Some(overlay) = hud_images.scanline(material_namespace, &material) {
+                scanline_overlay(
+                    cmds,
+                    material_namespace,
+                    material,
+                    overlay,
+                    [placed.x, placed.y, placed.w, placed.h],
+                    color[3],
+                    cg_time,
+                    provenance,
+                );
+                continue;
+            }
             cmds.push(Draw2dCmd {
                 material_namespace,
                 x: placed.x,

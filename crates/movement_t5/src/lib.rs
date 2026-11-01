@@ -28,7 +28,7 @@ mod world;
 
 pub use dive::end_dive_for_disabled_weapons;
 pub use events::MoveEvent;
-pub use inventory::{HeldRounds, held_rounds, load_held};
+pub use inventory::{HeldRounds, add_fuel, fuel, held_rounds, load_held, set_fuel};
 pub use physics::effective_stance;
 pub use pml::Pml;
 pub use pmove::{MoveOutput, pmove};

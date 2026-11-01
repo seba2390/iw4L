@@ -767,6 +767,26 @@ pub struct ZoneUiImage {
     /// Already decoded pixels, for images a zone holds as raw texture data
     /// rather than an IWI file.
     pub rgba: Option<ZoneUiRgba>,
+    /// How the material samples the image; the HUD's default when `None`.
+    pub sampler: Option<u8>,
+    /// The material is Black Ops' scanline overlay and this image its lines.
+    pub scanline: Option<ScanlineOverlay>,
+}
+
+/// What Black Ops' 2D scanline overlay shader does beyond its pictures:
+/// lines scrolling by the game's time over noise jumping every frame.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct ScanlineOverlay {
+    pub scroll_speed: f32,
+    pub line_scale: f32,
+    pub static_size: f32,
+    pub static_amount: f32,
+}
+
+/// The name a scanline overlay material's noise goes by among the HUD's
+/// images.
+pub fn scanline_static_image(material: &str) -> String {
+    format!("{material}@static")
 }
 
 pub fn decode_iwi_rgba(bytes: &[u8]) -> Result<(u32, u32, Vec<u8>), String> {

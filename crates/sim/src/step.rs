@@ -441,7 +441,8 @@ fn run_players_system(ecs: &mut World) {
             crate::script::select_location(world.ecs(), id.0, &mut cmd, old_buttons);
             if world
                 .client_meta(*id)
-                .is_some_and(|m| m.remote_missile.is_some())
+                .and_then(|m| m.remote_missile)
+                .is_some_and(|link| !link.guided)
             {
                 crate::remote_missile::steer(&mut world, *id, &cmd, delta.min(200));
                 cmd.forwardmove = 0;

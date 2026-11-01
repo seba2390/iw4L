@@ -317,6 +317,15 @@ impl HudImages {
         }
     }
 
+    /// The scanline overlay a material is, when it is one.
+    pub(crate) fn scanline(
+        &self,
+        ns: AssetNamespace,
+        name: &str,
+    ) -> Option<asset_material::ScanlineOverlay> {
+        self.ui_images.zone_scanline(ns, name)
+    }
+
     pub(crate) fn blood_material_binding(&self) -> Result<BloodMaterialBinding, &str> {
         self.blood_plan
             .as_ref()
@@ -364,9 +373,11 @@ impl HudImages {
                 .get(&cache_key(name))
                 .copied()
                 .unwrap_or(false);
-        let sampler = (ns == HUD_CHROME_NAMESPACE)
-            .then(|| self.zone_samplers.get(&cache_key(name)).copied())
-            .flatten();
+        let sampler = if ns == HUD_CHROME_NAMESPACE {
+            self.zone_samplers.get(&cache_key(name)).copied()
+        } else {
+            self.ui_images.zone_sampler(ns, name)
+        };
         self.get_sampled_with_sampler(
             ns,
             name,

@@ -899,6 +899,11 @@ impl<'a> WeaponDefView<'a> {
     }
 
     /// `timeToAccelerate`
+    pub fn projectile_lifetime(&self) -> f32 {
+        f32::from_le_bytes(Self::word(self.def, 0x5dc))
+    }
+
+    /// `timeToAccelerate`
     pub fn time_to_accelerate(&self) -> f32 {
         f32::from_le_bytes(Self::word(self.def, 0x5e0))
     }

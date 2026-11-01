@@ -1662,6 +1662,32 @@ fn zombie_hud_images(
             {
                 continue;
             }
+            let decode = |image: &asset_material::AuthoredImage| {
+                // Images without an in-zone payload stream from the IWDs.
+                if image.payload.is_empty() {
+                    let Some(main) = main else {
+                        return Err("no main folder".to_owned());
+                    };
+                    asset_material::decode_ui_image_from_main(main, image.name.as_str())
+                        .and_then(|found| found.ok_or_else(|| "not in the IWDs".to_owned()))
+                } else {
+                    asset_material::decode_zone_image_rgba(
+                        u32::from(image.width),
+                        u32::from(image.height),
+                        image.format,
+                        &image.payload,
+                    )
+                }
+            };
+            if material
+                .technique_set
+                .as_str()
+                .starts_with(SCANLINE_TECHNIQUE)
+            {
+                seen.insert(name.clone());
+                images.extend(scanline_overlay_images(&name, material, population, decode));
+                continue;
+            }
             let Some(image) = material
                 .textures
                 .iter()
@@ -1669,22 +1695,7 @@ fn zombie_hud_images(
             else {
                 continue;
             };
-            // Images without an in-zone payload stream from the IWDs.
-            let decoded = if image.payload.is_empty() {
-                let Some(main) = main else {
-                    continue;
-                };
-                asset_material::decode_ui_image_from_main(main, image.name.as_str())
-                    .and_then(|found| found.ok_or_else(|| "not in the IWDs".to_owned()))
-            } else {
-                asset_material::decode_zone_image_rgba(
-                    u32::from(image.width),
-                    u32::from(image.height),
-                    image.format,
-                    &image.payload,
-                )
-            };
-            match decoded {
+            match decode(image) {
                 Ok((width, height, rgba)) => {
                     seen.insert(name.clone());
                     images.push((
@@ -1693,6 +1704,8 @@ fn zombie_hud_images(
                             iwi: std::sync::Arc::new([]),
                             state: hud_pass_state(material),
                             rgba: Some((width, height, std::sync::Arc::new(rgba))),
+                            sampler: None,
+                            scanline: None,
                         },
                     ));
                 }
@@ -1701,4 +1714,110 @@ fn zombie_hud_images(
         }
     }
     images
+}
+
+/// The technique set of Black Ops' 2D scanline overlays (the Valkyrie
+/// Rockets' camera). The HUD has no custom shaders, so its pixel shader is
+/// baked: the lines' `y * saturate(x + ScanBias) * LineColor * LineColor.a`
+/// into a premultiplied picture and the noise as it is, the two then drawn
+/// over each other.
+const SCANLINE_TECHNIQUE: &str = "sw4_2d_overlay_scanline";
+/// The shader's two samplers, by the hash of their names (`LineMap`,
+/// `StaticMap`).
+const SCANLINE_LINE_MAP: u32 = 0x8c12_8212;
+const SCANLINE_STATIC_MAP: u32 = 0xb76e_fee4;
+
+fn scanline_overlay_images(
+    name: &str,
+    material: &asset_material::AuthoredMaterial,
+    population: &MaterialCatalog,
+    decode: impl Fn(&asset_material::AuthoredImage) -> Result<(u32, u32, Vec<u8>), String>,
+) -> Vec<(String, asset_material::ZoneUiImage)> {
+    let constant = |wanted: &str| {
+        material
+            .constants
+            .iter()
+            .find(|constant| {
+                constant
+                    .name
+                    .iter()
+                    .take_while(|byte| **byte != 0)
+                    .eq(wanted.as_bytes().iter().take(12))
+            })
+            .map(|constant| constant.literal)
+    };
+    let picture = |hash: u32| {
+        let texture = material.textures.iter().find(|t| t.name_hash == hash)?;
+        let image = population.images.get(texture.image?)?;
+        match decode(image) {
+            Ok(decoded) => Some((decoded, texture.sampler_state)),
+            Err(error) => {
+                diag::info!(Zone, "zombie hud image {name}: {error}");
+                None
+            }
+        }
+    };
+    let (
+        Some(line_color),
+        Some(scan_bias),
+        Some(scroll),
+        Some(scale),
+        Some(size),
+        Some(amount),
+        Some(((width, height, mut lines), line_sampler)),
+        Some(((noise_w, noise_h, noise), noise_sampler)),
+    ) = (
+        constant("LineColor"),
+        constant("ScanBias"),
+        constant("ScrollSpeed"),
+        constant("LineScale"),
+        constant("Static_Size"),
+        constant("Static_amount"),
+        picture(SCANLINE_LINE_MAP),
+        picture(SCANLINE_STATIC_MAP),
+    )
+    else {
+        diag::info!(
+            Zone,
+            "zombie hud image {name}: not a whole scanline overlay"
+        );
+        return Vec::new();
+    };
+    for pixel in lines.as_chunks_mut::<4>().0 {
+        let x = f32::from(pixel[0]) / 255.0;
+        let y = f32::from(pixel[1]) / 255.0;
+        let bright = y * (x + scan_bias[0]).clamp(0.0, 1.0) * line_color[3];
+        for (channel, tint) in pixel.iter_mut().zip(line_color) {
+            *channel = (bright * tint * 255.0) as u8;
+        }
+    }
+    let state = hud_pass_state(material);
+    let overlay = asset_material::ScanlineOverlay {
+        scroll_speed: scroll[0],
+        line_scale: scale[0],
+        static_size: size[0],
+        static_amount: amount[0],
+    };
+    vec![
+        (
+            name.to_owned(),
+            asset_material::ZoneUiImage {
+                iwi: std::sync::Arc::new([]),
+                state,
+                rgba: Some((width, height, std::sync::Arc::new(lines))),
+                sampler: Some(line_sampler),
+                scanline: Some(overlay),
+            },
+        ),
+        (
+            asset_material::scanline_static_image(name),
+            asset_material::ZoneUiImage {
+                iwi: std::sync::Arc::new([]),
+                state,
+                rgba: Some((noise_w, noise_h, std::sync::Arc::new(noise))),
+                sampler: Some(noise_sampler),
+                scanline: None,
+            },
+        ),
+    ]
 }

@@ -235,8 +235,8 @@ Each open section names the issue that works it.
       trace, impact, explosion, water and glass) runs by the runtime's Black
       Ops missile think, which is the zombies executable's; BlackOpsMP.exe's
       own frame is ported only for its velocity (acceleration, curvature,
-      homing). Guided types other than homing (type 1: the heat-seeker 3,
-      4, 5 and the remote-guided 6) are not steered, and a player's lock-on
+      homing, the owner steering type 6, and its life). Guided types 3, 4
+      and 5 are not steered, and a player's lock-on
       target is not passed to their missile, so a Strela flies unguided; a
       `launchbomb` missile that accelerates or curves is a gap.
 - [ ] **V** `t5.hud.location_selector`: the location selector's full map
@@ -280,8 +280,28 @@ Each open section names the issue that works it.
 - [ ] **G** Helicopters: `spawnhelicopter`, `setvehgoalpos`,
       `sethoverparams`, `setyawspeed`, `setmaxpitchroll`,
       `setheliheightlock` and the heli turret traces are missing or refused.
-- [ ] **G** `linkguidedmissilecamera` / `unlinkguidedmissilecamera`
-      (Valkyrie rockets) and `spawnactor` (attack dogs) are refused.
+- [ ] **G** `spawnactor` (attack dogs) is refused (#758).
+- [ ] **G** A player killed while their camera is on a Valkyrie rocket: Black
+      Ops' `player_die` runs the killed callback and then stops for a player
+      with `EF2_REMOTE_CONTROL` (no body, no spectator state, no death
+      animation event), which the runtime's death does not do.
+- [ ] **G** A gamepad's right stick steering a Valkyrie rocket: the client's
+      guided missile axes are read from `BlackOpsMP.exe`'s mouse path only.
+- [ ] **G** A Valkyrie rocket has no health of its own in the runtime:
+      `_tvguidedmissile.gsc`'s `MissileDamageWatcher` (`damage` on the
+      missile) is not verified.
+- [ ] **V** The Valkyrie's `sw4_2d_overlay_scanline_transparent` overlay is
+      drawn as two premultiplied HUD quads (its lines baked, its noise as it
+      is) where Black Ops draws one quad with their sum; the alpha of one
+      darkens the other a little more than in Black Ops. The shader's
+      `gameTime` is the client's time here.
+- [ ] **V** While the camera is on a Valkyrie rocket Black Ops' client hides
+      hud elements with `hidewhileremotecontrolling` (the objective icons of
+      Search and Destroy, Demolition and `_gameobjects.gsc`) and selects its
+      filter type 4; neither is ported.
+- [ ] **V** The compass while a Valkyrie rocket flies: the player's arrow
+      stays at the player; `BlackOpsMP.exe`'s compass was not read for this
+      case.
 
 ## Client scripts (#645)
 
@@ -514,6 +534,23 @@ Each open section names the issue that works it.
       `compassSatellitePingFadeTime`), draws the sweep line, and hides the
       enemies under an enemy counter-spy plane (`setEnemyGlobalScrambler`)
       with the map's static over it (#657).
+
+- [x] **G** Valkyrie Rockets (`m220_tow_mp`, guided type 6): the launch names
+      the missile to its owner (`weapFlags` 0x200), `linkguidedmissilecamera`
+      sets `EF2_REMOTE_CONTROL` and 0x40000, the owner's view follows the
+      missile's interpolated origin and angles and holds its last pose until
+      `unlinkguidedmissilecamera`, the client keeps its own angles still
+      (`cl_preventTvGuidedSpin`) and sends the mouse's move as the command's
+      look axes, the missile turns, rolls, boosts on the secondary offhand
+      button (`missileTVGuided*`), moves twice a frame as `BlackOpsMP.exe`'s
+      think does, burns `projectileLifetime` seconds of the held weapon's fuel
+      (twice as fast boosting) and detonates on a second press of attack.
+      Every multiplayer missile now explodes when `projectileLifetime` runs
+      out, at most a minute; `detonate` explodes one at once;
+      `ismissileinsideheightlock` tests `heli_height_lock`; the HUD draws the
+      scanline overlay's shader rather than its raw line map. The player's
+      own frame while steering is the executable's branch (no move, weapon
+      running) instead of a gap. Its delivery by Care Package is #661.
 
 - [x] **G** Killstreak earning and the dpad (`_hardpoints.gsc`,
       `_killstreakrules.gsc`, `_killstreak_weapons.gsc`) run on Black Ops'

@@ -278,6 +278,14 @@ pub trait FireWorld {
     /// `None` when the match has no room for it.
     fn spawn_missile(&mut self, missile: GameMissile) -> Option<i32>;
 
+    /// What a player's command says to the missile they steer.
+    fn guided_input(&mut self, _entity: i32) -> Option<GuidedInput> {
+        None
+    }
+
+    /// The missile a player's guided missile camera follows, or none.
+    fn set_guided_missile(&mut self, _entity: i32, _missile: Option<i32>) {}
+
     /// Adds to a player's velocity.
     fn push_player(&mut self, entity: i32, velocity: [f32; 3]);
 
@@ -812,8 +820,19 @@ pub struct GameTrajectory {
     pub delta: [f32; 3],
 }
 
+/// A player's latest command as it steers a guided missile.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub struct GuidedInput {
+    /// The command's look axes: down and left are positive.
+    pub pitch: i8,
+    pub yaw: i8,
+    pub attack: bool,
+    /// The secondary offhand button.
+    pub boost: bool,
+}
+
 /// Bytes a game keeps per missile beyond the shared fields.
-pub const GAME_MISSILE_BYTES: usize = 80;
+pub const GAME_MISSILE_BYTES: usize = 84;
 
 /// A missile the game's rules move and explode; the match keeps it, shows
 /// it and runs it every frame.
