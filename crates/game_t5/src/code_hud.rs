@@ -27,8 +27,8 @@ pub(crate) static MP_CODE_HUD: GameCodeHud = GameCodeHud {
         ),
         unknown!(
             "t5.hud.game_messages",
-            "Black Ops multiplayer's game message lines other than obituaries (script iprintln and iprintlnbold, connect and disconnect notices, subtitles) are not drawn",
-            "the client's print commands and the channels they print to (executable)"
+            "Black Ops multiplayer's subtitle window (game message window 2) is not drawn, and a window keeps every line until it ends rather than Black Ops' own cap",
+            "the subtitle channel's prints and the window's line store (executable)"
         ),
         unknown!(
             "t5.hud.obituary_popups",
