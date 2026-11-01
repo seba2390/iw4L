@@ -1,14 +1,18 @@
 use crate::frame::FrameWorld;
 use anim_iw4::random;
-use entity_iw4::{
-    TR_GRAVITY, TR_STATIONARY, Trajectory, evaluate_trajectory, evaluate_trajectory_delta,
+use entity_iw4::EntityEventKind;
+pub(crate) use entity_iw4::{
+    TR_GRAVITY, TR_LINEAR_STOP, TR_STATIONARY, Trajectory, evaluate_trajectory,
+    evaluate_trajectory_delta,
 };
 use math_iw4::angle_vectors;
-use playerstate_iw4::{ENTITYNUM_NONE, PERK_SCAVENGER, PM_TYPE_DEAD, PlayerState};
+use playerstate_iw4::{ENTITYNUM_NONE, PERK_SCAVENGER, PM_TYPE_DEAD, PlayerState, buttons};
 use weapon_iw4::{
     ammo_table_key, clip_table_key, get_ammo_not_in_clip, get_clip_for_hand,
     player_weapons_find_slot, set_ammo_not_in_clip, set_clip_for_hand,
 };
+
+pub(crate) use trace_iw4::Trace;
 
 use crate::bullet_collision::{MASK_PLAYER_SOLID, PLAYER_MAXS, PLAYER_MINS};
 use crate::gentity::init_item_state;
@@ -32,6 +36,9 @@ pub const ITEM_MAXS: [f32; 3] = [1.0, 1.0, 1.0];
 pub const ITEM_USE_HOLD_MS: i32 = 250;
 
 pub const PLAYER_DROP_Z: f32 = (PLAYER_MAXS[2] - PLAYER_MINS[2]) * 0.5;
+
+/// No entity, for a pickup that put no weapon down.
+pub(crate) const ENTITY_NONE: i32 = ENTITYNUM_NONE;
 
 const SHIELD_DROP_PITCH: f32 = -90.0;
 
@@ -293,6 +300,45 @@ fn push_dropped_item(
     entnum
 }
 
+/// A flying item with its slots unset, for a game's own item rules.
+pub(crate) fn spawn_flying_item(
+    world: &mut FrameWorld,
+    weapon: u32,
+    origin: [f32; 3],
+    pos: Trajectory,
+    apos: Trajectory,
+    owner: i32,
+) -> Option<i32> {
+    let number = push_dropped_item(
+        world, weapon, origin, pos, apos, owner, 0, 0, 0, true, false,
+    );
+    (number != ENTITYNUM_NONE).then_some(number)
+}
+
+/// The event a pickup plays on every client.
+pub(crate) fn push_pickup_event(world: &mut FrameWorld, id: ClientId, weapon: u32, ammo: bool) {
+    let Some(origin) = world.player(id).map(|ps| ps.origin) else {
+        return;
+    };
+    let tick = Tick((world.entity_kernel().level_time_ms() / 50) as u32);
+    world.push_entity_event(
+        tick,
+        crate::EventAudience::All,
+        if ammo {
+            EntityEventKind::AMMO_PICKUP
+        } else {
+            EntityEventKind::ITEM_PICKUP
+        },
+        crate::EntityEventPayload {
+            number: id.0 as i32,
+            event_parm: weapon as i32,
+            weapon,
+            origin,
+            ..Default::default()
+        },
+    );
+}
+
 fn oldest_dropped_number(live: &[(i32, u32)]) -> Option<i32> {
     live.iter()
         .min_by_key(|&&(number, seq)| (seq, number))
@@ -403,12 +449,7 @@ fn slide_along(vel: &mut [f32; 3], normal: [f32; 3]) {
     }
 }
 
-fn blocked_fall(
-    traj: &Trajectory,
-    time_ms: i32,
-    start: [f32; 3],
-    hit: &trace_iw4::Trace,
-) -> BlockedFall {
+fn blocked_fall(traj: &Trajectory, time_ms: i32, start: [f32; 3], hit: &Trace) -> BlockedFall {
     if hit.startsolid != 0 || hit.allsolid != 0 {
         return BlockedFall::Rest(start);
     }
@@ -427,7 +468,19 @@ fn blocked_fall(
     })
 }
 
+/// A game's own rules for items, when it has them.
+fn item_rule(world: &FrameWorld) -> Option<crate::script::host::registry::ItemRule> {
+    world
+        .ecs_ref()
+        .get_resource::<crate::script::NativeRegistry>()
+        .and_then(crate::script::NativeRegistry::item_rule)
+}
+
 pub(crate) fn think_item_move(world: &mut FrameWorld, time_ms: i32, number: i32) {
+    if let Some(rule) = item_rule(world) {
+        (rule.run)(world.ecs(), time_ms, number);
+        return;
+    }
     if let Ok(entity) = world.entity_kernel().current_ref(number)
         && world
             .entity_kernel()
@@ -506,8 +559,19 @@ pub(crate) fn think_item_move(world: &mut FrameWorld, time_ms: i32, number: i32)
 pub(crate) fn phase_touch_items(world: &mut FrameWorld, _tick: Tick) {
     let mut walkers = world.client_ids_sorted();
     walkers.sort_unstable_by_key(|id| id.0);
+    let rule = item_rule(world);
     for walker in walkers {
-        try_touch_one(world, walker);
+        if let Some(rule) = rule {
+            let can_touch = world
+                .player(walker)
+                .copied()
+                .is_some_and(|ps| walker_can_touch(world, walker, &ps));
+            if can_touch {
+                (rule.touch)(world.ecs(), walker.0);
+            }
+        } else {
+            try_touch_one(world, walker);
+        }
     }
 }
 
@@ -718,7 +782,7 @@ fn grab_number(world: &mut FrameWorld, walker: ClientId, number: i32) {
     world.push_entity_event(
         tick,
         crate::EventAudience::All,
-        entity_iw4::EntityEventKind::ITEM_PICKUP,
+        EntityEventKind::ITEM_PICKUP,
         crate::EntityEventPayload {
             number: walker.0 as i32,
             event_parm: weapon as i32,
@@ -893,7 +957,7 @@ fn grab_projectile(world: &mut FrameWorld, walker: ClientId, number: i32, tick: 
     world.push_entity_event(
         tick,
         crate::EventAudience::All,
-        entity_iw4::EntityEventKind::AMMO_PICKUP,
+        EntityEventKind::AMMO_PICKUP,
         crate::EntityEventPayload {
             number: walker.0 as i32,
             event_parm: weapon as i32,
@@ -920,10 +984,14 @@ fn selected_item(world: &FrameWorld, walker: ClientId, ps: &PlayerState) -> Opti
     ];
     let (forward, _, _) = angle_vectors(ps.viewangles);
     let mut best: Option<(f32, UseItem)> = None;
+    let game_items = item_rule(world).is_some();
     for number in world.dropped_item_numbers_sorted() {
         let Some(item) = world.dropped_item_by_number(number) else {
             continue;
         };
+        if game_items {
+            break;
+        }
         if item.scavenger || item.state.index <= 0 || ps.weapons.contains(&item.state.index) {
             continue;
         }
@@ -1002,6 +1070,27 @@ fn selected_item(world: &FrameWorld, walker: ClientId, ps: &PlayerState) -> Opti
     best.map(|(_, item)| item)
 }
 
+/// The missile a player's use reaches, else what a game's own item rules
+/// select.
+fn game_selected_item(
+    world: &mut FrameWorld,
+    id: ClientId,
+    ps: &PlayerState,
+    rule: Option<crate::script::host::registry::ItemRule>,
+) -> Option<UseItem> {
+    let chosen = selected_item(world, id, ps);
+    match rule {
+        Some(rule) if chosen.is_none() && walker_can_touch(world, id, ps) => {
+            (rule.select)(world.ecs(), id.0).map(|(number, weapon)| UseItem {
+                number,
+                weapon,
+                projectile: false,
+            })
+        }
+        _ => chosen,
+    }
+}
+
 pub(crate) fn phase_use_items(
     world: &mut FrameWorld,
     tick: Tick,
@@ -1009,15 +1098,14 @@ pub(crate) fn phase_use_items(
     cmds: &[(u32, u32)],
 ) {
     let now = crate::corpse::level_time_ms(tick);
+    let rule = item_rule(world);
     for id in world.client_ids_sorted() {
         let Some(ps) = world.player(id).copied() else {
             continue;
         };
-        let selected = selected_item(world, id, &ps);
+        let selected = game_selected_item(world, id, &ps, rule);
         let held = cmds.iter().any(|(client, bits)| {
-            *client == id.0
-                && bits & (playerstate_iw4::buttons::USE | playerstate_iw4::buttons::USE_RELOAD)
-                    != 0
+            *client == id.0 && bits & (buttons::USE | buttons::USE_RELOAD) != 0
         });
         let pressed = presses.iter().any(|p| p.client == id.0 && p.edge);
         let selected_ref = selected.map(|item| {
@@ -1035,26 +1123,30 @@ pub(crate) fn phase_use_items(
             meta.item_use_press_ms = now;
         }
         let pending = meta.item_use_entity;
-        let hold_ms = if selected.is_some_and(|item| item.projectile) {
-            0
-        } else {
-            ITEM_USE_HOLD_MS
-        };
+        // `g_useholdtime` is for the button that also reloads.
+        let reload_held = cmds
+            .iter()
+            .any(|(client, bits)| *client == id.0 && bits & buttons::USE_RELOAD != 0);
+        let hold_ms =
+            if selected.is_some_and(|item| item.projectile) || (rule.is_some() && !reload_held) {
+                0
+            } else {
+                ITEM_USE_HOLD_MS
+            };
         let ready = now - meta.item_use_spawn_ms >= 500 && now - meta.item_use_press_ms >= hold_ms;
         if held && ready && pending.is_some() && selected_ref == pending {
             let item = selected.expect("selected use item");
             if item.projectile {
                 grab_projectile(world, id, item.number, tick);
+            } else if let Some(rule) = rule {
+                (rule.grab)(world.ecs(), id.0, item.number);
             } else {
                 grab_number(world, id, item.number);
             }
             world.client_meta_mut(id).item_use_entity = None;
         }
-        let selected = selected_item(
-            world,
-            id,
-            &world.player(id).copied().expect("client exists"),
-        );
+        let ps = world.player(id).copied().expect("client exists");
+        let selected = game_selected_item(world, id, &ps, rule);
         let dual = selected.is_some_and(|item| {
             world
                 .combat_facts_for(item.weapon)

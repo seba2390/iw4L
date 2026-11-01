@@ -935,6 +935,14 @@ impl PlayerMovement for T5Movement {
                 != 0,
             being_revived: ps.pm_type == pm_type::LAST_STAND_REVIVED,
             weapon_state: ps.weaponstate,
+            hull_height: if ps.pm_flags & pm_flags::PRONE != 0 {
+                30
+            } else if ps.pm_flags & pm_flags::DUCKED != 0 {
+                50
+            } else {
+                70
+            },
+            weapons_disabled: ps.weap_flags & movement_t5::state::weap_flags::WEAPONS_DISABLED != 0,
         })
     }
 

@@ -1150,7 +1150,7 @@ fn weapon_arg(world: &mut World, args: &[Value], index: usize) -> Result<u32, St
     script_player::weapon_named(&FrameWorld::from_world(world), &name)
 }
 
-fn player_weapon(
+pub(crate) fn player_weapon(
     world: &mut World,
     id: ClientId,
     args: &[Value],

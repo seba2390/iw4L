@@ -560,7 +560,24 @@ fn settle_items(world: &mut World) {
             let swapped = if pickup.swapped_entnum == playerstate_iw4::ENTITYNUM_NONE {
                 Ok(Value::Undefined)
             } else {
-                super::natives::player::new_item_entity(world, pickup.swapped_entnum, "weapon_item")
+                let existing = items
+                    .iter()
+                    .find(|(_, number, _)| *number == pickup.swapped_entnum)
+                    .map(|(object, _, _)| *object)
+                    .or_else(|| {
+                        world.resource::<RoundScript>().entities.iter().find_map(|(id, e)| {
+                            matches!(e.kind, EntityKind::Item(at) if at == pickup.swapped_entnum)
+                                .then_some(*id)
+                        })
+                    });
+                match existing {
+                    Some(object) => Ok(Value::Object(object)),
+                    None => super::natives::player::new_item_entity(
+                        world,
+                        pickup.swapped_entnum,
+                        "weapon_item",
+                    ),
+                }
             };
             let swapped = swapped.unwrap_or_else(|message| {
                 diag::warn!(Sim, "gsc: {message}; dropped weapon has no entity");

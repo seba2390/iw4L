@@ -871,6 +871,7 @@ impl PlayerMovement for T6Movement {
                 != 0,
             being_revived: ps.pm_type == pm_type::LAST_STAND_REVIVED,
             weapon_state: ps.weaponstate,
+            ..Default::default()
         })
     }
 

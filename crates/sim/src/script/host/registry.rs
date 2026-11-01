@@ -40,6 +40,19 @@ pub(crate) struct MissileLaunch {
     pub extra: Vec<Value>,
 }
 
+/// A game's own rules for its weapons on the ground.
+#[derive(Clone, Copy)]
+pub(crate) struct ItemRule {
+    /// An item's frame, by time and entity number.
+    pub run: fn(&mut World, i32, i32),
+    /// A player's touch of the items near them.
+    pub touch: fn(&mut World, u32),
+    /// The item a player's use reaches: its number and weapon.
+    pub select: fn(&mut World, u32) -> Option<(i32, u32)>,
+    /// A player's use taking the item.
+    pub grab: fn(&mut World, u32, i32),
+}
+
 #[derive(Resource, Clone)]
 pub struct NativeRegistry(
     BTreeMap<(Namespace, String), Native>,
@@ -50,6 +63,7 @@ pub struct NativeRegistry(
     Option<MissileRule>,
     Option<ClientSync>,
     Option<ClientSync>,
+    Option<ItemRule>,
 );
 impl Default for NativeRegistry {
     /// The engine services alone: no game's own natives.
@@ -66,6 +80,7 @@ impl NativeRegistry {
             Vec::new(),
             None,
             Vec::new(),
+            None,
             None,
             None,
             None,
@@ -91,6 +106,7 @@ impl NativeRegistry {
             Vec::new(),
             None,
             Vec::new(),
+            None,
             None,
             None,
             None,
@@ -177,6 +193,7 @@ impl NativeRegistry {
         natives::t5_actionslot::register(&mut self);
         natives::t5_classes::register(&mut self);
         natives::t5_guided::register(&mut self);
+        natives::t5_items::register(&mut self);
         natives::t5_location::register(&mut self);
         natives::t5_mp_heli::register(&mut self);
         natives::t5_mp_turret::register(&mut self);
@@ -204,6 +221,7 @@ impl NativeRegistry {
             None,
             None,
             None,
+            None,
         );
         natives::t6::register(&mut registry);
         registry
@@ -220,6 +238,7 @@ impl NativeRegistry {
             None,
             None,
             None,
+            None,
         );
         natives::t6::client::register(&mut registry);
         registry
@@ -232,6 +251,7 @@ impl NativeRegistry {
             Vec::new(),
             None,
             Vec::new(),
+            None,
             None,
             None,
             None,
@@ -281,6 +301,15 @@ impl NativeRegistry {
 
     pub(crate) fn missile_rule(&self) -> Option<MissileRule> {
         self.5
+    }
+
+    /// The game's item rules replace IW4L's.
+    pub(crate) fn on_items(&mut self, rule: ItemRule) {
+        self.8 = Some(rule);
+    }
+
+    pub(crate) fn item_rule(&self) -> Option<ItemRule> {
+        self.8
     }
 
     /// The client game a client registry's scripts run in.

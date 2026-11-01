@@ -102,6 +102,11 @@ pub(crate) fn perk_bits(world: &World, client: u32) -> u64 {
         .map_or(0, |perks| perks.of(client))
 }
 
+/// Whether a player holds the named perk.
+pub(crate) fn has_perk(world: &World, client: u32, name: &str) -> bool {
+    bit(name).is_ok_and(|bit| perk_bits(world, client) & bit != 0)
+}
+
 fn bit(name: &str) -> Result<u64, String> {
     PERKS
         .iter()

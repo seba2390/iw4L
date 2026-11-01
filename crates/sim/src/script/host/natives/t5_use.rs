@@ -2,9 +2,9 @@
 //! decides it each frame (the search of the use triggers near the player,
 //! ranked by distance and facing, then the pick of the first one the
 //! player may use, whose hint shows), and fires it when the player presses
-//! use. Script-made usable entities are searched too. Its other usables
-//! (weapons on the ground, missiles, turrets and actors) are not run; the
-//! zombie maps' scripts make none.
+//! use. Script-made usable entities and weapons on the ground (which
+//! `t5_items` takes) are searched too. Its other usables (missiles, turrets
+//! and actors) are not run; the zombie maps' scripts make none.
 
 use crate::frame::FrameWorld;
 use crate::script::{NativeRegistry, RoundScript};
@@ -48,6 +48,8 @@ enum Class {
     RadiusUse,
     /// Any other entity a script made usable (a Care Package's crate).
     Entity,
+    /// A weapon on the ground.
+    Item,
 }
 
 impl Class {
@@ -69,8 +71,25 @@ pub(crate) fn register(registry: &mut NativeRegistry) {
 fn use_presses(world: &mut World, pressed: &[(u32, u64)]) -> Vec<(u64, u64)> {
     pressed
         .iter()
-        .filter_map(|&(client, player)| Some((usable_entity(world, client)?, player)))
+        .filter_map(|&(client, player)| {
+            let used = usable_entity(world, client)?;
+            (item_number_of(world, used).is_none()).then_some((used, player))
+        })
         .collect()
+}
+
+fn item_number_of(world: &World, object: u64) -> Option<i32> {
+    match world.resource::<RoundScript>().entities.get(&object)?.kind {
+        super::super::entities::EntityKind::Item(number) => Some(number),
+        _ => None,
+    }
+}
+
+/// The weapon on the ground a player's use reaches, when that is what comes
+/// first in the search.
+pub(crate) fn usable_item(world: &mut World, client: u32) -> Option<i32> {
+    let used = usable_entity(world, client)?;
+    item_number_of(world, used)
 }
 
 fn sub(a: [f32; 3], b: [f32; 3]) -> [f32; 3] {
@@ -153,8 +172,12 @@ fn search(
             .filter(|(id, _)| runtime.live(id))
             .filter_map(|(&id, entity)| {
                 let usable = entity.usable.as_ref();
-                let class = Class::of(&entity.classname)
-                    .or_else(|| usable.filter(|u| u.enabled).map(|_| Class::Entity))?;
+                let class = if matches!(entity.kind, super::super::entities::EntityKind::Item(_)) {
+                    Class::Item
+                } else {
+                    Class::of(&entity.classname)
+                        .or_else(|| usable.filter(|u| u.enabled).map(|_| Class::Entity))?
+                };
                 if usable.is_some_and(|u| !u.enabled || u.barred.contains(&client)) {
                     return None;
                 }
@@ -171,6 +194,33 @@ fn search(
     };
     let mut found = Vec::new();
     for (id, class, cursor, default_cursor, look_at) in triggers {
+        if class == Class::Item {
+            // BlackOpsMP.exe's search takes every item within
+            // `player_useRadius`, and leaves out one the player cannot take.
+            let Some(number) = item_number_of(world, id) else {
+                continue;
+            };
+            let Some(center) = FrameWorld::from_world(world)
+                .dropped_item_by_number(number)
+                .map(|item| item.origin)
+            else {
+                continue;
+            };
+            let to = sub(center, eye);
+            let distance = dot(to, to).sqrt();
+            let reach = super::super::actor_nav::dvar_f32(world, "player_useradius", USE_REACH);
+            if distance > reach || !super::t5_items::usable_by(world, client, number) {
+                continue;
+            }
+            let facing = if distance > 0.0 {
+                dot(view, to) / distance
+            } else {
+                dot(view, to)
+            };
+            let score = (1.0 - (facing + 1.0) * 0.5) * FACING_SCORE;
+            found.push((score + distance, id, center, class));
+            continue;
+        }
         let cursor = if default_cursor {
             super::super::physics::map_use_cursor(world, id).unwrap_or(cursor)
         } else {
@@ -216,7 +266,7 @@ fn search(
                     found.push((TOUCH_SCORE, id, center, class));
                 }
             }
-            Class::Entity => {}
+            Class::Entity | Class::Item => {}
             Class::Use | Class::RadiusUse => {
                 let to = sub(center, eye);
                 let distance = dot(to, to).sqrt();
@@ -302,7 +352,10 @@ fn entities_clear(frame: &FrameWorld, client: u32, eye: [f32; 3], center: [f32; 
 /// The pick: the first trigger the player may use (its team, its claim);
 /// it is used only with a cursor hint.
 fn pick(world: &mut World, client: u32, found: &[(f32, u64, [f32; 3], Class)]) -> Option<u64> {
-    for &(_, id, _, _) in found {
+    for &(_, id, _, class) in found {
+        if class == Class::Item {
+            return Some(id);
+        }
         if !super::super::triggers::use_eligible(world, id, client) {
             continue;
         }
