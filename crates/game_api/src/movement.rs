@@ -623,6 +623,10 @@ pub struct MoveStatus {
     pub being_revived: bool,
     /// The game's own state of the weapon in hand, for a test player's log.
     pub weapon_state: i32,
+    /// The height of the player's box by stance.
+    pub hull_height: i32,
+    /// `disableweapons`: the player takes no weapon.
+    pub weapons_disabled: bool,
 }
 
 /// A player flag a script builtin sets in the game's own movement.

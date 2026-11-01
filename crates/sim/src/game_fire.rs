@@ -1246,6 +1246,34 @@ struct RestingGameMissiles(std::collections::BTreeSet<i32>);
 #[derive(bevy_ecs::prelude::Resource, Default)]
 pub(crate) struct GameMissiles(std::collections::BTreeMap<i32, GameMissile>);
 
+/// What of `mask` the map's contents at a point hold.
+pub(crate) fn point_contents(world: &FrameWorld, point: [f32; 3], mask: u32) -> u32 {
+    let outcome = crate::bullet_collision::bullet_trace_with_entity_models(
+        world.clip_brushes(),
+        world.clip_bsp(),
+        world.clip_cmodels(),
+        world.clip_mesh(),
+        &[],
+        &[],
+        &BulletTraceQuery {
+            start: point,
+            end: point,
+            mask,
+            ignore: None,
+            ignore_hit: None,
+            ignore_model: None,
+        },
+        &|_| true,
+    );
+    match outcome {
+        TraceOutcome::StartSolid {
+            collider: Some(ColliderId::World { contents, .. }),
+            ..
+        } => contents & mask,
+        _ => 0,
+    }
+}
+
 fn missile_rules(world: &FrameWorld) -> Option<game_api::fire::MissileRules> {
     world.bootstrap_ref().mode?.missiles
 }

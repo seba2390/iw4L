@@ -88,8 +88,9 @@ give weapon/t5:l96a1 vzoom
 ```
 
 Use the `t5:` prefix: several Black Ops names (`famas`, `ak47`, `aug`)
-are also Modern Warfare 2 weapons. Dropped weapons still follow the
-runtime's own item rules (#720).
+are also Modern Warfare 2 weapons. A killed player drops the last weapon they
+held by Black Ops' rules: walk over one on the same ammo for its rounds, hold
+use on any other to swap it for the weapon in hand.
 
 ## Play with friends
 

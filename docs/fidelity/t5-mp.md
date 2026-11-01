@@ -125,16 +125,25 @@ Each open section names the issue that works it.
       while sprinting), ladders and mantles on a multiplayer map are not
       verified in a run yet (#461, #647); a dump shows only the shared
       player state, not the dive's flags.
-- [ ] **G** `dropitem` and dropped-weapon pickup (`_weapons.gsc`'s
-      `dropWeaponForDeath`, `itemweaponsetammo`) run the runtime's own item
-      rules. Black Ops' drop is read from `BlackOpsMP.exe`: an alternate
-      mode drops its base weapon, a weapon with no ammo is taken without a
-      drop, the launch speeds are the same four dvars with the same
-      defaults (10, 10, 5, 100), and the item is then moved to the dropping
-      player's weapon tag (traced from the player's centre) — the tag
-      placement, the item's ammo checks (`itemweaponsetammo`'s clip capped
-      at the clip size, its hand index 0–1 and error texts) and Black Ops'
-      pickup are not in place (#720).
+- [ ] **G** A weapon dropped by `dropitem` goes from the player's middle to
+      `tag_weapon_right` on their model as it stands unanimated: the server
+      keeps no animated pose of a player to read the tag from, and it takes the
+      player's yaw alone for angles. The held weapon's options (camo) stay
+      behind; the item's model is the plain world model. `dropitem`'s fallback
+      for a name that is an item but no weapon is not ported: nothing in the
+      scripts passes one.
+- [ ] **G** An item's ground: an item resting on something that later moves
+      does not fall as BlackOpsMP.exe's item frame has it fall; the item's frame
+      keeps only whether it rests. A smoke or flash class weapon on the ground
+      skips Black Ops' test of the player's secondary offhand type (no script
+      drops one). `GAME_CANT_GET_PRIMARY_WEAP_MESSAGE` is not printed when a use
+      cannot take a weapon, and the pickup's sound comes from the runtime's
+      pickup events, whose client side is not compared with BlackOpsMP.exe's
+      events 0xb and 0xc.
+- [ ] **G** `t5.mp.shared_ammo_cap`: a weapon with a `sharedAmmoCap` on the
+      ground logs this gap and the player's ammo room ignores the cap.
+- [ ] **V** The use hint of a weapon on the ground (`weapon + 7` in the cursor
+      hint) was not seen on screen in a run; the pick up itself was.
 - [ ] **V** `t5.csc.total_ammo`: the client's `gettotalammo` answers the
       weapon's stock and clip; Black Ops sums the clips of every held weapon
       that shares the weapon's ammo cap instead, which is not applied.
@@ -144,8 +153,7 @@ Each open section names the issue that works it.
       `makegrenadedud` is refused.
 - [ ] **G** `t5.mp.perk_effects`: the perks Black Ops' multiplayer
       code tests that have no effect here yet (setting one logs the gap):
-      the item pickup's `specialty_scavenger` (scavenger packs) and
-      `_twogrenades` (a second grenade picked up) (#720);
+      `_twogrenades` (a second grenade picked up);
       `_grenadepulldeath`, `_pin_back`, `_loudenemies`,
       `_nottargetedbyai`, `_noname`, `_quieter` (footsteps the AI hears);
       its client's `_reconnaissance`, `_showenemyequipment`,
@@ -464,6 +472,30 @@ Each open section names the issue that works it.
       compensation of Black Ops' movement and weapons are unmeasured.
 
 ## Closed
+
+- [x] **G** `dropitem`, `itemweaponsetammo` and picking a dropped weapon up ran
+      the runtime's own item rules, and `_weapons.gsc`'s `watchPickup` faulted
+      on the item's class in every match with kills. They are BlackOpsMP.exe's:
+      an item's class is `weapon_<name>`; an alternate mode drops its base
+      weapon; a weapon with no ammo or a clip-only one with an empty clip is
+      taken with no drop; the item carries two slots (the weapon and its
+      alternate, or the left hand's weapon), the reserve being what the other
+      held weapons on that ammo could not hold; `itemweaponsetammo(clip, stock
+      [, slot])` cuts the clip to the clip size and has Black Ops' errors. At
+      `g_maxDroppedWeapons` (16) the weapon farthest from every living player
+      goes (`avoidDropCleanup` ones stay). An item falls by the four drop
+      speeds, stops on what it meets, lands on its side on a surface facing up
+      unless `nodrop` contents refuse it, and is freed against a wall it cannot
+      slide along. Its owner cannot take it for a second. A touch (36 units
+      flat, 88 up, 18 down) takes the ammo the player has room for and takes
+      any at all frees the item; `dropscavengeritem` packs go only to a player
+      with `specialty_scavenger`, who hear `scavenger`. Use takes the weapon in
+      the use search (`player_useRadius`, ranked by distance and facing,
+      `g_useholdspawndelay` 500; `g_useholdtime` 250 only on the reload-use
+      button), lays down the primary in hand at the item's place when two are
+      held, sends `touch` and `trigger` (player, the weapon laid down), and
+      raises the new weapon. Not during last stand or holding a carried
+      killstreak weapon (#720).
 
 - [x] **G** A player's rocket spawned by the zombies rules and the SAM
       Turret launched no missile. Both now go through BlackOpsMP.exe's

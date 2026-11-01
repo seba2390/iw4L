@@ -881,8 +881,8 @@ pattern crates/sim/src/hudelem.rs hud_iw4:: 2
 pattern crates/sim/src/hudelem.rs playerstate_iw4:: 1
 pattern crates/sim/src/input.rs playerstate_iw4:: 1
 pattern crates/sim/src/item.rs anim_iw4:: 1
-pattern crates/sim/src/item.rs entity_iw4:: 4
-pattern crates/sim/src/item.rs playerstate_iw4:: 3
+pattern crates/sim/src/item.rs entity_iw4:: 3
+pattern crates/sim/src/item.rs playerstate_iw4:: 1
 pattern crates/sim/src/item.rs trace_iw4:: 1
 pattern crates/sim/src/item.rs weapon_iw4:: 5
 pattern crates/sim/src/mantle_xanim.rs movement_iw4:: 1
