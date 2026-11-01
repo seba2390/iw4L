@@ -195,6 +195,7 @@ impl NativeRegistry {
         natives::t5_guided::register(&mut self);
         natives::t5_items::register(&mut self);
         natives::t5_location::register(&mut self);
+        natives::t5_mp_dog::register(&mut self);
         natives::t5_mp_heli::register(&mut self);
         natives::t5_mp_turret::register(&mut self);
         natives::t5_napalm::register(&mut self);

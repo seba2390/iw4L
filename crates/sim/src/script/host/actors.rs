@@ -198,7 +198,7 @@ fn spawn_point_seen(world: &mut World, spawner: u64, origin: [f32; 3]) -> bool {
 /// `ai_disableSpawn` is set, the spawner's count is 0 or the AI limit's
 /// actors are in use; unless forced, also while a live player or a living
 /// actor stands on the spawn point or an allied player sees it.
-fn spawn_from(world: &mut World, spawner: &Value, force: bool) -> Result<Value, String> {
+pub(crate) fn spawn_from(world: &mut World, spawner: &Value, force: bool) -> Result<Value, String> {
     let spawner_id = entity_id(world, spawner)?;
     let (classname, count) = {
         let mut runtime = world.resource_mut::<RoundScript>();
@@ -343,12 +343,27 @@ fn spawn_from(world: &mut World, spawner: &Value, force: bool) -> Result<Value, 
 
     let now = super::players::now_ms(world);
     let main = format!("aitype/{aitype}::main");
-    run_now(world, &main, Value::Object(id), Vec::new(), now)
-        .map_err(|fault| format!("{main}: {fault:?}"))?;
+    // Black Ops multiplayer has no aitype scripts: its one actor is its dog,
+    // and `_dogs.gsc` gives it what the script would.
+    let aitype_script = world
+        .resource::<RoundScript>()
+        .program
+        .as_ref()
+        .is_some_and(|program| program.names.contains_key(&main));
+    if aitype_script {
+        run_now(world, &main, Value::Object(id), Vec::new(), now)
+            .map_err(|fault| format!("{main}: {fault:?}"))?;
+    } else {
+        world
+            .resource_mut::<RoundScript>()
+            .set_object_field(id, "type", Value::string("dog"));
+    }
+    let species = world.resource_mut::<RoundScript>().object_field(id, "type");
     let dog = matches!(
-        world.resource_mut::<RoundScript>().object_field(id, "type"),
-        Value::String(kind) if kind.as_bytes() == b"zombie_dog"
+        &species,
+        Value::String(kind) if kind.as_bytes() == b"zombie_dog" || kind.as_bytes() == b"dog"
     );
+    let plain_dog = matches!(&species, Value::String(kind) if kind.as_bytes() == b"dog");
     {
         let mut runtime = world.resource_mut::<RoundScript>();
         runtime.set_object_field(id, "isdog", Value::Int(dog.into()));
@@ -365,7 +380,13 @@ fn spawn_from(world: &mut World, spawner: &Value, force: bool) -> Result<Value, 
             entity.hidden
         );
     }
-    let tree = if dog { "zombie_dog" } else { "generic_human" };
+    let tree = if plain_dog {
+        "dog"
+    } else if dog {
+        "zombie_dog"
+    } else {
+        "generic_human"
+    };
     let _ = super::actor_anims::attach(world, id, tree);
     super::actor_brain::begin(world, id)?;
     raise(world, spawner.clone(), "spawned", vec![Value::Object(id)]);
@@ -374,6 +395,17 @@ fn spawn_from(world: &mut World, spawner: &Value, force: bool) -> Result<Value, 
 
 const ACTOR_DAMAGE: &str = "maps/_callbacksetup::codecallback_actordamage";
 const ACTOR_KILLED: &str = "maps/_callbacksetup::codecallback_actorkilled";
+/// Black Ops multiplayer's: its damage callback takes no model index.
+const MP_ACTOR_DAMAGE: &str = "maps/mp/gametypes/_callbacksetup::codecallback_actordamage";
+const MP_ACTOR_KILLED: &str = "maps/mp/gametypes/_callbacksetup::codecallback_actorkilled";
+
+fn multiplayer(world: &World) -> bool {
+    world
+        .resource::<RoundScript>()
+        .program
+        .as_ref()
+        .is_some_and(|program| program.names.contains_key(MP_ACTOR_DAMAGE))
+}
 
 /// A hit on an actor goes to the actor damage callback, which finishes it.
 pub(crate) fn damage(
@@ -394,7 +426,8 @@ pub(crate) fn damage(
     let inflictor = hit
         .inflictor
         .map_or_else(|| attacker.clone(), Value::Object);
-    let args = vec![
+    let multiplayer = multiplayer(world);
+    let mut args = vec![
         inflictor,
         attacker,
         Value::Int(hit.amount),
@@ -404,11 +437,18 @@ pub(crate) fn damage(
         Value::Vector(hit.point),
         Value::Vector(hit.dir),
         Value::string(location),
-        Value::Int(model_index),
-        Value::Int(0),
+        Value::Int(if multiplayer { 0 } else { model_index }),
     ];
+    if !multiplayer {
+        args.push(Value::Int(0));
+    }
+    let callback = if multiplayer {
+        MP_ACTOR_DAMAGE
+    } else {
+        ACTOR_DAMAGE
+    };
     let now = super::players::now_ms(world);
-    if let Err(fault) = run_now(world, ACTOR_DAMAGE, Value::Object(actor), args.clone(), now) {
+    if let Err(fault) = run_now(world, callback, Value::Object(actor), args.clone(), now) {
         diag::warn!(Sim, "actor damage callback: {fault:?}");
         let _ = finish_damage(world, actor, &args);
     }
@@ -421,7 +461,11 @@ pub(crate) fn damage(
 /// and at no health left (held at -999 at most) is told `death` before the
 /// killed callback runs and the AI dies; with health left it feels pain.
 /// Each notify then goes to the face event callback.
-fn finish_damage(world: &mut World, actor: u64, args: &[Value]) -> Result<Value, String> {
+pub(crate) fn finish_damage(
+    world: &mut World,
+    actor: u64,
+    args: &[Value],
+) -> Result<Value, String> {
     let amount = match args.get(2) {
         Some(Value::Int(n)) => *n,
         Some(Value::Float(f)) => *f as i32,
@@ -507,8 +551,13 @@ fn finish_damage(world: &mut World, actor: u64, args: &[Value]) -> Result<Value,
             arg(8),
             Value::Int(0),
         ];
+        let callback = if multiplayer(world) {
+            MP_ACTOR_KILLED
+        } else {
+            ACTOR_KILLED
+        };
         let now = super::players::now_ms(world);
-        if let Err(fault) = run_now(world, ACTOR_KILLED, Value::Object(actor), killed, now) {
+        if let Err(fault) = run_now(world, callback, Value::Object(actor), killed, now) {
             diag::warn!(Sim, "actor killed callback: {fault:?}");
         }
         super::actor_brain::die(world, actor, &arg(1), &arg(4), &arg(5), &arg(7), &arg(8));
@@ -644,7 +693,11 @@ fn sentient_team_bits(world: &World, id: u64) -> Option<(u8, u8)> {
     if !matches!(entity.kind, EntityKind::Player | EntityKind::Actor) {
         return None;
     }
-    let team = match runtime.peek_object_field(id, "team") {
+    let team = match runtime.peek_object_field(id, "aiteam") {
+        Some(Value::String(team)) => Some(Value::String(team)),
+        _ => runtime.peek_object_field(id, "team"),
+    };
+    let team = match team {
         Some(Value::String(team)) => team,
         _ if entity.kind == EntityKind::Player => "allies".into(),
         _ => return None,

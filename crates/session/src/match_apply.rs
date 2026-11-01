@@ -260,6 +260,7 @@ pub fn apply_prepared_match(
             ui_images,
             scripts,
             actor_anim_sources,
+            code_anim_trees,
             script_level,
             script_entries,
             client_scripts,
@@ -539,7 +540,42 @@ pub fn apply_prepared_match(
                 definition,
             )))
         });
-        content.set_actor_anim_trees(trees.collect::<Vec<_>>());
+        let code_trees = code_anim_trees.iter().filter_map(|tree| {
+            let nodes = tree
+                .nodes
+                .iter()
+                .enumerate()
+                .map(|(index, node)| xmodel_runtime::XAnimNodeDefinition {
+                    parent: node.parent.map(xmodel_runtime::XAnimNodeId),
+                    kind: if node.additive {
+                        xmodel_runtime::XAnimNodeKind::Additive
+                    } else if !tree
+                        .nodes
+                        .iter()
+                        .any(|child| child.parent == Some(index as u16))
+                    {
+                        match xanims.0.clip(anim_namespace, node.name) {
+                            Some(clip) => xmodel_runtime::XAnimNodeKind::Leaf { clip, parts: None },
+                            None => {
+                                diag::warn!(Sim, "animation tree {}: no {}", tree.name, node.name);
+                                xmodel_runtime::XAnimNodeKind::Blend
+                            }
+                        }
+                    } else {
+                        xmodel_runtime::XAnimNodeKind::Blend
+                    },
+                })
+                .collect();
+            let definition = xmodel_runtime::XAnimTreeDefinition::new(nodes)
+                .map_err(|error| diag::warn!(Sim, "animation tree {}: {error:?}", tree.name))
+                .ok()?;
+            Some(Arc::new(sim::script::ActorAnimTree::new(
+                tree.name,
+                tree.nodes.iter().map(|node| node.name.to_owned()).collect(),
+                Arc::new(definition),
+            )))
+        });
+        content.set_actor_anim_trees(trees.chain(code_trees).collect::<Vec<_>>());
         content.set_actor_paths(sim::script::ActorPaths::new(
             facts
                 .path_nodes
@@ -1052,6 +1088,7 @@ struct MatchInstallPlan {
     scripts: sim::script::Program,
     /// `.atr` sources of the animation trees actors may use, by tree name.
     actor_anim_sources: Vec<(String, String)>,
+    code_anim_trees: &'static [game_api::CodeAnimTree],
     script_level: sim::script::LevelData,
     script_entries: Vec<String>,
     /// The game's client scripts and their entries, when its client runs
@@ -1799,6 +1836,11 @@ fn preflight_match_install(
     } else {
         Vec::new()
     };
+    let code_anim_trees = if mode.hud.zombies {
+        &[][..]
+    } else {
+        game_scripts.multiplayer_code_anim_trees()
+    };
     let authority_models = authority_entity_model_install(&prepared.world);
     let model_spawns = script_model_spawns(&prepared.world.script_model_instances);
     let fx_catalog = PreparedFxCatalog(std::mem::take(&mut prepared.fx));
@@ -1842,6 +1884,7 @@ fn preflight_match_install(
         sound_mix_names: prepared.sound_mix_names,
         scripts,
         actor_anim_sources,
+        code_anim_trees,
         script_level,
         script_entries,
         client_scripts,

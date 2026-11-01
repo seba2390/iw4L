@@ -5,6 +5,7 @@ mod client_catalog;
 mod code_hud;
 mod compass;
 mod crosshair_scan;
+mod dog_anims;
 mod fire;
 mod fire_autosim;
 mod fire_sound;
@@ -82,6 +83,15 @@ const MULTIPLAYER_ENGINE_DVARS: &[(&str, &str)] = &[
     // How long a downed player bleeds out, Second Chance's script reads them.
     ("player_lastStandBleedoutTime", "30"),
     ("player_lastStandBleedoutTimeNoRevive", "10"),
+    ("player_reviveTriggerRadius", "64"),
+    // The dogs' think.
+    ("dog_turn90_angle", "70"),
+    ("dog_turn180_angle", "135"),
+    ("dog_turn_min_goal_dist", "40"),
+    ("dog_aggressive_attack", "1"),
+    ("dog_aggressive_attack_multiplier", "1.5"),
+    ("dog_aggressive_attack_height_threshold", "24"),
+    ("perk_dogsAttackGhost", "1"),
     // The share of damage a vehicle takes by side.
     ("vehicle_damage_zone_front", "1"),
     ("vehicle_damage_zone_side", "1.2"),
@@ -164,6 +174,10 @@ const ZOMBIE_ENGINE_DVARS: &[(&str, &str)] = &[
 ];
 
 impl game_api::GameScripts for T5 {
+    fn multiplayer_code_anim_trees(&self) -> &'static [game_api::CodeAnimTree] {
+        &[dog_anims::DOG_TREE]
+    }
+
     fn program(
         &self,
         request: &ScriptRequest<'_>,

@@ -223,7 +223,28 @@ pub enum KeyType {
     Vector,
 }
 
+/// One node of an animation tree a game's executable builds in code.
+#[derive(Clone, Copy, Debug)]
+pub struct CodeAnimNode {
+    pub name: &'static str,
+    pub parent: Option<u16>,
+    pub additive: bool,
+}
+
+/// An animation tree a game's executable builds in code: its node indices are
+/// what the code drives it by.
+#[derive(Clone, Copy, Debug)]
+pub struct CodeAnimTree {
+    pub name: &'static str,
+    pub nodes: &'static [CodeAnimNode],
+}
+
 pub trait GameScripts: Sync {
+    /// The trees the game's multiplayer executable builds in code.
+    fn multiplayer_code_anim_trees(&self) -> &'static [CodeAnimTree] {
+        &[]
+    }
+
     fn program(
         &self,
         request: &ScriptRequest<'_>,

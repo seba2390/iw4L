@@ -2,6 +2,8 @@ pub mod actor_anims;
 pub mod actor_brain;
 pub(crate) mod actor_dodge;
 pub(crate) mod actor_dog;
+pub(crate) mod actor_dog_states;
+pub(crate) mod actor_dog_threat;
 pub mod actor_nav;
 pub(crate) mod actor_path;
 pub(crate) mod actors;

@@ -336,9 +336,12 @@ fn with_movement(
     }
 }
 
+/// The animscript family of Black Ops multiplayer's dogs.
+const MP_DOG_PREFIX: &str = "maps/mp/animscripts/dog_";
+
 /// The actor's animscript family prefix.
 pub(crate) fn prefix(world: &World, actor: u64) -> &'static str {
-    brain(world, actor).map_or("zombie_", |brain| brain.prefix)
+    brain(world, actor).map_or("animscripts/zombie_", |brain| brain.prefix)
 }
 
 /// Whether the actor still lives, as its AI knows it.
@@ -364,13 +367,17 @@ pub(crate) fn begin(world: &mut World, actor: u64) -> Result<(), String> {
         .resource_mut::<RoundScript>()
         .object_field(actor, "type")
     {
-        Value::String(kind) if kind.as_bytes().starts_with(b"zombie_dog") => ("zombie_dog_", true),
+        Value::String(kind) if kind.as_bytes().starts_with(b"zombie_dog") => {
+            ("animscripts/zombie_dog_", true)
+        }
+        // Black Ops multiplayer's dogs run the executable's `maps/mp/animscripts`.
+        Value::String(kind) if &*kind == "dog" => (MP_DOG_PREFIX, true),
         // Black Ops' human species runs the singleplayer animscripts.
-        Value::String(kind) if &*kind == "human" => ("", false),
-        _ => ("zombie_", false),
+        Value::String(kind) if &*kind == "human" => ("animscripts/", false),
+        _ => ("animscripts/zombie_", false),
     };
     let now = super::players::now_ms(world);
-    let init = format!("animscripts/{prefix}init::main");
+    let init = format!("{prefix}init::main");
     run_now(world, &init, Value::Object(actor), Vec::new(), now)
         .map_err(|fault| format!("{init}: {fault:?}"))?;
     let mut runtime = world.resource_mut::<RoundScript>();
@@ -652,7 +659,7 @@ fn set_anim_script(
     let prefix = prefix(world, actor);
     let started = match script {
         AnimScript::Species(species) => {
-            let main = format!("animscripts/{prefix}{}::main", species.module());
+            let main = format!("{prefix}{}::main", species.module());
             start_now(world, &main, Value::Object(actor), Vec::new(), now)
                 .map_err(|fault| format!("{main}: {fault:?}"))
         }
@@ -662,7 +669,12 @@ fn set_anim_script(
                     .map_err(|fault| format!("animcustom: {fault:?}"))
             }
             Some(CustomScript::Traverse(name)) => {
-                let main = format!("animscripts/traverse/{name}::main");
+                let root = if prefix.starts_with("maps/mp/") {
+                    "maps/mp/animscripts"
+                } else {
+                    "animscripts"
+                };
+                let main = format!("{root}/traverse/{name}::main");
                 start_now(world, &main, Value::Object(actor), Vec::new(), now)
                     .map_err(|fault| format!("{main}: {fault:?}"))
             }
@@ -943,7 +955,11 @@ fn sense(world: &mut World, actor: u64) {
     if !fresh {
         return;
     }
-    super::actor_nav::choose_enemy(world, actor);
+    if prefix(world, actor) == MP_DOG_PREFIX {
+        super::actor_dog_threat::update(world, actor);
+    } else {
+        super::actor_nav::choose_enemy(world, actor);
+    }
     let _ = can_see_enemy(world, actor);
 }
 
@@ -1131,6 +1147,10 @@ pub(crate) fn hear(world: &mut World, actor: u64, target: u64) {
 }
 
 /// The actor knows now where `target` is.
+pub(crate) fn know_sentient(world: &mut World, actor: u64, target: u64) {
+    know(world, actor, target);
+}
+
 fn know(world: &mut World, actor: u64, target: u64) {
     let now = super::players::now_ms(world);
     let at = target_origin(world, target);
@@ -1139,6 +1159,17 @@ fn know(world: &mut World, actor: u64, target: u64) {
         sighting.known = Some(now);
         sighting.known_at = at;
     });
+}
+
+/// What the actor knows of a sentient: whether it sees it, when it last knew
+/// of it, and where.
+pub(crate) fn known(
+    world: &World,
+    actor: u64,
+    target: u64,
+) -> Option<(bool, Option<i64>, [f32; 3])> {
+    let sighting = brain(world, actor)?.sightings.get(&target)?;
+    Some((sighting.visible, sighting.known, sighting.known_at))
 }
 
 /// The entity that last hurt the actor, while it holds one.
@@ -1590,6 +1621,16 @@ fn goal_shape(world: &mut World, actor: u64) -> Option<([f32; 3], [f32; 3], [f32
     Some((origin, path_end, goal, radius, height))
 }
 
+/// Whether the actor runs Black Ops multiplayer's dog rules.
+pub(crate) fn runs_multiplayer_dog_rules(world: &World, actor: u64) -> bool {
+    prefix(world, actor) == MP_DOG_PREFIX
+}
+
+/// Whether the actor runs its stop animscript and may change script.
+pub(crate) fn stands_interruptible(world: &mut World, actor: u64) -> bool {
+    running_species_script(world, actor, SpeciesScript::Stop) && safe_to_change_script(world, actor)
+}
+
 /// The hellhound's exposed think: once a frame it knows where each
 /// enemy-team sentient is; it bites (the combat animscript) once its attack
 /// spot is reached, or while its bite may not be cut off. Its code goal is
@@ -1599,7 +1640,10 @@ fn goal_shape(world: &mut World, actor: u64) -> Option<([f32; 3], [f32; 3], [f32
 /// lookahead turns far from its facing, runs its path, or stands.
 fn dog_exposed_think(world: &mut World, actor: u64) -> u8 {
     let now = super::players::now_ms(world);
-    if brain(world, actor).is_some_and(|brain| brain.sensed_at != Some(now)) {
+    // Black Ops multiplayer's dog senses its enemies; the hellhound is told.
+    if prefix(world, actor) != MP_DOG_PREFIX
+        && brain(world, actor).is_some_and(|brain| brain.sensed_at != Some(now))
+    {
         know_enemy_team(world, actor);
     }
     sense(world, actor);
@@ -1691,7 +1735,7 @@ fn code_moving(world: &World, actor: u64) -> bool {
 fn know_enemy_team(world: &mut World, actor: u64) {
     let targets: Vec<u64> = {
         let mut runtime = world.resource_mut::<RoundScript>();
-        let enemy_team = match runtime.object_field(actor, "team") {
+        let enemy_team = match runtime.actor_team(actor) {
             Value::String(team) if &*team == "axis" => "allies",
             Value::String(team) if &*team == "allies" => "axis",
             _ => return,
@@ -1890,10 +1934,7 @@ fn ai_event(world: &mut World, actor: u64, kind: game_api::fire::AiPointEvent) {
         Value::Vector(at) => at,
         _ => return,
     };
-    let team = match world
-        .resource_mut::<RoundScript>()
-        .object_field(actor, "team")
-    {
+    let team = match world.resource_mut::<RoundScript>().actor_team(actor) {
         Value::String(team) => match &*team {
             "free" => 1 << 0,
             "axis" => 1 << 1,
@@ -2095,7 +2136,7 @@ fn finish_death(world: &mut World, actor: u64) {
         }
         let origin = runtime.object_field(actor, "origin");
         let angles = runtime.object_field(actor, "angles");
-        let team = runtime.object_field(actor, "team");
+        let team = runtime.actor_team(actor);
         let (number, presence, attachments, attach_ignore_collision) =
             match runtime.entities.get_mut(&actor) {
                 Some(entity) => (
@@ -2203,7 +2244,7 @@ pub(crate) fn anim_scripted(world: &mut World, actor: u64, args: &[Value]) -> Re
     with_brain(world, actor, |brain| brain.push(ANIM_SCRIPTED));
     kill_anim_script(world, actor, false);
     with_movement(world, actor, |movement| movement.stop_scripted());
-    let init = format!("animscripts/{}scripted::init", prefix(world, actor));
+    let init = format!("{}scripted::init", prefix(world, actor));
     let now = super::players::now_ms(world);
     run_now(world, &init, Value::Object(actor), args.to_vec(), now)
         .map_err(|fault| format!("{init}: {fault:?}"))

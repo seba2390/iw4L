@@ -135,6 +135,66 @@ impl ActorAnim {
     fn put(&mut self, node: u16, state: xmodel_runtime::XAnimNodeState) {
         let _ = self.runtime.set_state(XAnimNodeId(node), state);
     }
+
+    /// Fades the node and all below it out.
+    pub(crate) fn clear_node(&mut self, node: u16, time: f32) {
+        self.clear_goal(node, time);
+    }
+
+    /// Sets the node's goal as the executable's own callers of the tree do.
+    pub(crate) fn set_node(&mut self, node: u16, goal: NodeGoal) {
+        let tree = Arc::clone(&self.tree);
+        if goal.restart {
+            for leaf in tree.descendants(node) {
+                let mut state = self.state(leaf);
+                let run = state.time != 0.0 || state.cycle_count != 0;
+                if run && state.cycle_count == state.old_cycle_count {
+                    state.time = 0.0;
+                    state.old_time = 0.0;
+                    state.cycle_count = 0;
+                    state.old_cycle_count = 0;
+                    self.put(leaf, state);
+                }
+            }
+        }
+        self.set_goal(node, goal.weight, goal.blend);
+        if goal.knob {
+            for sibling in tree.siblings(node).collect::<Vec<_>>() {
+                self.clear_goal(sibling, goal.blend);
+            }
+        }
+        if !goal.limited {
+            let mut parent = tree.parent(node);
+            while let Some(ancestor) = parent {
+                if self.state(ancestor).goal_weight == 0.0 {
+                    self.set_goal(ancestor, 1.0, goal.blend);
+                }
+                parent = tree.parent(ancestor);
+            }
+        }
+        match goal.flag {
+            Some(flag) => {
+                self.flags.insert(node, flag.into());
+            }
+            None => {
+                self.flags.remove(&node);
+            }
+        }
+    }
+}
+
+/// A goal for one node of a tree the game's code drives by node number.
+#[derive(Clone, Copy, Debug)]
+pub(crate) struct NodeGoal {
+    pub(crate) weight: f32,
+    pub(crate) blend: f32,
+    /// The notify its notetracks and end report under.
+    pub(crate) flag: Option<&'static str>,
+    pub(crate) restart: bool,
+    /// Also fades its siblings out.
+    pub(crate) knob: bool,
+    /// Leaves its ancestors alone.
+    pub(crate) limited: bool,
 }
 
 /// The variants of the `SetAnim` family.
@@ -480,6 +540,7 @@ fn set_anim(
 /// Advances every actor's tree one authority tick and reports the notetracks
 /// that flagged animations crossed, then `end` for ones that finished.
 pub(crate) fn advance(world: &mut World, seconds: f32) {
+    super::actor_dog_states::drive(world);
     let mut notifies = Vec::new();
     let footsteps = crate::script::client::ai_footstep_rule(world);
     let mut steps = Vec::new();

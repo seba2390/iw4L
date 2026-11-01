@@ -343,7 +343,29 @@ Each open section names the issue that works it.
       not read in this path.
 - [ ] **V** A crate may rest tilted: the runtime's `physicslaunch` body, not
       compared with Black Ops' on a Care Package.
-- [ ] **G** `spawnactor` (attack dogs) is refused (#758).
+- [ ] **V** Attack Dogs (#758) run and bite in game, but a dog's pain, death
+      and corpse, the bitten player's `dog_bite` shellshock and the dogs
+      leaving at the end of `level.dog_time` have not been seen working.
+- [ ] **G** `t5.mp.dog_threat`: a dog's choice of enemy keeps the executable's
+      filters and most of its score, but leaves out the accuracy-by-distance
+      term, the threat bias groups, the 200 for a target actor, a target's
+      need for a path node within 200 and the attacker limit dvar. It also
+      does not read a client flag at offset 0x28e4 of the target, or apply the
+      seated-in-a-vehicle check. Sound does not make a dog notice anyone: only
+      sight does.
+- [ ] **G** `t5.mp.dog_lean`: the run's lean animations never play. The lean
+      field is read on the client, and what writes it on the server is not read.
+- [ ] **G** `t5.mp.dog_enemy_model`: `setenemymodel` only checks its argument,
+      so every viewer sees the friendly model, whatever their team.
+- [ ] **G** `t5.mp.dog_hazard`: a dog's check for a damaging volume ahead of it,
+      which turns it, is not ported; nor is the lock on changing script during
+      `dog_jump`.
+- [ ] **G** `t5.mp.dog_restart`: a dog state's restart resets its animation's
+      time at once. The executable clones the playing node and fades the old
+      one out over the blend, so the restart pops. `move_walk`'s per-frame
+      restart is ported as read; no script line sets `a.movement` to walk.
+- [ ] **G** `heliturretdogtrace`, `setflashbangimmunity` and the dog's compass
+      icon (`compassping_dog`) are not done; flashing a dog is not tried.
 - [ ] **G** A player killed while their camera is on a Valkyrie rocket: Black
       Ops' `player_die` runs the killed callback and then stops for a player
       with `EF2_REMOTE_CONTROL` (no body, no spectator state, no death
