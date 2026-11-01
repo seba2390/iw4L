@@ -262,7 +262,10 @@ name = "approved_tests"
 version = "0.1.0"
 dependencies = [
  "asset_transport",
+ "master_protocol",
+ "net",
  "serde_json",
+ "sim",
  "toml 0.9.12+spec-1.1.0",
  "updater",
 ]

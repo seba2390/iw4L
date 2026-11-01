@@ -123,6 +123,14 @@ impl Reassembler {
     }
 
     pub fn push(&mut self, bytes: &[u8]) -> Result<Option<Vec<u8>>, FragmentError> {
+        self.push_at(bytes, Instant::now())
+    }
+
+    pub fn push_at(
+        &mut self,
+        bytes: &[u8],
+        now: Instant,
+    ) -> Result<Option<Vec<u8>>, FragmentError> {
         if bytes.len() < FRAGMENT_HEADER_BYTES || bytes[..2] != FRAGMENT_MAGIC {
             return Err(err("malformed fragment header"));
         }
@@ -159,7 +167,7 @@ impl Reassembler {
         }
 
         self.pending
-            .retain(|_, packet| packet.created_at.elapsed() < FRAGMENT_TTL);
+            .retain(|_, packet| now.saturating_duration_since(packet.created_at) < FRAGMENT_TTL);
         if !self.pending.contains_key(&packet_id) {
             let pending_bytes: usize = self.pending.values().map(|packet| packet.total_len).sum();
             if self.pending.len() >= MAX_PENDING_PACKETS
@@ -178,7 +186,7 @@ impl Reassembler {
             .entry(packet_id)
             .or_insert_with(|| PartialPacket {
                 total_len,
-                created_at: Instant::now(),
+                created_at: now,
                 fragments: vec![None; count],
                 received: 0,
             });
