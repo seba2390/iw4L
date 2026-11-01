@@ -24,6 +24,7 @@ pub mod release;
 pub mod scenario;
 pub mod server;
 pub mod shell;
+pub mod t6_capture;
 pub mod windows;
 
 use std::path::{Path, PathBuf};

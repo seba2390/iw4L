@@ -1391,7 +1391,7 @@ fn rebuild(
                             if let (Some(namespace), Some(mode)) = (game.and_then(Game::namespace), game.and_then(Game::zombies)) {
                                 let owned = game.and_then(|game| inventory.installation(game)).map_or(&[][..], |entry| &entry.zombie_maps[..]);
                                 // A map whose scripts need a downloaded patch nobody captured is not offered.
-                                let missing = mode.capture.as_ref().filter(|capture| asset_transport::t6_content::captured_patch_files(capture.suffix).is_empty());
+                                let missing = mode.capture.as_ref().filter(|capture| asset_transport::t6_content::captured_patch_files(capture.suffix).is_empty() && !asset_transport::t6_content::has_captured_script(capture.suffix, capture.module));
                                 let runs = |zone: &str| missing.is_none_or(|capture| capture.exempt.contains(&zone));
                                 for (zone, name) in mode.maps {
                                     let map = format!("{}:{zone}", namespace.as_str());
