@@ -2179,6 +2179,7 @@ fn finish_death(world: &mut World, actor: u64) {
             if let Some(flags) = client_flags {
                 runtime.t5.client_flags.insert(corpse, flags);
             }
+            super::actor_dog_states::become_corpse(runtime, actor, corpse);
             runtime.t5.corpse_slots.push(corpse);
             diag::info!(
                 Sim,

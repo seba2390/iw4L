@@ -72,6 +72,8 @@ const RUN_TURN_180_LEFT: u16 = 0xa;
 const RUN_TURN_180_RIGHT: u16 = 0xb;
 /// Every turn, in the order the rule clears them.
 const TURNS: [u16; 8] = [8, 9, 6, 7, 0xc, 0xd, 0xa, 0xb];
+/// The four deaths, front, back, left and right.
+const DEATH_FRONT: u16 = 0x16;
 const TRAVERSES: std::ops::RangeInclusive<u16> = 0x1f..=0x24;
 const RUN_START_KNOB: u16 = 0x26;
 const RUN_KNOB: u16 = 0x27;
@@ -105,6 +107,8 @@ pub(crate) struct DogAnimState {
     entered: bool,
     /// `setaimanimweights`: up and left.
     aim: [f32; 2],
+    /// It is the dog's corpse now, which runs only the corpse rule.
+    corpse: bool,
 }
 
 /// `setanimstate(name)`.
@@ -112,6 +116,42 @@ pub(crate) fn set_state(runtime: &mut RoundScript, actor: u64, name: &str) {
     let index = STATES.iter().position(|state| *state == name).unwrap_or(0) as u32;
     let dog = runtime.dog_anim_states.entry(actor).or_default();
     dog.state = (!dog.state & TOGGLE) | index;
+}
+
+/// Each state's category, which the client scripts read
+/// (`GetAnimStateCategory`).
+const CATEGORIES: [&str; 8] = [
+    "init", "stop", "move", "combat", "pain", "death", "flashed", "traverse",
+];
+
+/// The category of a state by index, as `setanimstate`'s table pairs them.
+pub(crate) fn category(state: u32) -> &'static str {
+    CATEGORIES[match state {
+        1..=13 => 2,
+        14..=17 => 1,
+        18..=26 => 4,
+        27..=30 => 5,
+        31 => 6,
+        32..=39 => 3,
+        40..=46 => 7,
+        _ => 0,
+    }]
+}
+
+/// The state index the entity carries, without its toggle.
+pub(crate) fn state_of(runtime: &RoundScript, id: u64) -> Option<u32> {
+    runtime
+        .dog_anim_states
+        .get(&id)
+        .map(|dog| dog.state & !TOGGLE)
+}
+
+/// The dead dog's state passes to its corpse.
+pub(crate) fn become_corpse(runtime: &mut RoundScript, actor: u64, corpse: u64) {
+    if let Some(mut dog) = runtime.dog_anim_states.remove(&actor) {
+        dog.corpse = true;
+        runtime.dog_anim_states.insert(corpse, dog);
+    }
 }
 
 /// `setaimanimweights(up, left)`.
@@ -331,7 +371,7 @@ fn enter(anim: &mut ActorAnim, state: u32, previous: u32, aim: [f32; 2]) {
         // The front, back, left and right pains, then the running four.
         19..=22 => one_shot(anim, 0x12 + (state - 19) as u16, BLEND),
         23..=26 => one_shot(anim, 0xe + (state - 23) as u16, BLEND),
-        27..=30 => one_shot(anim, 0x16 + (state - 27) as u16, BLEND),
+        27..=30 => one_shot(anim, DEATH_FRONT + (state - 27) as u16, BLEND),
         31 => one_shot(anim, 0x1a, BLEND),
         32..=34 => one_shot(anim, ATTACKIDLE + (state - 32) as u16, BLEND),
         35 => one_shot(anim, 5, BLEND),
@@ -409,7 +449,12 @@ pub(crate) fn drive(world: &mut World) {
             continue;
         };
         let state = dog.state & !TOGGLE;
-        if dog.state == dog.applied && (state == 0 || dog.entered) {
+        if dog.corpse {
+            // A corpse in a death state holds its death animation at the end.
+            if (27..=30).contains(&state) {
+                anim.hold_end(DEATH_FRONT + (state - 27) as u16);
+            }
+        } else if dog.state == dog.applied && (state == 0 || dog.entered) {
             if dog.entered {
                 stay(anim, state, dog.aim);
             }

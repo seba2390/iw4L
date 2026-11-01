@@ -299,6 +299,7 @@ impl game_api::GameScripts for T5 {
                 trace_mask: 0x0282_0011,
                 surface: surface::name_of_flags,
             }),
+            dog_step: None,
         })
     }
 
@@ -554,6 +555,17 @@ const MULTIPLAYER_CLIENT_CALLBACKS: game_api::ClientCallbacks = game_api::Client
     trigger_delete: "codescripts/delete::main",
     level_notify: "clientscripts/mp/_callbacks::level_notify",
     ai_footstep: None,
+    // The multiplayer client sounds a dog's `dogstep_` note itself, at the
+    // paw's tag (its back left paw reads `j_palm_ri`, as the executable's
+    // table has it), the ground traced 15 units either side, world only.
+    dog_step: Some(game_api::DogStep {
+        callback: "clientscripts/mp/_dogs::playdogstep",
+        tags: ["j_palm_ri", "j_palm_le", "j_ball_ri", "j_palm_ri"],
+        trace_up: 15.0,
+        trace_down: 15.0,
+        trace_mask: 0x811,
+        surface: surface::name_of_flags,
+    }),
 };
 
 /// Black Ops' 3D UI texture: 1024 by 1024 on the front end and the `menu_`

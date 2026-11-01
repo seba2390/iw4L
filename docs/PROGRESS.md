@@ -268,7 +268,7 @@ Each milestone names its issues; open rules are in
   - [x] Chopper Gunner and Gunship (#661).
   - [x] Valkyrie Rockets: the owner steers the rocket through its camera; it boosts, burns its fuel and detonates on attack (#662). Its Care Package delivery is #661.
   - [x] Care Package: the helicopter flies in, drops the crate, and a player captures it (#661).
-  - [ ] Attack Dogs (#758): they spawn, patrol, traverse, hunt and bite with the owner credited; pain, death and leaving are unverified.
+  - [x] Attack Dogs (#758): they spawn, patrol, traverse, hunt and bite with the owner credited, are hurt, heal, die into a corpse in its death pose, are replaced, and leave when their time is up.
 - [x] Combat Training bots join and fight (#652).
   - [x] Black Ops' `_bot.gsc` adds its bots (`addtestclient`) and picks their team, class and loadout; IW4L's host bots move and shoot them. Black Ops' own bot behaviour is #709.
 - [ ] Private matches with friends: an unlisted lobby, join by invite, teams, game settings, back to the lobby after a match (#663, #665).

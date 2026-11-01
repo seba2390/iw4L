@@ -94,6 +94,7 @@ impl NativeRegistry {
             natives::t5_viewmodel::register_client(registry);
             natives::t5_perks::register_client(registry);
             natives::t5_scrambler::register_client(registry);
+            natives::t5_mp_dog::register_client(registry);
         })
     }
 
