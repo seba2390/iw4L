@@ -4,7 +4,7 @@ use crate::{ConsoleCommand, ConsoleLine, ConsoleRegistry, ConsoleSettings, Conso
 
 /// Black Ops' create-a-class commands, which its menus run with `execnow`:
 /// each edits a custom class in the local profile's stats.
-const COMMANDS: [(&str, Option<&str>, &str); 4] = [
+const COMMANDS: [(&str, Option<&str>, &str); 12] = [
     (
         "equipclass",
         Some("equipClass"),
@@ -24,6 +24,46 @@ const COMMANDS: [(&str, Option<&str>, &str); 4] = [
         "copyclass",
         None,
         "copyclass <classIndexToCopy> <classIndexToReplace> — copy a custom class over another",
+    ),
+    (
+        "equipdefaultclass",
+        Some("equipDefaultClass"),
+        "equipDefaultClass <customclassname> <defaultClass> — fill a custom class from a default class (CLASS_SMG, …)",
+    ),
+    (
+        "equipdefaultitemtoslot",
+        Some("equipDefaultItemToSlot"),
+        "equipDefaultItemToSlot <customclassname> <slotname> — empty one slot of a custom class",
+    ),
+    (
+        "equipdefaultglobalitemtoslot",
+        Some("equipDefaultGlobalItemToSlot"),
+        "equipDefaultGlobalItemToSlot <slotname> — empty a killstreak or deathstreak slot",
+    ),
+    (
+        "equipdefaultglobalitems",
+        Some("equipDefaultGlobalItems"),
+        "equipDefaultGlobalItems — the default killstreaks and deathstreak",
+    ),
+    (
+        "clearitemnew",
+        Some("clearItemNew"),
+        "clearItemNew <itemname> — an item is no longer marked new",
+    ),
+    (
+        "clearallitemsnew",
+        Some("clearAllItemsNew"),
+        "clearAllItemsNew — no item is marked new",
+    ),
+    (
+        "clearallattachmentsforitem",
+        Some("clearAllAttachmentsForItem"),
+        "clearAllAttachmentsForItem <customClassName> <itemIndex> — take every attachment off a custom class's weapon",
+    ),
+    (
+        "clearattachmentforitematpoint",
+        Some("clearAttachmentForItemAtPoint"),
+        "clearAttachmentForItemAtPoint <customClassName> <itemIndex> <attachmentPoint> — take an attachment off at a point (1 top, 2 bottom, 3 trigger, 4 muzzle)",
     ),
 ];
 

@@ -52,7 +52,7 @@ pub(super) const ITEM_GROUPS: [&str; 24] = [
 /// Items of this group and after are no class's: the killstreaks, of
 /// which the ones marked `all` are every class's.
 const KILLSTREAK_GROUP: i32 = 23;
-const DEFAULT_CLASSES: [&str; 20] = [
+pub(super) const DEFAULT_CLASSES: [&str; 20] = [
     "CLASS_SMG",
     "CLASS_CQB",
     "CLASS_ASSAULT",
@@ -76,13 +76,13 @@ const DEFAULT_CLASSES: [&str; 20] = [
 ];
 /// The slots a default class fills; the rest (the killstreaks and the
 /// deathstreak) are every class's.
-const CLASS_SLOTS: usize = 35;
+pub(super) const CLASS_SLOTS: usize = 35;
 /// Each default class's row in the game's table, then the four slots it
 /// keeps for the default killstreaks after them.
 const DEFAULT_TABLE: usize = DEFAULT_CLASSES.len() * CLASS_SLOTS;
 /// Where `equipdefaultglobalitems` reads its slots: the last class's row,
 /// so that the killstreak slots fall on the default killstreaks.
-const GLOBAL_ROW: usize = DEFAULT_TABLE - CLASS_SLOTS;
+pub(super) const GLOBAL_ROW: usize = DEFAULT_TABLE - CLASS_SLOTS;
 
 /// One row of `mp/statsTable.csv`, as the game's item table keeps it.
 pub(super) struct Item {
@@ -210,7 +210,7 @@ pub(super) fn items(table: &StringTable) -> Vec<Item> {
 /// The default classes' items and the default killstreaks: an item fills
 /// the slot of each default class it names unless an earlier item did; the
 /// killstreaks every class has follow, ordered by column 9.
-fn default_table(items: &[Item]) -> Vec<i32> {
+pub(super) fn default_table(items: &[Item]) -> Vec<i32> {
     let mut table = vec![-1; DEFAULT_TABLE];
     table.extend([0; 4]);
     for item in items.iter().filter(|item| item.group < KILLSTREAK_GROUP) {
@@ -239,7 +239,7 @@ fn default_table(items: &[Item]) -> Vec<i32> {
 
 /// A slot's item when its default class names none, found by its name
 /// (column 3).
-fn slot_default(items: &[Item], slot: usize) -> i32 {
+pub(super) fn slot_default(items: &[Item], slot: usize) -> i32 {
     let name = match slot {
         24..=27 | 38 => "perks_none",
         28 | 29 => "armor_null",

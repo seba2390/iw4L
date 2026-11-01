@@ -40,7 +40,7 @@ Mask). Black Ops' create-a-class commands edit them from the console, as
 its menus do: `equipClassItem customclass1 26` (an item's number in
 `mp/statsTable.csv`), `equipClass customclass1 PERKS_SCAVENGER`,
 `equipClassAttachment customclass1 WEAPON_AK47 acog top` and
-`copyclass 0 1`. Locked items are refused; in a hosted match
+`copyclass 0 1`, `equipDefaultClass customclass2 CLASS_LMG`. Locked items are refused; in a hosted match
 `set ui_items_no_cost 1` frees every item, as the private match's class
 menus do. A class edited during a match is used from the next match (the
 scripts read classes at the first spawn). A match not hosted reads the

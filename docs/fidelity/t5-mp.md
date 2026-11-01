@@ -170,10 +170,12 @@ Each open section names the issue that works it.
       `STATS_VERSION` than `stat_version` (10), gets Black Ops' stats
       reset (`mp/stats_init.cfg`, Combat Training forced on). Open: a
       remote client's stats are never sent to the host (two-machine play
-      sends none, #729), so its integer stats read 0 and `setdstat`
+      sends none, #665), so its integer stats read 0 and `setdstat`
       writes nothing. Of `ui_mp`'s create-a-class commands, `equipClass`,
-      `equipClassItem`, `equipClassAttachment` and `copyclass` edit the
-      profile's classes (Closed); the rest are #729. Offline (`onlinegame` 0) the scripts read
+      `equipClassItem`, `equipClassAttachment`, `copyclass` and the
+      `equipDefault*` and clear commands edit the profile's classes
+      (Closed); the menus' current-item commands are #780. Offline
+      (`onlinegame` 0) the scripts read
       `GetLoadoutItemFromProfile`, which is 0 on PC as in Black Ops.
       `calcweaponoptions (class, slot)` still reads the runtime's own
       class slots for the camo.
@@ -183,18 +185,16 @@ Each open section names the issue that works it.
       read, so a fresh profile's server buffer starts empty and the
       reset's writes (all to the client buffer, Combat Training being
       forced on) reach only the client buffer.
-- [ ] **G** The rest of Black Ops' create-a-class commands (#729):
+- [ ] **G** The rest of Black Ops' create-a-class commands (#780):
       `equipClassCurrentItem`, `equipClassCurrentAttachment`,
       `equipClassCurrentOption`, `equipClassCurrentGlobalItem`,
       `setCurrentItemIndex` and `buildItemListFor*` (they read the menus'
       current item and lists, which the front end does not have, #664),
-      `equipDefaultClass`, `equipDefaultItemToSlot`,
-      `equipDefaultGlobalItemToSlot`, `equipDefaultGlobalItems` (run only
-      by the stats reset today), `equipItemInSlotSorted`,
-      `equipGlobalItemInSlotSorted`, `clearItemNew`, `clearAllItemsNew`,
-      `openAttachmentMenuForCurrentItem`, `clearAllAttachmentsForItem`,
-      `clearAttachmentForItemAtPoint`, `ToggleWeaponOption` and the
-      `purchase*`, `sellcurrentitem` and `PurchaseWeaponOption` commands.
+      `equipItemInSlotSorted`, `equipGlobalItemInSlotSorted`,
+      `openAttachmentMenuForCurrentItem` and `ToggleWeaponOption` (it
+      reads the menus' current item too). The `purchase*`,
+      `sellcurrentitem` and `PurchaseWeaponOption` commands spend CoD
+      Points, which are out of scope.
 - [ ] **G** `unknown!t5.mp.cac_match_resend`: a class edited while the
       host already holds the profile's stats (its client read one) is
       kept in the profile for the next match; how Black Ops sends the host
@@ -582,6 +582,11 @@ Each open section names the issue that works it.
       the point is taken, it clashes with one on, or the weapon has
       `maxAttachmentsPerWeapon`; one already on comes off; a copied class
       takes Pro perks where they are unlocked, and its name.
+      `equipDefaultClass` (then the Pro pass), `equipDefaultItemToSlot`,
+      `equipDefaultGlobalItemToSlot`, `equipDefaultGlobalItems`,
+      `clearAllAttachmentsForItem`, `clearAttachmentForItemAtPoint`,
+      `clearItemNew` and `clearAllItemsNew` (`itemStats.<n>.new`) run the
+      same way.
 
 - [x] **G** `specialty_fastads` (#734): the aim-down-sight lerp, in and out,
       is divided by `perk_weapAdsMultiplier` (0.5) unless the weapon's
