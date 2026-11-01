@@ -231,12 +231,14 @@ Each open section names the issue that works it.
       on the client VM), and the planes' compass icons (`setCompassIcon`)
       are not set; an entity's burnt look (`startTanning`, its entity flag
       0x200000) is kept but not drawn.
-- [ ] **G** `t5.weapons.missile` (multiplayer): a missile `launchbomb` spawns
-      flies and strikes by the runtime's Black Ops missile think, which is
-      the zombies executable's; BlackOpsMP.exe's own think is not compared.
-      A player's rocket still spawns by the zombies rules (straight, its
-      speed added to the shooter's), where BlackOpsMP.exe's spawn falls
-      under gravity with the velocity its caller gives (#738).
+- [ ] **G** `t5.weapons.missile` (multiplayer): a missile's frame (its
+      trace, impact, explosion, water and glass) runs by the runtime's Black
+      Ops missile think, which is the zombies executable's; BlackOpsMP.exe's
+      own frame is ported only for its velocity (acceleration, curvature,
+      homing). Guided types other than homing (type 1: the heat-seeker 3,
+      4, 5 and the remote-guided 6) are not steered, and a player's lock-on
+      target is not passed to their missile, so a Strela flies unguided; a
+      `launchbomb` missile that accelerates or curves is a gap.
 - [ ] **V** `t5.hud.location_selector`: the location selector's full map
       draws the map and the selector (and the mortar strikes placed); its
       player arrow, friendlies, enemies, vehicles, grid and radar effects
@@ -247,12 +249,8 @@ Each open section names the issue that works it.
       selector on any key not bound to `+attack`, `weapnext`, `+reload` or
       `+sprint`; the runtime reads the keys by the commands they press, so
       a movement key does not cancel it and `weapnext` does nothing.
-- [ ] **G** `t5.mp.turret_missile`: the SAM Turret searches, aims, sweeps
-      and keeps its firing state, but its `shootturret` launches no missile:
-      its projectile shot goes through BlackOpsMP.exe's missile spawn and
-      guided-missile think (#738), with its target from the lock-on list.
-      `t5.mp.turret_weapon_type`: a turret weapon of the fourth weapon type
-      does not shoot.
+- [ ] **G** `t5.mp.turret_weapon_type`: a turret weapon of the fourth
+      weapon type does not shoot.
 - [ ] **G** `t5.mp.entity_owner_bits`: `SetTeam` and `SetOwner` keep the
       entity's `team` and `owner` script fields where Black Ops writes the
       team and owning client into the entity's state; the SAM Turret's
@@ -410,6 +408,21 @@ Each open section names the issue that works it.
       compensation of Black Ops' movement and weapons are unmeasured.
 
 ## Closed
+
+- [x] **G** A player's rocket spawned by the zombies rules and the SAM
+      Turret launched no missile. Both now go through BlackOpsMP.exe's
+      missile spawn: a heat-seeker (guided type 3) climbs 0.3 off its aim
+      from 10 units right of its shooter, a remote-guided one (6) starts 13
+      units out; a missile that accelerates, curves or is guided is moved
+      by its think (heat-seekers and type 4 fall), any other flies straight
+      at the weapon's speed; a curving one takes a random sideways push of
+      up to its `projectileCurvature`. Its think speeds it along its facing
+      to its speed over `timeToAccelerate`, adds the push, and a homing
+      missile (type 1, the SAM's) steers by the turn radius that reaches
+      its target, no tighter than `maxSteeringAccel` allows, and climbs
+      toward the rate that arrives with it, then faces along its velocity.
+      The SAM's missile is its owner's and its turret hears `missile_fire`
+      (the missile, the weapon, its lock-on target) (#738, #659).
 
 - [x] **G** Carried turrets (`carryturret`, `stopcarryturret`,
       `canplayerplaceturret`, `setturretcarried`, `setturrettype`,

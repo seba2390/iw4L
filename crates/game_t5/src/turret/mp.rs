@@ -3,7 +3,8 @@
 //! pool for an enemy, the SAM Turret (`"tow"`) searches the lock-on target
 //! list for an aircraft; with neither in sight each sweeps its arcs. Any
 //! turret not aiming by itself drops its gun. Its shot carries no aim
-//! refinement and is the turret's own.
+//! refinement and is the turret's own; a projectile shot goes through the
+//! multiplayer missile spawn.
 
 use super::*;
 use game_api::turret::TurretTarget;
@@ -40,14 +41,6 @@ pub(crate) const TURRETS: TurretRules = TurretRules {
     shoot,
     ..super::TURRETS
 };
-
-fn missile_unknown() -> &'static Unknown {
-    unknown!(
-        "t5.mp.turret_missile",
-        "a SAM Turret aims and keeps its firing state but its `shootturret` launches no missile",
-        "Black Ops' multiplayer missile spawn and guided-missile think (BlackOpsMP.exe; #738), which the turret's projectile shot goes through with its target from the lock-on list"
-    )
-}
 
 fn fourth_type_unknown() -> &'static Unknown {
     unknown!(
@@ -557,12 +550,68 @@ impl Think<'_> {
                 );
             }
             WEAPTYPE_FOURTH => self.gaps.push(fourth_type_unknown()),
-            _ => self.gaps.push(missile_unknown()),
+            _ => self.fire_missile(def, forward, right, up, flash.origin, base),
         }
         self.fire_event(def);
         if *self.flags() & FLAG_TWO_BARRELS != 0 {
             self.turret.state.barrel = (self.turret.state.barrel + 1) % 2;
         }
+    }
+}
+
+impl Think<'_> {
+    /// A projectile shot: no spread (the random draw is still made), from
+    /// the barrel; a SAM Turret's missile is its owner's and is told the
+    /// target it aims at when that is on the lock-on list. The turret hears
+    /// `missile_fire` (the missile, the weapon, the target).
+    #[allow(clippy::too_many_arguments)]
+    fn fire_missile(
+        &mut self,
+        def: &WeaponDefView<'_>,
+        forward: [f32; 3],
+        right: [f32; 3],
+        up: [f32; 3],
+        muzzle: [f32; 3],
+        base: [f32; 3],
+    ) {
+        let entity = self.turret.entity;
+        let tow = *self.flags() & FLAG_TOW != 0;
+        let target = self.turret.state.target.filter(|&target| {
+            tow && self
+                .world
+                .turret_targets()
+                .iter()
+                .flatten()
+                .any(|t| t.entity == target)
+        });
+        let owner = if tow {
+            self.turret.state.owner.unwrap_or(entity)
+        } else {
+            entity
+        };
+        let dir = crate::missile::spread_dir(0.0, forward, right, up, &mut *self.world);
+        let Some(missile) = crate::missile::spawn_rocket_mp(
+            entity,
+            owner,
+            self.turret.weapon,
+            def,
+            muzzle,
+            dir,
+            Some(base),
+            target,
+            &mut *self.world,
+            self.gaps,
+        ) else {
+            return;
+        };
+        let mut args = vec![
+            game_api::fire::NotifyArg::Entity(missile),
+            game_api::fire::NotifyArg::Weapon(self.turret.weapon),
+        ];
+        if let Some(target) = target {
+            args.push(game_api::fire::NotifyArg::Entity(target));
+        }
+        self.world.notify(entity, "missile_fire", &args);
     }
 }
 

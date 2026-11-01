@@ -98,6 +98,11 @@ pub(crate) struct State {
     pub(crate) link_offset: [f32; 3],
     /// How it is turned in that frame, in short angles (65536 a turn).
     pub(crate) link_angles: [i16; 3],
+    /// Multiplayer: the sideways push its curvature adds to its velocity
+    /// every second.
+    pub(crate) curve_push: [f32; 3],
+    /// Multiplayer: the entity a guided missile homes on.
+    pub(crate) target: Option<i32>,
 }
 
 /// What a grenade is linked to on the entity it struck.
@@ -159,6 +164,9 @@ impl State {
                 i16::from_le_bytes([game[60], game[61]]),
                 i16::from_le_bytes([game[62], game[63]]),
             ],
+            curve_push: [f(64), f(68), f(72)],
+            // Kept one up: 0 is none.
+            target: Some(i(76) - 1).filter(|&t| t >= 0),
         }
     }
 
@@ -184,6 +192,10 @@ impl State {
         game[46..48].copy_from_slice(&pitch);
         game[60..62].copy_from_slice(&yaw);
         game[62..64].copy_from_slice(&roll);
+        for (i, c) in self.curve_push.iter().enumerate() {
+            game[64 + i * 4..68 + i * 4].copy_from_slice(&c.to_le_bytes());
+        }
+        game[76..80].copy_from_slice(&self.target.map_or(0, |t| t + 1).to_le_bytes());
     }
 }
 
@@ -291,19 +303,15 @@ pub(crate) fn fire_rocket(
     world: &mut dyn FireWorld,
     gaps: &mut Vec<&'static Unknown>,
 ) {
-    let aim = (f64::from(spread * DEG2RAD).tan() as f32) * 16.0;
-    let (x, y) = random_in_circle(world);
-    let (x, y) = (x * aim, y * aim);
-    let dir = [
-        up[0] * y + right[0] * x + forward[0] * 16.0,
-        up[1] * y + right[1] * x + forward[1] * 16.0,
-        up[2] * y + right[2] * x + forward[2] * 16.0,
-    ];
-    let len = (dir[2] * dir[2] + dir[1] * dir[1] + dir[0] * dir[0]).sqrt();
-    let len = if -len >= 0.0 { 1.0 } else { len };
-    let inv = 1.0 / len;
-    let dir = [dir[0] * inv, dir[1] * inv, dir[2] * inv];
-    spawn_rocket(attacker, weapon, def, muzzle, dir, [0.0; 3], world, gaps);
+    let dir = spread_dir(spread, forward, right, up, world);
+    if multiplayer(world) {
+        let angles = world.player(attacker).map(|p| p.viewangles);
+        spawn_rocket_mp(
+            attacker, attacker, weapon, def, muzzle, dir, angles, None, world, gaps,
+        );
+    } else {
+        spawn_rocket(attacker, weapon, def, muzzle, dir, [0.0; 3], world, gaps);
+    }
     if def.fire_type() != 0 {
         let z = (-forward[2]).min(0.0);
         world.push_player(attacker, [-forward[0] * 64.0, -forward[1] * 64.0, z * 64.0]);
@@ -372,6 +380,261 @@ fn spawn_rocket(
         visible_at: level + hidden,
         game,
     });
+}
+
+/// A projectile shot's direction: off the aim by a random point within the
+/// spread's circle at 16 units.
+pub(crate) fn spread_dir(
+    spread: f32,
+    forward: [f32; 3],
+    right: [f32; 3],
+    up: [f32; 3],
+    world: &mut dyn FireWorld,
+) -> [f32; 3] {
+    let aim = (f64::from(spread * DEG2RAD).tan() as f32) * 16.0;
+    let (x, y) = random_in_circle(world);
+    let (x, y) = (x * aim, y * aim);
+    let dir = [
+        up[0] * y + right[0] * x + forward[0] * 16.0,
+        up[1] * y + right[1] * x + forward[1] * 16.0,
+        up[2] * y + right[2] * x + forward[2] * 16.0,
+    ];
+    let len = (dir[2] * dir[2] + dir[1] * dir[1] + dir[0] * dir[0]).sqrt();
+    let len = if -len >= 0.0 { 1.0 } else { len };
+    let inv = 1.0 / len;
+    [dir[0] * inv, dir[1] * inv, dir[2] * inv]
+}
+
+/// Black Ops multiplayer: `zombiemode` is 0.
+pub(crate) fn multiplayer(world: &dyn FireWorld) -> bool {
+    dvar(world, "zombiemode", 0.0f32) == 0.0
+}
+
+/// BlackOpsMP.exe's missile spawn for a shot: a heat-seeking missile
+/// (guided type 3) climbs 0.3 off its aim from 10 units right of its
+/// shooter, a remote-guided one (type 6) starts 13 units out; a missile
+/// that accelerates, curves or is guided keeps its velocity and is moved
+/// by its think (a heat-seeker and the type 4 fall), else it flies straight
+/// at the weapon's speed. A curving missile takes a random sideways push of
+/// up to its curvature, kept in its state. Drawn once clear of a shooting
+/// player; `owner` is the missile's (a SAM Turret's owner for its shot).
+#[allow(clippy::too_many_arguments)]
+pub(crate) fn spawn_rocket_mp(
+    shooter: i32,
+    owner: i32,
+    weapon: u32,
+    def: &WeaponDefView<'_>,
+    start: [f32; 3],
+    dir: [f32; 3],
+    owner_angles: Option<[f32; 3]>,
+    target: Option<i32>,
+    world: &mut dyn FireWorld,
+    gaps: &mut Vec<&'static Unknown>,
+) -> Option<i32> {
+    let normalize = |v: [f32; 3]| {
+        let len = (v[0] * v[0] + v[1] * v[1] + v[2] * v[2]).sqrt();
+        let len = if -len >= 0.0 { 1.0 } else { len };
+        let inv = 1.0 / len;
+        [v[0] * inv, v[1] * inv, v[2] * inv]
+    };
+    let mut dir = normalize(dir);
+    let mut start = start;
+    let guided = def.guided_missile_type();
+    if guided == 3 {
+        dir = normalize([dir[0], dir[1], dir[2] + 0.3]);
+        let (_, right, _) = movement_t5::math::angle_vectors(owner_angles.unwrap_or([0.0; 3]));
+        start = mad(start, right, 10.0);
+    }
+    if guided == 6 {
+        start = mad(start, dir, 13.0);
+    }
+    if !matches!(guided, 0 | GUIDED_HOMING) {
+        gaps.push(missile_unknown());
+    }
+    let level = world.level_time();
+    let speed = def.projectile_speed() as f32;
+    let hidden = if world.player(shooter).is_some() {
+        ((speed * -35.0 * 0.00166666671 + 85.0) as i32).clamp(20, 50)
+    } else {
+        0
+    };
+    let accelerates = def.time_to_accelerate() > 0.0;
+    let delta = if accelerates {
+        [0.0; 3]
+    } else {
+        [
+            dir[0] * speed,
+            speed * dir[1],
+            def.projectile_speed_up() as f32 + speed * dir[2],
+        ]
+    }
+    .map(|v| v as i32 as f32);
+    let angles = vectoangles(dir);
+    let mut curve_push = [0.0; 3];
+    let curvature = def.projectile_curvature();
+    if curvature > 0.0 {
+        let (_, right, up) = movement_t5::math::angle_vectors(angles);
+        let (x, y) = random_in_circle(world);
+        let (x, y) = (x * curvature, y * curvature);
+        curve_push = std::array::from_fn(|i| right[i] * x + up[i] * y);
+    }
+    let kind = match guided {
+        3 | 4 => TrajectoryKind::Gravity(dvar(world, "bg_gravity", 800.0)),
+        _ if accelerates || curvature > 0.0 || guided != 0 => TrajectoryKind::Stationary,
+        _ => TrajectoryKind::Linear,
+    };
+    let mut game = [0u8; GAME_MISSILE_BYTES];
+    State {
+        bounce: def.force_bounce(),
+        ground: ENTITY_NONE,
+        spawned_at: level,
+        curve_push,
+        target,
+        ..State::default()
+    }
+    .write(&mut game);
+    world.spawn_missile(GameMissile {
+        entity: ENTITY_NONE,
+        owner,
+        weapon,
+        position: GameTrajectory {
+            kind,
+            time: level,
+            duration: 0,
+            base: start,
+            delta,
+        },
+        angles: GameTrajectory {
+            kind: TrajectoryKind::Stationary,
+            time: level,
+            duration: 0,
+            base: angles,
+            delta: [0.0; 3],
+        },
+        origin: start,
+        visible_at: level + hidden,
+        game,
+    })
+}
+
+/// `value` held within `-limit..=limit`, tested as the game does.
+fn cap(value: f32, limit: f32) -> f32 {
+    let upper = if value - limit < 0.0 { value } else { limit };
+    if -limit - value < 0.0 { upper } else { -limit }
+}
+
+/// The guided missile type that homes on its target (the SAM Turret's).
+const GUIDED_HOMING: i32 = 1;
+
+/// BlackOpsMP.exe's step for a missile its think moves (one not flying
+/// straight, once drawn, not of the fifth weapon type or guided type 4):
+/// it speeds up along its facing to the weapon's speed over
+/// `timeToAccelerate`, its curvature pushes it sideways, a homing missile
+/// steers for its target, and it moves one frame along its velocity (a
+/// heat-seeker falls by its trajectory). A guided missile faces along its
+/// velocity once accelerated.
+fn step_mp(
+    missile: &mut GameMissile,
+    def: &WeaponDefView<'_>,
+    state: &State,
+    level: i32,
+    world: &mut dyn FireWorld,
+) {
+    if missile.visible_at >= level
+        || missile.position.kind == TrajectoryKind::Linear
+        || def.weapon_type() == 5
+        || def.guided_missile_type() == 4
+    {
+        return;
+    }
+    let frame = 0.05;
+    let accelerate = def.time_to_accelerate();
+    if accelerate > 0.0 {
+        let tr = &mut missile.position;
+        let (forward, _, _) = movement_t5::math::angle_vectors(missile.angles.base);
+        let along = tr.delta[1] * forward[1] + tr.delta[2] * forward[2] + tr.delta[0] * forward[0];
+        let speed = def.projectile_speed() as f32;
+        let add = if along < speed {
+            speed / accelerate * frame
+        } else {
+            speed - along
+        };
+        for (d, f) in tr.delta.iter_mut().zip(forward) {
+            *d += add * f;
+        }
+    }
+    if def.projectile_curvature() > 0.0 {
+        for i in 0..3 {
+            missile.position.delta[i] += state.curve_push[i] * frame;
+        }
+    }
+    let guided = def.guided_missile_type();
+    let accelerated = accelerate - (level - missile.position.time) as f32 * 0.00100000005 <= 0.0;
+    if guided == GUIDED_HOMING
+        && accelerated
+        && let Some(target) = state.target.and_then(|t| world.entity_origin(t))
+    {
+        steer(missile, def, target);
+    }
+    if guided == 3 {
+        return;
+    }
+    let tr = &mut missile.position;
+    for i in 0..3 {
+        tr.base[i] += tr.delta[i] * frame;
+    }
+    if guided != 0 && accelerated {
+        missile.angles.base = vectoangles(tr.delta);
+    }
+}
+
+/// A homing missile's steering, in the horizontal plane by the turn radius
+/// that would reach the target (no tighter than its speed allows at
+/// `maxSteeringAccel`) and vertically toward the climb that arrives with
+/// it; each capped at `maxSteeringAccel`, applied over one frame.
+fn steer(missile: &mut GameMissile, def: &WeaponDefView<'_>, target: [f32; 3]) {
+    let v = missile.position.delta;
+    let speed_xy = (v[0] * v[0] + v[1] * v[1]).sqrt();
+    let inverse = 1.0 / if 0.0 <= -speed_xy { 1.0 } else { speed_xy };
+    let heading = [v[0] * inverse, v[1] * inverse];
+    let side = [heading[1], -heading[0]];
+    let at = missile.position.base;
+    let (dx, dy, dz) = (target[0] - at[0], target[1] - at[1], target[2] - at[2]);
+    let ahead = dy * heading[1] + dx * heading[0];
+    let across = dy * side[1] + dx * side[0];
+    let accel = def.max_steering_accel();
+    let speed = def.projectile_speed() as f32;
+    let radius = if across != 0.0 {
+        (ahead * ahead + across * across) / (across * 2.0)
+    } else {
+        f32::MAX
+    };
+    let tightest = speed / accel * speed;
+    let mut push = [0.0f32; 3];
+    if ahead <= 0.0 {
+        if tightest + 60.0 <= radius.abs() {
+            let a = if across <= 0.0 { -accel } else { accel };
+            push[0] = side[0] * a;
+            push[1] = side[1] * a;
+        }
+    } else if across != 0.0 {
+        let r = if radius.abs() < tightest {
+            if radius <= 0.0 { -tightest } else { tightest }
+        } else {
+            radius
+        };
+        let a = cap(speed_xy / r * speed_xy * 2.0, accel);
+        push[0] = side[0] * a;
+        push[1] = side[1] * a;
+    }
+    let distance_xy = (ahead * ahead + across * across).sqrt();
+    if distance_xy != 0.0 && ahead >= 0.0 {
+        let climb = ((ahead / distance_xy * speed_xy).abs() / distance_xy * dz - v[2]) * 20.0;
+        push[2] = cap(climb, accel);
+    }
+    for (d, p) in missile.position.delta.iter_mut().zip(push) {
+        *d += p * 0.05;
+    }
 }
 
 /// `launchbomb`: Black Ops multiplayer's missile spawn with the velocity the
@@ -530,6 +793,9 @@ fn fly(
     gaps: &mut Vec<&'static Unknown>,
 ) -> MissileRun {
     let old = missile.origin;
+    if multiplayer(world) {
+        step_mp(missile, def, state, level, world);
+    }
     let new = evaluate(&missile.position, level);
     let d = [new[0] - old[0], new[1] - old[1], new[2] - old[2]];
     let len = (d[2] * d[2] + d[1] * d[1] + d[0] * d[0]).sqrt();

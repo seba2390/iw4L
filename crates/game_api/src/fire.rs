@@ -214,6 +214,11 @@ pub trait FireWorld {
 
     fn entity(&mut self, entity: i32) -> Option<FireEntity>;
 
+    /// Where any entity is, including those a shot cannot strike.
+    fn entity_origin(&mut self, entity: i32) -> Option<[f32; 3]> {
+        self.entity(entity).map(|e| e.origin)
+    }
+
     /// How deep a bullet of `penetrate_type` goes into `surface_type`, from
     /// the game's penetration table; `None` when the match has no table.
     fn penetration_depth(&self, penetrate_type: i32, surface_type: i32) -> Option<f32>;
@@ -808,7 +813,7 @@ pub struct GameTrajectory {
 }
 
 /// Bytes a game keeps per missile beyond the shared fields.
-pub const GAME_MISSILE_BYTES: usize = 64;
+pub const GAME_MISSILE_BYTES: usize = 80;
 
 /// A missile the game's rules move and explode; the match keeps it, shows
 /// it and runs it every frame.

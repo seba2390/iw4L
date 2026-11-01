@@ -50,7 +50,8 @@ lays static over your compass. The Napalm Strike, Mortar Team and
 Rolling Thunder are placed on the map and strike. The Sentry Gun is
 carried in front of you (yellow where it fits, red where it does not; fire
 to put it down, the slot button again to keep it) and shoots enemies it
-sees; the SAM Turret tracks enemy aircraft but fires no missile yet (#738).
+sees; the SAM Turret tracks enemy aircraft and fires homing missiles at
+them.
 The other killstreaks (#660 … #662) still need their own engine pieces. To get one at once:
 `script maps/mp/gametypes/_hardpoints::givekillstreak player0 radar_mp`
 (`counteruav_mp`, `radardirection_mp`, `autoturret_mp`, `auto_tow_mp`).
