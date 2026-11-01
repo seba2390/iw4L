@@ -2,8 +2,9 @@
 //! decides it each frame (the search of the use triggers near the player,
 //! ranked by distance and facing, then the pick of the first one the
 //! player may use, whose hint shows), and fires it when the player presses
-//! use. Its other usables (weapons on the ground, missiles, turrets and
-//! actors) are not run; the zombie maps' scripts make none.
+//! use. Script-made usable entities are searched too. Its other usables
+//! (weapons on the ground, missiles, turrets and actors) are not run; the
+//! zombie maps' scripts make none.
 
 use crate::frame::FrameWorld;
 use crate::script::{NativeRegistry, RoundScript};
@@ -45,6 +46,8 @@ enum Class {
     UseTouch,
     Radius,
     RadiusUse,
+    /// Any other entity a script made usable (a Care Package's crate).
+    Entity,
 }
 
 impl Class {
@@ -149,8 +152,9 @@ fn search(
             .iter()
             .filter(|(id, _)| runtime.live(id))
             .filter_map(|(&id, entity)| {
-                let class = Class::of(&entity.classname)?;
                 let usable = entity.usable.as_ref();
+                let class = Class::of(&entity.classname)
+                    .or_else(|| usable.filter(|u| u.enabled).map(|_| Class::Entity))?;
                 if usable.is_some_and(|u| !u.enabled || u.barred.contains(&client)) {
                     return None;
                 }
@@ -172,6 +176,28 @@ fn search(
         } else {
             cursor
         };
+        if class == Class::Entity {
+            // BlackOpsMP.exe's search for the entities with the usable
+            // contents bit: within `player_useRadius` of the eye, ranked by
+            // distance and facing.
+            let (mins, maxs) = super::super::triggers::entity_bounds(world, id);
+            let origin = super::engine::vector_field(world, id, "origin");
+            let center: [f32; 3] = std::array::from_fn(|i| origin[i] + (mins[i] + maxs[i]) * 0.5);
+            let to = sub(center, eye);
+            let distance = dot(to, to).sqrt();
+            let reach = super::super::actor_nav::dvar_f32(world, "player_useradius", USE_REACH);
+            if distance > reach {
+                continue;
+            }
+            let facing = if distance > 0.0 {
+                dot(view, to) / distance
+            } else {
+                dot(view, to)
+            };
+            let score = (1.0 - (facing + 1.0) * 0.5) * FACING_SCORE;
+            found.push((score + distance, id, center, class));
+            continue;
+        }
         let Some((abs, touched)) =
             super::super::triggers::trigger_reach(world, id, player.0, player.1)
         else {
@@ -190,6 +216,7 @@ fn search(
                     found.push((TOUCH_SCORE, id, center, class));
                 }
             }
+            Class::Entity => {}
             Class::Use | Class::RadiusUse => {
                 let to = sub(center, eye);
                 let distance = dot(to, to).sqrt();

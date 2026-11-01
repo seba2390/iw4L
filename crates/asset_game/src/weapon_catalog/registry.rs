@@ -251,6 +251,12 @@ impl WeaponRegistry {
             .map(|(name, accel)| (name.as_str(), *accel))
     }
 
+    pub fn vehicle_motion(&self) -> impl Iterator<Item = (&str, VehicleMotion)> {
+        self.vehicle_motion
+            .iter()
+            .map(|(name, motion)| (name.as_str(), *motion))
+    }
+
     pub fn vehicle_turrets(&self) -> Vec<(String, String)> {
         self.vehicle_turrets
             .iter()

@@ -7,6 +7,7 @@ pub mod blur;
 pub mod collision;
 pub mod fire;
 pub mod fog;
+pub mod heli;
 pub mod hud;
 pub mod movement;
 pub mod post;

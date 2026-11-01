@@ -164,6 +164,7 @@ pub struct ClientMatchState {
     /// The last invalid command hint the game's movement raised for the
     /// player (the game's number for it), and a count of them.
     pub(crate) command_hint: (u8, i32),
+    pub(crate) weapon_emptied: u8,
 }
 
 #[derive(Clone, Copy, Debug, Default, PartialEq)]
@@ -246,6 +247,7 @@ impl ClientMatchState {
             ammo_clip: self.ammo_clip,
             ammo_stock: self.ammo_stock,
             command_hint: self.command_hint,
+            weapon_emptied: self.weapon_emptied,
             score: self.score,
             kills: self.kills,
             deaths: self.deaths,

@@ -264,8 +264,9 @@ Each milestone names its issues; open rules are in
   - [x] Napalm Strike, Mortar Team and Rolling Thunder (#658): Black Ops' location selector places them, the planes (`SpawnPlane`) and shells (`launchbomb`) strike there and kill, and napalm leaves its ground flames.
   - [x] SAM Turret and Sentry Gun (#659): the Sentry Gun is carried, put down where Black Ops' placement finds room, sweeps its arcs, picks enemies and kills them for its owner; the SAM Turret tracks enemy aircraft on the lock-on list and its homing missiles shoot down an enemy spy plane.
   - [ ] RC-XD (#660).
-  - [ ] Care Package, Attack Helicopter, Chopper Gunner and Gunship (#661).
+  - [ ] Attack Helicopter, Chopper Gunner and Gunship (#661).
   - [x] Valkyrie Rockets: the owner steers the rocket through its camera; it boosts, burns its fuel and detonates on attack (#662). Its Care Package delivery is #661.
+  - [x] Care Package: the helicopter flies in, drops the crate, and a player captures it (#661).
   - [ ] Attack Dogs (#758).
 - [x] Combat Training bots join and fight (#652).
   - [x] Black Ops' `_bot.gsc` adds its bots (`addtestclient`) and picks their team, class and loadout; IW4L's host bots move and shoot them. Black Ops' own bot behaviour is #709.

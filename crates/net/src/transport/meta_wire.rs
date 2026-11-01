@@ -1098,6 +1098,7 @@ fn encode_client_meta(out: &mut WireWriter, meta: &ClientSnapshotMeta) {
     out.put_i32(meta.ammo_stock);
     out.put_u8(meta.command_hint.0);
     out.put_i32(meta.command_hint.1);
+    out.put_u8(meta.weapon_emptied);
     out.put_i32(meta.score);
     out.put_i32(meta.kills);
     out.put_i32(meta.deaths);
@@ -1385,6 +1386,7 @@ fn decode_client_meta(input: &mut WireReader<'_>) -> Result<ClientSnapshotMeta, 
     let ammo_clip = input.get_i32()?;
     let ammo_stock = input.get_i32()?;
     let command_hint = (input.get_u8()?, input.get_i32()?);
+    let weapon_emptied = input.get_u8()?;
     let score = input.get_i32()?;
     let kills = input.get_i32()?;
     let deaths = input.get_i32()?;
@@ -1683,6 +1685,7 @@ fn decode_client_meta(input: &mut WireReader<'_>) -> Result<ClientSnapshotMeta, 
         ammo_clip,
         ammo_stock,
         command_hint,
+        weapon_emptied,
         score,
         kills,
         deaths,

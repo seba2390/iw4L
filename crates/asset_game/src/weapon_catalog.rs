@@ -378,6 +378,18 @@ fn leftover_clip_relative_rounds(count: i32, clip_size: i32, clip_relative: bool
     }
 }
 
+/// What a Black Ops vehicle file says of how the vehicle flies; speeds in
+/// inches a second.
+#[derive(Clone, Copy, Debug, Default, PartialEq)]
+pub struct VehicleMotion {
+    pub max_speed: f32,
+    pub accel: f32,
+    pub rot_rate: f32,
+    pub rot_accel: f32,
+    pub max_body_pitch: f32,
+    pub max_body_roll: f32,
+}
+
 #[derive(Clone, Copy, Debug, Default, PartialEq)]
 pub struct WeaponKickFacts {
     pub f_ads_view_kick_center_speed: f32,
@@ -1311,6 +1323,7 @@ pub struct WeaponCatalog {
     vehicle_turrets: HashMap<String, String>,
     vehicle_compass: HashMap<String, ([String; 2], [i32; 2])>,
     vehicle_accel: HashMap<String, f32>,
+    vehicle_motion: HashMap<String, VehicleMotion>,
 }
 
 fn fpv_model_edge(
@@ -1688,6 +1701,7 @@ pub struct WeaponRegistry {
     vehicle_turrets: HashMap<String, String>,
     vehicle_compass: HashMap<String, ([String; 2], [i32; 2])>,
     vehicle_accel: HashMap<String, f32>,
+    vehicle_motion: HashMap<String, VehicleMotion>,
 
     /// Black Ops' optic option variants of each material they apply to.
     t5_optics: Arc<HashMap<crate::MaterialKey, Vec<crate::WeaponOptic>>>,
@@ -2339,6 +2353,9 @@ impl WeaponBuild {
             .vehicle_accel
             .extend(std::mem::take(&mut other.registry.vehicle_accel));
         self.registry
+            .vehicle_motion
+            .extend(std::mem::take(&mut other.registry.vehicle_motion));
+        self.registry
             .vehicle_turrets
             .extend(std::mem::take(&mut other.registry.vehicle_turrets));
         if other.registry.is_empty() {
@@ -2352,6 +2369,7 @@ impl WeaponBuild {
             other.registry.vehicle_turrets = std::mem::take(&mut self.registry.vehicle_turrets);
             other.registry.vehicle_compass = std::mem::take(&mut self.registry.vehicle_compass);
             other.registry.vehicle_accel = std::mem::take(&mut self.registry.vehicle_accel);
+            other.registry.vehicle_motion = std::mem::take(&mut self.registry.vehicle_motion);
             *self = other;
             return;
         }

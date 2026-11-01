@@ -287,6 +287,9 @@ pub struct WeaponSelect {
 
     pub held_index: u32,
 
+    /// The count of emptied weapons last acted on.
+    pub weapon_emptied: u8,
+
     pub last_primary: u32,
     pub mapped_index: u32,
     /// The client time an action slot key was last pressed, its slot and
@@ -316,6 +319,15 @@ pub fn follow_held_weapon_select(
         select.time = cg_time;
     }
     select.held_index = ps_weapon;
+}
+
+/// Rounds of the weapon in both clips and its stock.
+macro_rules! has_ammo {
+    ($ps:expr, $weapon:expr, $facts:expr) => {{
+        let ammo_key = weapon_iw4::ammo_table_key($facts.ammo_index, $weapon);
+        let clip_key = weapon_iw4::clip_table_key($facts.clip_index, $weapon);
+        weapon_iw4::get_ammo_player_both_clips($ps, $weapon, ammo_key, clip_key) != 0
+    }};
 }
 
 pub fn cycle_weapon_select(
@@ -371,12 +383,8 @@ pub fn cycle_weapon_select(
     };
     let target_facts = facts(target);
     let requires_ammo = target_facts.select_requires_ammo.unwrap_or(false);
-    if requires_ammo {
-        let ammo_key = weapon_iw4::ammo_table_key(target_facts.ammo_index, target);
-        let clip_key = weapon_iw4::clip_table_key(target_facts.clip_index, target);
-        if weapon_iw4::get_ammo_player_both_clips(ps, target, ammo_key, clip_key) == 0 {
-            return;
-        }
+    if requires_ammo && !has_ammo!(ps, target, target_facts) {
+        return;
     }
     if select.index != target {
         if select.index != 0 && facts(select.index).inventory_type == 0 {
@@ -1249,6 +1257,63 @@ pub fn sample_client_input(
                 next,
                 movement,
             );
+        }
+    }
+    // Black Ops' client cycles on from a weapon that ran out of everything.
+    let emptied = presented
+        .snapshot()
+        .and_then(|snapshot| snapshot.meta.for_client(local.0))
+        .map(|meta| meta.weapon_emptied);
+    if let (Some(emptied), Some(ps), Some(movement)) = (emptied, ps, movement)
+        && emptied != select.weapon_emptied
+    {
+        select.weapon_emptied = emptied;
+        let keeps = prediction
+            .0
+            .world()
+            .game_weapon(select.index)
+            .is_some_and(|weapon| movement.keeps_empty_weapon(weapon));
+        if !keeps {
+            let world = prediction.0.world();
+            let loaded = |weapon: u32| {
+                let Some(facts) = world.weapon_combat_row(weapon) else {
+                    return false;
+                };
+                let loaded = has_ammo!(ps, weapon, facts);
+                facts.inventory_type == 0
+                    && world
+                        .game_weapon(weapon)
+                        .is_some_and(|game| !movement.skipped_when_cycling(game, loaded))
+            };
+            let from = ps.weapons.iter().position(|&w| w == select.index as i32);
+            let start = from.unwrap_or(0);
+            // A killstreak's or an item's weapon goes back to the one before it.
+            let last = if select.last_primary != 0 {
+                select.last_primary
+            } else {
+                select.slot_from
+            };
+            let went_back = last != 0
+                && ps.weapons.contains(&(last as i32))
+                && (world
+                    .weapon_combat_row(select.index)
+                    .is_some_and(|facts| facts.inventory_type != 0)
+                    || world
+                        .game_weapon(select.index)
+                        .is_some_and(|game| movement.skipped_when_cycling(game, true)));
+            let next = if went_back {
+                Some(last)
+            } else {
+                (1..15)
+                    .map(|step| ps.weapons[(start + step) % 15])
+                    .find(|&weapon| weapon != 0 && loaded(weapon as u32))
+                    .map(|weapon| weapon as u32)
+            };
+            if let Some(next) = next {
+                select.time = clock.time();
+                select.index = next;
+                select.mapped_index = next;
+            }
         }
     }
     actions.client.airborne =

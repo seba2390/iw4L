@@ -1,6 +1,38 @@
 use super::*;
 
 impl WeaponCatalog {
+    /// A Black Ops vehicle file (`vehicles/<name>`, `VEHICLEFILE\\key\\value…`):
+    /// what its helicopter flight starts from. Speeds are in miles an hour.
+    pub fn capture_t5_vehicle_file(&mut self, file: &str, text: &str) {
+        const MPH: f32 = 17.6;
+        let Some(name) = file.strip_prefix("vehicles/") else {
+            return;
+        };
+        let Some(fields) = text.strip_prefix("VEHICLEFILE\\") else {
+            return;
+        };
+        let parts: Vec<&str> = fields.split('\\').collect();
+        let value = |key: &str| {
+            parts
+                .chunks(2)
+                .find(|pair| pair[0] == key)
+                .and_then(|pair| pair.get(1))
+                .and_then(|value| value.parse::<f32>().ok())
+                .unwrap_or(0.0)
+        };
+        self.vehicle_motion.insert(
+            name.to_owned(),
+            VehicleMotion {
+                max_speed: value("maxSpeed") * MPH,
+                accel: value("accel") * MPH,
+                rot_rate: value("rotRate"),
+                rot_accel: value("rotAccel"),
+                max_body_pitch: value("maxBodyPitch"),
+                max_body_roll: value("maxBodyRoll"),
+            },
+        );
+    }
+
     pub fn set_strings(&mut self, strings: ScriptStrings) {
         self.strings = strings;
     }

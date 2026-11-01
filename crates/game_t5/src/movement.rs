@@ -1172,6 +1172,14 @@ impl PlayerMovement for T5Movement {
         crate::missile::reset_detonation_time(missile, after_ms, world);
     }
 
+    fn helicopter_frame(
+        &self,
+        heli: &mut game_api::heli::HeliMove,
+        world: &mut dyn game_api::heli::HeliWorld,
+    ) -> Option<(game_api::heli::HeliNotes, Option<&'static Unknown>)> {
+        Some(crate::heli::frame(heli, world))
+    }
+
     fn detonate_missile(
         &self,
         missile: &mut game_api::fire::GameMissile,
@@ -1184,6 +1192,29 @@ impl PlayerMovement for T5Movement {
     /// invalid command hint: no frag grenade (2), no special grenade (3),
     /// stand blocked (6), crouch blocked (7), target too close (8), lock-on
     /// required (9), not enough clearance (10).
+    fn empties_weapon(&self, signal: &MoveSignal) -> bool {
+        use movement_t5::events::event;
+        matches!(
+            signal,
+            MoveSignal::Event { event: e, .. } if *e == event::NOAMMO || *e == event::NOAMMO_LEFT
+        )
+    }
+
+    fn keeps_empty_weapon(&self, weapon: &game_api::movement::GameWeapon) -> bool {
+        fastfile_t5::weapon_def::WeaponDefView::new(&weapon.def, &weapon.variant)
+            .is_some_and(|def| def.suppress_ammo_reserve_display())
+    }
+
+    fn skipped_when_cycling(
+        &self,
+        weapon: &game_api::movement::GameWeapon,
+        has_ammo: bool,
+    ) -> bool {
+        fastfile_t5::weapon_def::WeaponDefView::new(&weapon.def, &weapon.variant).is_none_or(
+            |def| def.is_carried_killstreak_weapon() || (!has_ammo && !def.unlimited_ammo()),
+        )
+    }
+
     fn command_hint(&self, signal: &MoveSignal) -> Option<i32> {
         use movement_t5::events::event;
         let MoveSignal::Event { event, parm } = *signal else {

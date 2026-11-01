@@ -597,6 +597,19 @@ pub fn apply_prepared_match(
                 .vehicle_accel()
                 .map(|(name, accel)| (name.to_owned(), accel)),
         );
+        content.set_vehicle_motion(weapons.registry().vehicle_motion().map(|(name, motion)| {
+            (
+                name.to_owned(),
+                game_api::heli::VehicleMotion {
+                    max_speed: motion.max_speed,
+                    accel: motion.accel,
+                    rot_rate: motion.rot_rate,
+                    rot_accel: motion.rot_accel,
+                    max_body_pitch: motion.max_body_pitch,
+                    max_body_roll: motion.max_body_roll,
+                },
+            )
+        }));
         content.set_vehicle_compass(
             weapons
                 .registry()

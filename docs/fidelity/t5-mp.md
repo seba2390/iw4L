@@ -277,9 +277,36 @@ Each open section names the issue that works it.
       `getvehoccupants`, `getoccupantseat` and the other vehicle builtins
       are refused or missing; the client's wheel queries
       (`getwheelsurface`, `iswheelcolliding`, …) are missing.
-- [ ] **G** Helicopters: `spawnhelicopter`, `setvehgoalpos`,
-      `sethoverparams`, `setyawspeed`, `setmaxpitchroll`,
-      `setheliheightlock` and the heli turret traces are missing or refused.
+- [ ] **G** `t5.vehicle.heli_no_goal`: a helicopter with no goal stays where
+      it is; BlackOpsMP.exe runs its player-controlled move there, not ported
+      (Chopper Gunner's `_helicopter_player.gsc`, #661). `setvehgoalpos`'s
+      third argument, the map's vehicle path (`t5.vehicle.heli_path`), errors;
+      nothing in the multiplayer scripts passes it. `setheliheightlock`,
+      `isinsideheliheightlock`, the heli turret methods and `fireweapon` are
+      still refused or missing (#661).
+- [ ] **G** A helicopter's frame leaves out the vehicle think's pieces around
+      the flight: `veh_collision` from its trace against the world and solid
+      entities, its touch of other entities (`touch`), avoiding other
+      helicopters (flag 0x400), and the state it packs for clients (engine and
+      rotor throttle in the entity state). Rotor spin and exhaust are not
+      verified: the Care Package's helicopter draws, but its blades were not
+      seen turning. `setdamagestage` and shooting one down
+      (`heli_damage_monitor`, the runtime's vehicle damage callback) are not
+      verified against BlackOpsMP.exe.
+- [ ] **V** A flying vehicle has no compass icon yet (`compassIcon` in its
+      vehicle file is not read).
+- [ ] **G** The use search takes a script-made usable entity (a crate) at its
+      origin when its entity has no bounds here; BlackOpsMP.exe takes the
+      middle of its absolute bounds. Its turret, vehicle (`vehicle_useRadius`)
+      and weapon object usables are not searched. The use hint of a crate was
+      not seen on screen in a run, only the capture itself.
+- [ ] **G** The client's cycle from an emptied weapon (the no-ammo event) reads
+      the zombies name `suppressAmmoReserveDisplay` for the byte
+      BlackOpsMP.exe's field table calls `cancelAutoHolsterWhenEmpty`; a dual
+      wield's other hand and an alternate mode's return to its base weapon are
+      not read in this path.
+- [ ] **V** A crate may rest tilted: the runtime's `physicslaunch` body, not
+      compared with Black Ops' on a Care Package.
 - [ ] **G** `spawnactor` (attack dogs) is refused (#758).
 - [ ] **G** A player killed while their camera is on a Valkyrie rocket: Black
       Ops' `player_die` runs the killed callback and then stops for a player
@@ -534,6 +561,16 @@ Each open section names the issue that works it.
       `compassSatellitePingFadeTime`), draws the sweep line, and hides the
       enemies under an enemy counter-spy plane (`setEnemyGlobalScrambler`)
       with the map's static over it (#657).
+
+- [x] **G** Care Package (`supply_drop_mp`): the marker's throw empties the
+      weapon and the client cycles back (`weapon_change` ends the marker's
+      wait); `spawnhelicopter` flies `heli_supplydrop_mp` by BlackOpsMP.exe's
+      goal move (speed, braking to its goal, hover, yaw, tilt, `near_goal`,
+      `goal_yaw`, `goal`) from its vehicle file's defaults; the crate falls and
+      a player captures it by holding use (a usable script model in the use
+      search, `player_useRadius` 128). Script reads of mixed-case engine dvars
+      through the fire world now find them: they were silently taking the
+      caller's default (#661).
 
 - [x] **G** Valkyrie Rockets (`m220_tow_mp`, guided type 6): the launch names
       the missile to its owner (`weapFlags` 0x200), `linkguidedmissilecamera`

@@ -55,7 +55,8 @@ them.
 The other killstreaks (#660 … #662) still need their own engine pieces. To get one at once:
 `script maps/mp/gametypes/_hardpoints::givekillstreak player0 radar_mp`
 (`counteruav_mp`, `radardirection_mp`, `autoturret_mp`, `auto_tow_mp`).
-The Valkyrie Rockets (`m220_tow_mp`; its Care Package delivery is #661) fly
+The Care Package (`supply_drop_mp`) flies in where its marker lands; hold use
+on the crate to take what is inside. The Valkyrie Rockets (`m220_tow_mp`) fly
 through the rocket's own camera: the mouse steers, `+smoke` boosts, attack
 detonates.
 
