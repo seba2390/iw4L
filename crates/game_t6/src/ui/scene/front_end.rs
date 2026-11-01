@@ -57,6 +57,12 @@ const STATS_TABLE: &str = "mp/statsTable.csv";
 /// The zombies maps table.
 const MAPS_TABLE: &str = "zm/mapsTable.csv";
 
+struct MapSelection {
+    label: String,
+    unavailable: Option<String>,
+    hit_rectangle: Option<[f32; 4]>,
+}
+
 /// `Com_GameMode`'s theater bit.
 const GAMEMODE_THEATER: u32 = 5;
 
@@ -1863,15 +1869,76 @@ impl Host {
                     (pack == 0 || self.map_pack_available(pack)).into(),
                 )]
             }
-            // The globe's 3D render and VOIP indicator draw nothing yet
-            // (`t6.ui.render`).
-            "setupGlobe" | "setupVoipImage" => Vec::new(),
+            "setupGlobe" => {
+                let id = match args.first().map(super::identity) {
+                    Some(Ok(id)) => id,
+                    _ => return Some(Err(FaultKind::Argument(1))),
+                };
+                let Some(node) = self.nodes.get_mut(&id) else {
+                    return Some(Err(FaultKind::Userdata(id)));
+                };
+                node.kind = Some(game_api::ui::Content::Globe {
+                    material: String::new(),
+                    rotation: [0.0; 4],
+                });
+                Vec::new()
+            }
+            "setupVoipImage" => Vec::new(),
             _ => return None,
         }))
     }
 }
 
 impl Scene {
+    fn selected_globe_map(&mut self) -> Result<Option<MapSelection>, FaultKind> {
+        let tables = &mut self.runtime.tables;
+        let cod = tables.global(&key("CoD"))?;
+        let class = tables.field(&cod, &key("GameGlobeZombie"))?;
+        if class == Value::Nil {
+            return Ok(None);
+        }
+        let globe = tables.field(&class, &key("gameGlobe"))?;
+        if globe == Value::Nil {
+            return Ok(None);
+        }
+        let menu = tables.field(&globe, &key("currentMenu"))?;
+        if menu == Value::Nil {
+            return Ok(None);
+        }
+        if tables.field(&menu, &key("id"))? != key("Menu.SelectMapZM") {
+            return Ok(None);
+        }
+        let infos = tables.field(&menu, &key("mapInfos"))?;
+        let index = tables.field(&menu, &key("currentMapIndex"))?;
+        let info = tables.field(&infos, &index)?;
+        if info == Value::Nil {
+            return Ok(None);
+        }
+        let name = tables.field(&info, &key("name"))?;
+        let load = tables.field(&info, &key("loadName"))?;
+        let load = text(&load)?;
+        let load = load.trim_end_matches("_solo");
+        let reason = self
+            .bindings
+            .input
+            .unavailable_maps
+            .iter()
+            .find(|(map, _)| map == load)
+            .map(|(_, reason)| reason.clone());
+        let button = tables.field(&info, &key("mouseButton"))?;
+        let rectangle = self
+            .bindings
+            .elements
+            .element(&button)
+            .ok()
+            .map(|e| e.current.resolved_rectangle);
+        Ok(Some(MapSelection {
+            label: self.bindings.localized(&text(&name)?),
+            unavailable: reason,
+            hit_rectangle: rectangle,
+        }))
+    }
+
     /// A scene that runs Black Ops 2's front end instead of the match HUD.
     pub fn front_end(modules: &[Module]) -> Result<Self, String> {
         let mut scene = Self::new(modules)?;
@@ -2042,7 +2109,41 @@ impl Scene {
         // Each frame the engine has every root process its queued events
         // (`process_events`, immediate), then runs its animations.
         self.send(root, "process_events", &[("immediate", Value::Boolean(1))])?;
-        self.paint(root, input)
+        let mut draws = self.paint(root, input)?;
+        if let Some(selection) = self
+            .selected_globe_map()
+            .map_err(|e| format!("t6.ui.render: {e:?}"))?
+        {
+            let width = input.viewport[0] / (input.viewport[1] / 720.0).max(0.001);
+            for (offset, value, height, color) in [
+                (0, selection.label, 30.0, [0.9, 0.69, 0.2, 1.0]),
+                (
+                    1,
+                    selection.unavailable.unwrap_or_else(String::new),
+                    20.0,
+                    [1.0; 4],
+                ),
+            ] {
+                if value.is_empty() {
+                    continue;
+                }
+                let top = 580.0 + offset as f32 * 38.0;
+                draws.push(game_api::ui::Draw {
+                    id: u32::MAX - offset,
+                    rectangle: [width * 0.1, top, width * 0.9, top + height],
+                    color,
+                    rotation: 0.0,
+                    alignment: 1,
+                    clip: None,
+                    content: game_api::ui::Content::Text {
+                        value,
+                        font: "fonts/720/normalFont".into(),
+                    },
+                    text_shadow: true,
+                });
+            }
+        }
+        Ok(draws)
     }
 
     /// The frame's keys and mouse, as `LUI_KeyEvent` and the mouse handlers
@@ -2052,6 +2153,30 @@ impl Scene {
     pub(super) fn send_input(&mut self, root: &Value, input: &Input) -> Result<(), String> {
         let controller = Value::Number(input.local_client as f32);
         for event in &input.events {
+            if self.front_end
+                && let Some(selection) = self
+                    .selected_globe_map()
+                    .map_err(|e| format!("t6.ui.engine_api: {e:?}"))?
+                && selection.unavailable.is_some()
+            {
+                let blocked = match event {
+                    UiEvent::Button {
+                        button: "primary", ..
+                    } => true,
+                    UiEvent::Mouse {
+                        button: "left",
+                        x,
+                        y,
+                        ..
+                    } => selection
+                        .hit_rectangle
+                        .is_some_and(|r| *x >= r[0] && *x <= r[2] && *y >= r[1] && *y <= r[3]),
+                    _ => false,
+                };
+                if blocked {
+                    continue;
+                }
+            }
             match event {
                 UiEvent::Button {
                     button,
