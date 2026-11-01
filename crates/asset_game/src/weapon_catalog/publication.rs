@@ -6,6 +6,7 @@ impl WeaponCatalog {
         build.registry.vehicle_turrets = self.vehicle_turrets;
         build.registry.vehicle_compass = self.vehicle_compass;
         build.registry.vehicle_accel = self.vehicle_accel;
+        build.registry.vehicle_motion = self.vehicle_motion;
         build
     }
 }
@@ -505,6 +506,7 @@ impl WeaponBuild {
             vehicle_turrets: HashMap::new(),
             vehicle_compass: HashMap::new(),
             vehicle_accel: HashMap::new(),
+            vehicle_motion: HashMap::new(),
             t5_optics: Arc::default(),
             t5_reticle_colours: Arc::new([]),
             revision: mint_weapon_revision(),

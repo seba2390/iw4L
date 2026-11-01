@@ -12,6 +12,7 @@ pub(crate) mod t5_classes;
 pub(crate) mod t5_client;
 pub(crate) mod t5_guided;
 pub(crate) mod t5_location;
+pub(crate) mod t5_mp_heli;
 pub(crate) mod t5_mp_turret;
 pub(crate) mod t5_napalm;
 pub(crate) mod t5_obituary;

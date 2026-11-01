@@ -793,6 +793,22 @@ pub trait PlayerMovement: Sync {
 
     /// The invalid command hint a movement signal raises for the player
     /// (no grenade, target too close, ...), by the game's number for it.
+    /// This event of its own player makes the client cycle to its next
+    /// weapon: the one in hand has run out of everything.
+    fn empties_weapon(&self, _signal: &MoveSignal) -> bool {
+        false
+    }
+
+    /// The client stays on this weapon when it runs out.
+    fn keeps_empty_weapon(&self, _weapon: &GameWeapon) -> bool {
+        false
+    }
+
+    /// The client's cycle away from an empty weapon passes over this one.
+    fn skipped_when_cycling(&self, _weapon: &GameWeapon, has_ammo: bool) -> bool {
+        !has_ammo
+    }
+
     fn command_hint(&self, _signal: &MoveSignal) -> Option<i32> {
         None
     }
@@ -982,6 +998,16 @@ pub trait PlayerMovement: Sync {
         _after_ms: Option<i32>,
         _world: &dyn crate::fire::FireWorld,
     ) {
+    }
+
+    /// A frame of a helicopter's flight, and its gap; `None` when the game
+    /// does not fly its helicopters itself.
+    fn helicopter_frame(
+        &self,
+        _heli: &mut crate::heli::HeliMove,
+        _world: &mut dyn crate::heli::HeliWorld,
+    ) -> Option<(crate::heli::HeliNotes, Option<&'static Unknown>)> {
+        None
     }
 
     /// A missile exploding now (`detonate`); `None` when the game does not

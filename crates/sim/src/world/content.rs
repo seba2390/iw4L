@@ -200,6 +200,7 @@ struct ContentData {
     vehicle_turrets: std::collections::BTreeMap<String, String>,
     vehicle_compass: std::collections::BTreeMap<String, ([String; 2], [i32; 2])>,
     vehicle_accel: std::collections::BTreeMap<String, f32>,
+    vehicle_motion: std::collections::BTreeMap<String, game_api::heli::VehicleMotion>,
     team_voice_prefix_allies: Option<String>,
     team_voice_prefix_axis: Option<String>,
     map_custom: std::collections::BTreeMap<String, String>,
@@ -261,6 +262,7 @@ impl SimContentBuilder {
                 vehicle_turrets: Default::default(),
                 vehicle_compass: Default::default(),
                 vehicle_accel: Default::default(),
+                vehicle_motion: Default::default(),
                 team_voice_prefix_allies: Default::default(),
                 team_voice_prefix_axis: Default::default(),
                 map_custom: Default::default(),
@@ -415,6 +417,13 @@ impl SimContentBuilder {
         self.data.vehicle_accel = rows.into_iter().collect();
     }
 
+    pub fn set_vehicle_motion(
+        &mut self,
+        rows: impl IntoIterator<Item = (String, game_api::heli::VehicleMotion)>,
+    ) {
+        self.data.vehicle_motion = rows.into_iter().collect();
+    }
+
     pub fn set_vehicle_turrets(&mut self, turrets: Vec<(String, String)>) {
         self.data.vehicle_turrets = turrets.into_iter().collect();
     }
@@ -563,6 +572,12 @@ impl SimContent {
     }
     pub(super) fn vehicle_accel(&self) -> &std::collections::BTreeMap<String, f32> {
         &self.data.vehicle_accel
+    }
+
+    pub(super) fn vehicle_motion(
+        &self,
+    ) -> &std::collections::BTreeMap<String, game_api::heli::VehicleMotion> {
+        &self.data.vehicle_motion
     }
 
     pub(super) fn map_custom(&self) -> &std::collections::BTreeMap<String, String> {

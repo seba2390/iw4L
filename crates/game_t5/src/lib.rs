@@ -11,6 +11,7 @@ mod fire_sound;
 mod front_end_catalog;
 mod grenade;
 mod grenade_indicator;
+mod heli;
 mod killfeed;
 mod menu_expression;
 mod missile;
@@ -76,6 +77,10 @@ const MULTIPLAYER_ENGINE_DVARS: &[(&str, &str)] = &[
     ("cg_blood", "1"),
     // Registered 800; the mortar, artillery and airstrike scripts aim by it.
     ("bg_gravity", "800"),
+    // How far a player reaches to use an entity.
+    ("player_useRadius", "128"),
+    // A helicopter's fastest climb, mph.
+    ("vehHelicopterMaxSpeedVertical", "65"),
     // A TV-guided missile's steering and boost.
     ("missileTVGuidedStickDeadzone", "15"),
     ("missileTVGuidedTurnRate", "3"),

@@ -1023,6 +1023,10 @@ impl SimState {
         self.content.vehicle_accel().get(name).copied()
     }
 
+    pub fn vehicle_motion(&self, name: &str) -> Option<game_api::heli::VehicleMotion> {
+        self.content.vehicle_motion().get(name).copied()
+    }
+
     pub fn vehicle_turret_weapon(&self, vehicle: &str) -> Option<u32> {
         let path = self.content.vehicle_turrets().get(vehicle)?;
         self.weapon_index_by_script_name(path.rsplit('/').next().unwrap_or(path))

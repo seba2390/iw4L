@@ -48,16 +48,18 @@ pub(crate) struct Heli {
     def_accel: f32,
     target_yaw: Option<f32>,
     goal_yaw: Option<f32>,
-    look_at: Option<u64>,
+    pub(crate) look_at: Option<u64>,
     max_pitch: f32,
     max_roll: f32,
-    owner: Option<u32>,
-    compass: Option<([String; 2], [i32; 2])>,
+    pub(crate) owner: Option<u32>,
+    pub(crate) compass: Option<([String; 2], [i32; 2])>,
     weapon: Option<u32>,
     turret: Option<TurretAim>,
     on_target: bool,
     gunner: Option<u32>,
     next_fire_ms: i32,
+    /// A helicopter the game's own rules fly.
+    pub(crate) game: Option<game_api::heli::HeliMove>,
 }
 
 #[derive(Clone, Debug)]
@@ -134,6 +136,18 @@ impl Default for Heli {
             on_target: false,
             gunner: None,
             next_fire_ms: 0,
+            game: None,
+        }
+    }
+}
+
+impl Heli {
+    /// A helicopter the game's own rules fly.
+    pub(crate) fn flown_by_game(owner: u32, game: game_api::heli::HeliMove) -> Self {
+        Self {
+            owner: Some(owner),
+            game: Some(game),
+            ..Self::default()
         }
     }
 }
@@ -275,7 +289,7 @@ fn vec_field(runtime: &mut RoundScript, object: u64, name: &str) -> [f32; 3] {
     }
 }
 
-fn spawn_vehicle(
+pub(crate) fn spawn_vehicle(
     world: &mut World,
     classname: &str,
     origin: [f32; 3],
@@ -1020,6 +1034,9 @@ pub(crate) fn advance(world: &mut World) {
         .collect();
     let now = crate::level_time_ms(world.resource::<crate::step::StepRequest>().tick);
     for id in ids {
+        if super::natives::t5_mp_heli::advance(world, id) {
+            continue;
+        }
         let (gunner, weapon) = world
             .resource::<RoundScript>()
             .vehicles

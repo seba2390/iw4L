@@ -33,6 +33,8 @@ pub struct ClientSnapshotMeta {
     /// The count of invalid command hints the game's movement raised for
     /// the player, and the last one (the game's number for it).
     pub command_hint: (u8, i32),
+    /// Counts the times the weapon in hand ran out of everything.
+    pub weapon_emptied: u8,
 
     pub score: i32,
     pub kills: i32,

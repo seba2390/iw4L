@@ -317,7 +317,7 @@ impl FireWorld for MatchFireWorld<'_, '_> {
             .ecs_ref()
             .get_resource::<crate::script::MatchScript>()?
             .dvars
-            .get(name)
+            .get(&name.to_ascii_lowercase())
             .cloned()
     }
 

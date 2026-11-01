@@ -246,7 +246,7 @@ fn settle_influencers(world: &mut World) {
         .retain(|_, i| i.expires_ms.is_none_or(|at| at > now));
 }
 
-fn random_unit(world: &mut World) -> f32 {
+pub(crate) fn random_unit(world: &mut World) -> f32 {
     (super::math::random(world) % 10_000) as f32 / 10_000.0
 }
 
@@ -883,8 +883,20 @@ fn register_script(registry: &mut NativeRegistry) {
         "getweaponfiresoundplayer" => fire_player,
         "getweaponpickupsound" => pickup,
         "getweaponpickupsoundplayer" => pickup_player,
-        "getweaponprojexplosionsound" => proj_explosion,
     );
+    // BlackOpsMP.exe answers an empty string for a weapon with no such sound.
+    registry.register(Function, "getweaponprojexplosionsound", |world, _, args| {
+        let weapon = match arg(args, 0)? {
+            Value::String(name) => FrameWorld::from_world(world)
+                .weapon_index_by_script_name(name)
+                .ok_or_else(|| format!("unknown weapon '{name}'"))?,
+            _ => int(args, 0)? as u32,
+        };
+        let alias = FrameWorld::from_world(world)
+            .weapon_script_sounds(weapon)
+            .and_then(|sounds| sounds.proj_explosion.clone());
+        Ok(Value::string(alias.as_deref().unwrap_or("")))
+    });
     registry.register(Method, "dodamage", do_damage);
     registry.register(Method, "setenemymodel", |world, receiver, args| {
         string(args, 0)?;

@@ -296,6 +296,10 @@ pub(crate) fn run(
             if let Some((kind, surface)) = movement.footstep(signal, &player) {
                 crate::script::client::footstep(world.ecs(), id, kind, surface, cmd.server_time);
             }
+            if movement.empties_weapon(signal) {
+                let meta = world.client_meta_mut(id);
+                meta.weapon_emptied = meta.weapon_emptied.wrapping_add(1);
+            }
             if let Some(kind) = movement.command_hint(signal) {
                 let meta = world.client_meta_mut(id);
                 meta.command_hint = (meta.command_hint.0.wrapping_add(1), kind);
