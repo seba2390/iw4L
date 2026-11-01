@@ -35,8 +35,8 @@ at launch and keeps only in memory. Without a capture of that patch zone
 game's scripts are refused (`t6.scripts.ffotd`). The capture tool is not in the
 repository, so a machine without a capture cannot start these maps yet: the
 library's Zombies selector then blocks every Black Ops 2 map that needs it
-(Origins, on IW4L's rules, does not) and names the file and the folders it is
-read from. Copying a capture you made from your own game into one of those
+(Origins, on IW4L's rules, does not) and displays a capture-required reason.
+Copying a capture you made from your own game into one of those
 folders makes the maps startable at the next visit to the page. The native
 selector also recognizes individually captured compiled modules in
 `captured/scripts_zm/`, including `maps/mp/gametypes_zm/_globallogic.gsc`.
