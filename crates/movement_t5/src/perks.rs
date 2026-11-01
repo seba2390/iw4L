@@ -44,6 +44,7 @@ pub mod mp {
     pub const BULLET_ACCURACY: u32 = 2;
     pub const BULLET_PENETRATION: u32 = 5;
     pub const FALL_HEIGHT: u32 = 13;
+    pub const FAST_ADS: u32 = 14;
     pub const FAST_MANTLE: u32 = 16;
     pub const FAST_MELEE_RECOVERY: u32 = 17;
     pub const FAST_RELOAD: u32 = 18;

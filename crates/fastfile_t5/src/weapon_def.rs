@@ -27,6 +27,11 @@ impl<'a> WeaponDefView<'a> {
         [bytes[off], bytes[off + 1], bytes[off + 2], bytes[off + 3]]
     }
 
+    /// `playerAnimType`: its index in the game's `playeranimtypes.txt`.
+    pub fn player_anim_type(&self) -> i32 {
+        i32::from_le_bytes(Self::word(self.def, 0x18))
+    }
+
     /// `weaponType`
     pub fn weapon_type(&self) -> i32 {
         i32::from_le_bytes(Self::word(self.def, 0x1c))

@@ -543,15 +543,29 @@ pub(crate) fn ads_lerp<W: MoveWorld>(pm: &mut Pm<'_, W>, pml: &Pml) {
             }
         }
     }
-    let rate = if up {
+    let mut rate = if up {
         ads_in_rate(&w)
     } else {
         -ads_out_rate(&w)
     };
+    if !pm.zombiemode
+        && mp::has(ps, mp::FAST_ADS)
+        && !matches!(
+            d.player_anim_type(),
+            ANIM_TYPE_SNIPER | ANIM_TYPE_REARCLIPSNIPER
+        )
+    {
+        rate /= tuning::PERK_WEAP_ADS_MULTIPLIER;
+    }
     let next = pml.msec as f32 * rate + frac;
     let capped = if next - 1.0 < 0.0 { next } else { 1.0 };
     ps.weapon_pos_frac = if -next < 0.0 { capped } else { 0.0 };
 }
+
+/// The multiplayer `playeranimtypes.txt` entries `specialty_fastads` leaves
+/// alone: `sniper` and `rearclipsniper`, by their line in the file.
+const ANIM_TYPE_SNIPER: i32 = 3;
+const ANIM_TYPE_REARCLIPSNIPER: i32 = 16;
 
 /// The sights' rates: 1 over the variant's transition times, as the game
 /// computes them when it loads the weapon.
