@@ -43,6 +43,9 @@ snapshots carry the same constraints into client prediction and command replay.
 Wait for the loaded mode's countdown, or use the debug command:
 `wait world; spawn 0; force_match_start; wait 1s; …`.
 Firing, hit and decal probes must start after the countdown releases the player.
+BO2 Zombies can also draw a native black intro after `wait world` has completed;
+wait for its fade and control release before judging the rendered scene
+([BO2 startup](BO2-ZOMBIES.md#start)).
 
 **Sync by default.** Ritual `wait`s are unnecessary: a command holds the FIFO
 until its own fact — `map`/`demo`/`play` until the swap plus GPU-ready
