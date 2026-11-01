@@ -462,6 +462,17 @@ impl SimWorld {
         self.ecs.insert_resource(stats);
     }
 
+    /// Runs one of Black Ops' create-a-class commands (`name` lowercased)
+    /// on the local profile's stats: `None` when `name` is not one, else
+    /// what it printed, or why it could not run.
+    pub fn class_command(
+        &mut self,
+        name: &str,
+        args: &[String],
+    ) -> Option<Result<Vec<String>, String>> {
+        crate::script::host::natives::t5_cac::run(&mut self.ecs, name, args)
+    }
+
     pub fn set_local_player_profile(&mut self, profile: crate::LocalPlayerProfile) {
         self.ecs.insert_resource(profile);
     }

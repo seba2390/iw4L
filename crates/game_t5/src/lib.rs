@@ -121,6 +121,16 @@ const MULTIPLAYER_ENGINE_DVARS: &[(&str, &str)] = &[
     ("turret_placement_trace_dist", "42"),
     ("turret_placement_trace_pitch", "20"),
     ("turret_placement_trace_min_normal", "0.7"),
+    // The create-a-class commands': free items (the menus set it while a
+    // private match's class is edited), the custom game mode's class table,
+    // numbered classes, a body by gun, the point an attachment falls back
+    // to and the attachments a weapon takes.
+    ("ui_items_no_cost", "0"),
+    ("ui_useCustomClassInfo", "0"),
+    ("custom_class_mode", "0"),
+    ("bodyTypeFromGun", "0"),
+    ("attachmentFilter", "0"),
+    ("maxAttachmentsPerWeapon", "2"),
 ];
 
 /// Black Ops' front-end level: the main menu draws over it.

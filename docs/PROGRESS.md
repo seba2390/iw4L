@@ -258,6 +258,7 @@ Each milestone names its issues; open rules are in
 - [ ] Wager matches (#655).
 - [ ] Create-a-class, perks and Pro perks with private-match unlocks (#650, #729, #734).
   - [x] A custom class spawns with the profile's Black Ops stats (a fresh profile gets Black Ops' default classes), and the perks its movement, weapons and damage test apply, Second Chance among them (#650).
+  - [x] Black Ops' `equipClass`, `equipClassItem`, `equipClassAttachment` and `copyclass` edit a custom class with its unlock, attachment and body rules, and the next spawn uses it (#729).
 - [ ] Killstreaks (#656).
   - [x] Killstreaks are earned by kill streaks, sit on the dpad and raise their weapon on Black Ops' own scripts; each killstreak is its own issue (#656).
   - [x] Spy Plane, Counter-Spy Plane and Blackbird (#657): the sweep pings enemies on the compass, the Blackbird shows them live with their heading, an enemy counter-spy plane hides them under static.
