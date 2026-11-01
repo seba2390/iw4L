@@ -47,6 +47,8 @@ death, feel, …).
 
 ## Without a trace: the host's ten-second summaries
 
+BO2 local host measurements and their limits: [`BO2-HOST-PERF.md`](BO2-HOST-PERF.md).
+
 A host logs, every ten seconds, each peer's snapshots (`snapshots to …`:
 sent, held by the 25 kB/s rate, bytes per second, average and largest
 packet, entities in the last one) and its authority steps (`authority

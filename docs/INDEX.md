@@ -34,6 +34,7 @@ Files here aim for ≤50 lines; `PROGRESS.md`, `fidelity/*` and `GSC-RUNTIME.md`
 | [`SERVER-ASSETS.md`](SERVER-ASSETS.md) | optional games, join requirements, disabled-family loading | hosting for players with fewer games |
 | **Measure** | | |
 | [`PERF.md`](PERF.md) | native Perfetto tracing (Linux/macOS), the manifest, `IW4L_PERF`, SQL | why a frame took 80 ms |
+| [`BO2-HOST-PERF.md`](BO2-HOST-PERF.md) | local BO2 Zombies authority timing, synthetic crowd workload and limitations | assessing measured host headroom |
 | [`BENCH.md`](BENCH.md) | `make bench`: map-load waterfall, frame time as a span tree, counters, the run package | where a run spent its time |
 | [`FFI.md`](FFI.md) | native data ownership, lifetimes, nullability, Perfetto adapters | changing a native boundary |
 | **Engine** | | |
