@@ -504,13 +504,15 @@ Each open section names the issue that works it.
 - [ ] **V** `t5.hud.compass_mounted`: a player mounted on a vehicle is not
       drawn on the compass.
 - [ ] **V** `t5.hud.game_messages`: of Black Ops' three game message
-      windows (`gamemessages`, `boldgamemessages`, `subtitles`) only the
-      obituary lines are drawn; script `iprintln` and `iprintlnbold`,
-      connect and disconnect notices and subtitles are not, and the
-      channel filters (`con_gameMsgWindow%dFilter`: `gamenotify obituary`,
-      `boldgame`, `subtitle`) are not read as dvars. A window keeps every
-      line until it ends; Black Ops' cap on the lines a window keeps
-      beyond the four it shows is not read.
+      windows (`gamemessages`, `boldgamemessages`, `subtitles`) the first
+      two are drawn (Closed); the subtitle window (2) is not. The channel
+      filters (`con_gameMsgWindow%dFilter`) are Black Ops' defaults, not
+      read as dvars, and `cg_gameMessageWidth` and
+      `cg_gameBoldMessageWidth` are their registered values. A window
+      keeps every line until it ends; Black Ops' cap on the lines a window
+      keeps beyond those it shows is not read. A print's wrap measures the
+      window's font at its text scale, in virtual pixels; the unit Black
+      Ops' wrap measures in is not compared.
 - [ ] **V** `t5.hud.obituary_popups`: an obituary naming the local player
       does not open Black Ops' killed / killed-by player card
       (`playercard`, `playerkilled` in `hud_popups`: `CGAME_KILLED`,
@@ -568,6 +570,17 @@ Each open section names the issue that works it.
       compensation of Black Ops' movement and weapons are unmeasured.
 
 ## Closed
+
+- [x] **V** Script prints (#651): `iprintln` (server command `f`, channel
+      `gamenotify`) draws in game message window 0 under the obituaries,
+      and `iprintlnbold` (`g`, channel `boldgame`) in window 1
+      (`boldgamemessages`), each with its window's line time, line count,
+      scroll and fades as registered (window 1: 8 s, one line, 10 ms fade
+      out). A print is localized with its arguments in place of `&&1`, …,
+      and wrapped as Black Ops' console print wraps it at
+      `cg_gameMessageWidth` (455) or `cg_gameBoldMessageWidth` (390): after
+      the last blank, or before the letter that overflows, the next line
+      starting past its blanks in the colour last set.
 
 - [x] **G** Create-a-class commands (#729): `equipClass`,
       `equipClassItem`, `equipClassAttachment` and `copyclass` edit the

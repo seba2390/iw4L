@@ -80,16 +80,46 @@ pub(crate) struct KillfeedWindow {
     bold: VecDeque<(i32, String)>,
     seen: HashSet<u32>,
     game: VecDeque<GameLine>,
+    game_bold: VecDeque<GameLine>,
 }
 
-/// A line of a game's own kill feed.
+/// A line of a game's own message windows.
 #[derive(Clone, Debug)]
 struct GameLine {
     start_ms: i32,
     end_ms: i32,
-    icon: KillIconPick,
-    attacker: Option<(String, i32)>,
-    victim: (String, i32),
+    content: GameLineContent,
+}
+
+#[derive(Clone, Debug)]
+enum GameLineContent {
+    Obituary {
+        icon: KillIconPick,
+        attacker: Option<(String, i32)>,
+        victim: (String, i32),
+    },
+    /// A script print's line.
+    Text(String),
+}
+
+/// A line into a game message window; the line past the window's count
+/// fades out.
+fn push_game_line(
+    lines: &mut VecDeque<GameLine>,
+    timing: game_api::hud::MessageWindow,
+    content: GameLineContent,
+    now: i32,
+) {
+    lines.push_back(GameLine {
+        start_ms: now,
+        end_ms: now.saturating_add(timing.msg_time_ms),
+        content,
+    });
+    if lines.len() > timing.line_count {
+        let fading = lines.len() - timing.line_count - 1;
+        let line = &mut lines[fading];
+        line.end_ms = line.end_ms.min(now.saturating_add(timing.fade_out_ms));
+    }
 }
 
 impl KillfeedWindow {
@@ -366,20 +396,16 @@ fn game_obituary(
             })
             .unwrap_or_else(|| material(none)),
     };
-    // The line past the window's count fades out.
-    let timing = rules.timing;
-    lines.push_back(GameLine {
-        start_ms: now,
-        end_ms: now.saturating_add(timing.msg_time_ms),
-        icon,
-        attacker,
-        victim,
-    });
-    if lines.len() > timing.line_count {
-        let fading = lines.len() - timing.line_count - 1;
-        let line = &mut lines[fading];
-        line.end_ms = line.end_ms.min(now.saturating_add(timing.fade_out_ms));
-    }
+    push_game_line(
+        lines,
+        rules.timing,
+        GameLineContent::Obituary {
+            icon,
+            attacker,
+            victim,
+        },
+        now,
+    );
 }
 
 fn game_name_color(color: game_api::hud::NameColor, dvars: sim::ScriptDvars<'_>) -> [f32; 3] {
@@ -424,9 +450,122 @@ fn game_line_alpha(timing: game_api::hud::MessageWindow, line: &GameLine, now: i
     alpha.max(0.0)
 }
 
+/// A script print's text: its localized template with its arguments in
+/// place of `&&1`, `&&2`, ….
+fn game_print_text(
+    strings: Option<&PreparedLocalizedStrings>,
+    cmd: &net::SvcGameNotify,
+) -> Option<String> {
+    let strings = strings?;
+    let template = crate::hudelem::resolve_hud_text(strings, &cmd.key)?;
+    if cmd.name.is_empty() {
+        return Some(template);
+    }
+    let args = cmd.name.split(sim::HUD_PRINT_ARG_SEPARATOR).map(|arg| {
+        crate::hudelem::resolve_hud_text(strings, arg).unwrap_or_else(|| arg.to_owned())
+    });
+    Some(args.enumerate().fold(template, |line, (i, arg)| {
+        line.replace(&format!("&&{}", i + 1), &arg)
+    }))
+}
+
+/// A game message window's font and its text scale.
+fn game_window_font<'a>(
+    catalog: Option<&'a MenuCatalog>,
+    strings: Option<&PreparedLocalizedStrings>,
+    surface: &crate::surface::Hud2dSurface,
+    menu: &str,
+    window: i32,
+) -> Option<(&'a asset_game::FontDef, f32)> {
+    let catalog = catalog?;
+    let item = catalog.get(menu)?.items.iter().find(|item| {
+        item.item_type == ITEM_TYPE_GAME_MESSAGE_WINDOW && item.game_msg_window_index == window
+    })?;
+    let assets = crate::chrome::ChromeAssets {
+        catalog: Some(catalog),
+        localize: strings.map(|s| &s.0),
+    };
+    let font_name = assets.font_name(
+        item.font_enum,
+        surface.scale_virtual_to_real()[1],
+        item.text_scale,
+    )?;
+    let font = catalog.font(font_name)?;
+    let scale = assets
+        .layout()?
+        .text_scale(font.pixel_height, item.text_scale);
+    Some((font, scale))
+}
+
+/// A print cut into a window's lines as the game's console print wraps
+/// it: past `width` a line ends after its last blank (or before the letter
+/// that overflows when it has none), at a newline, and the next line
+/// starts past its blanks in the last colour set (`^<n>`, unless white).
+fn wrap_print(text: &str, width: f32, measure: impl Fn(&str) -> f32) -> Vec<String> {
+    let mut out = Vec::new();
+    let mut color = '7';
+    let mut rest = text;
+    let mut first = true;
+    loop {
+        if !first {
+            rest = rest.trim_start_matches(' ');
+        }
+        let prefix = if color == '7' {
+            String::new()
+        } else {
+            format!("^{color}")
+        };
+        let mut cut = rest.len();
+        let mut next = rest.len();
+        let mut after_blank = None;
+        let mut chars = rest.char_indices().peekable();
+        while let Some((at, c)) = chars.next() {
+            if c == '\n' {
+                (cut, next) = (at, at + 1);
+                first = true;
+                break;
+            }
+            if c == '^'
+                && let Some(&(_, code)) = chars.peek()
+                && (('0'..='@').contains(&code) || code == 'F')
+            {
+                color = code;
+                chars.next();
+                continue;
+            }
+            let end = at + c.len_utf8();
+            if at != 0 && c.is_whitespace() {
+                after_blank = Some((end, color));
+            }
+            if measure(&rest[..end]) > width {
+                let at = if at == 0 { end } else { at };
+                let (end, carried) = after_blank.unwrap_or((at, color));
+                (cut, next, color) = (end, end, carried);
+                first = false;
+                break;
+            }
+        }
+        out.push(format!("{prefix}{}", &rest[..cut]));
+        if next >= rest.len() {
+            break;
+        }
+        rest = &rest[next..];
+    }
+    out
+}
+
+/// Which of a game's message windows to draw: its menu, index and timing.
+#[derive(Clone, Copy)]
+struct GameWindow {
+    menu: &'static str,
+    window: i32,
+    timing: game_api::hud::MessageWindow,
+}
+
 #[allow(clippy::too_many_arguments)]
 fn draw_game_killfeed(
     rules: &game_api::hud::KillfeedRules,
+    window: GameWindow,
     lines: &mut VecDeque<GameLine>,
     now: i32,
     surface: &crate::surface::Hud2dSurface,
@@ -445,9 +584,9 @@ fn draw_game_killfeed(
         return None;
     }
     let catalog = catalog?;
-    let item = catalog.get(rules.menu)?.items.iter().find(|item| {
+    let item = catalog.get(window.menu)?.items.iter().find(|item| {
         item.item_type == ITEM_TYPE_GAME_MESSAGE_WINDOW
-            && item.game_msg_window_index == rules.window
+            && item.game_msg_window_index == window.window
     })?;
     let assets = crate::chrome::ChromeAssets {
         catalog: Some(catalog),
@@ -472,7 +611,7 @@ fn draw_game_killfeed(
         .and_then(|s| crate::hudelem::resolve_hud_text(s, rules.suicide))
         .unwrap_or_else(|| rules.suicide.to_owned());
 
-    let timing = rules.timing;
+    let timing = window.timing;
     let scale = layout.text_scale(font.pixel_height, item.text_scale);
     let line_height = (f64::from(item.text_scale * 48.0) + 0.5).round_ties_even() as i32;
     let space = text_width(font, " ") as f32 * scale;
@@ -525,17 +664,26 @@ fn draw_game_killfeed(
             });
         };
         let mut x = item.rect.x;
-        if let Some((name, team)) = &line.attacker {
+        let (icon, attacker, victim) = match &line.content {
+            GameLineContent::Text(line) => {
+                let rgb = [item.fore_color[0], item.fore_color[1], item.fore_color[2]];
+                text(&mut cmds, x, line.clone(), rgb);
+                continue;
+            }
+            GameLineContent::Obituary {
+                icon,
+                attacker,
+                victim,
+            } => (icon, attacker, victim),
+        };
+        if let Some((name, team)) = attacker {
             let rgb = game_name_color((rules.name_color)(local_team, *team), dvars);
             text(&mut cmds, x, name.clone(), rgb);
             x += width(name) + space;
         }
-        let (em_w, em_h) = (rules.icon_size)(line.icon.ratio);
+        let (em_w, em_h) = (rules.icon_size)(icon.ratio);
         let (icon_w, icon_h) = (icon_px(em_w) as f32 * scale, icon_px(em_h) as f32 * scale);
-        if hud_images
-            .get(line.icon.namespace, &line.icon.stem, images)
-            .is_some()
-        {
+        if hud_images.get(icon.namespace, &icon.stem, images).is_some() {
             let placed = surface.apply_rect(
                 x,
                 y as f32 - (glyph_height + icon_h) * 0.5,
@@ -544,13 +692,9 @@ fn draw_game_killfeed(
                 horz,
                 vert,
             );
-            let (s0, s1) = if line.icon.flip {
-                (1.0, 0.0)
-            } else {
-                (0.0, 1.0)
-            };
+            let (s0, s1) = if icon.flip { (1.0, 0.0) } else { (0.0, 1.0) };
             cmds.push(Draw2dCmd {
-                material_namespace: line.icon.namespace,
+                material_namespace: icon.namespace,
                 x: placed.x,
                 y: placed.y,
                 w: placed.w,
@@ -560,7 +704,7 @@ fn draw_game_killfeed(
                 s1,
                 t1: 1.0,
                 color: [1.0, 1.0, 1.0, alpha],
-                material: line.icon.stem.clone(),
+                material: icon.stem.clone(),
                 op: Draw2dOp::StretchPic,
                 provenance: Draw2dProvenance::CgDraw {
                     site: "killfeed_obituary",
@@ -569,13 +713,13 @@ fn draw_game_killfeed(
             });
         } else {
             gaps.raise(GapCause::ObituaryKillIconMissing {
-                name: line.icon.stem.clone(),
+                name: icon.stem.clone(),
                 miss,
             });
         }
         x += icon_w + space;
-        let (name, team) = &line.victim;
-        let victim = match line.attacker {
+        let (name, team) = victim;
+        let victim = match attacker {
             Some(_) => name.clone(),
             None => format!("{name} {suicide}"),
         };
@@ -655,6 +799,7 @@ pub(crate) fn update_killfeed(
         window.bold.clear();
         window.seen.clear();
         window.game.clear();
+        window.game_bold.clear();
         gaps.clear(HudGap::Obituary);
         hide(&mut pass);
         return;
@@ -666,23 +811,93 @@ pub(crate) fn update_killfeed(
         let Some(rules) = hud.killfeed else {
             return;
         };
+        let catalog = hud_menus.as_ref().and_then(|m| m.0.as_deref());
+        let window = &mut *window;
+        for cmd in notifies.read() {
+            let bold = match cmd.tag {
+                net::SVC_PRINT => false,
+                net::SVC_PRINT_BOLD => true,
+                _ => continue,
+            };
+            if !window.seen.insert(cmd.id) {
+                continue;
+            }
+            let Some(text) = game_print_text(strings.as_deref(), cmd) else {
+                gaps.raise(GapCause::LocalizedRowMissing {
+                    key: cmd.key.clone(),
+                });
+                continue;
+            };
+            let (menu, index, timing, width, lines) = if bold {
+                (
+                    rules.bold_menu,
+                    rules.bold_window,
+                    rules.bold_timing,
+                    rules.bold_width,
+                    &mut window.game_bold,
+                )
+            } else {
+                (
+                    rules.menu,
+                    rules.window,
+                    rules.timing,
+                    rules.print_width,
+                    &mut window.game,
+                )
+            };
+            let pieces = match game_window_font(catalog, strings.as_deref(), &surface, menu, index)
+            {
+                Some((font, scale)) => {
+                    wrap_print(&text, width, |part| text_width(font, part) as f32 * scale)
+                }
+                None => vec![text],
+            };
+            for piece in pieces {
+                push_game_line(lines, timing, GameLineContent::Text(piece), now);
+            }
+        }
         if view.is_some_and(|v| v.in_killcam()) {
             return;
         }
-        if let Some(quads) = draw_game_killfeed(
-            rules,
-            &mut window.game,
-            now,
-            &surface,
-            hud_menus.as_ref().and_then(|m| m.0.as_deref()),
-            strings.as_deref(),
-            &presented,
-            local.0,
-            &mut hud_images,
-            &mut images,
-            &mut gaps,
-        ) {
-            pass.killfeed = TessJob::Quads(quads);
+        let windows = [
+            (
+                GameWindow {
+                    menu: rules.menu,
+                    window: rules.window,
+                    timing: rules.timing,
+                },
+                &mut window.game,
+            ),
+            (
+                GameWindow {
+                    menu: rules.bold_menu,
+                    window: rules.bold_window,
+                    timing: rules.bold_timing,
+                },
+                &mut window.game_bold,
+            ),
+        ];
+        let mut all = Vec::new();
+        for (game_window, lines) in windows {
+            if let Some(quads) = draw_game_killfeed(
+                rules,
+                game_window,
+                lines,
+                now,
+                &surface,
+                catalog,
+                strings.as_deref(),
+                &presented,
+                local.0,
+                &mut hud_images,
+                &mut images,
+                &mut gaps,
+            ) {
+                all.extend(quads);
+            }
+        }
+        if !all.is_empty() {
+            pass.killfeed = TessJob::Quads(all);
         }
         return;
     }

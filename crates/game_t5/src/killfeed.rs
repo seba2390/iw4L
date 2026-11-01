@@ -1,6 +1,8 @@
 //! Black Ops multiplayer's kill feed: the client's obituary line, printed
 //! to the obituary channel and drawn by `hud_hardcore`'s `gamemessages`
-//! menu in game message window 0.
+//! menu in game message window 0, with the script prints of the
+//! `gamenotify` channel (`iprintln`); the bold prints (`iprintlnbold`,
+//! channel `boldgame`) go to window 1, `boldgamemessages`.
 
 use game_api::hud::{KillIcon, KillfeedRules, MessageWindow, NameColor};
 
@@ -21,6 +23,19 @@ pub(crate) static KILLFEED: KillfeedRules = KillfeedRules {
     name_color,
     suicide: "CGAME_QUAKE_SUICIDE",
     out_of_range: "CG_Obituary: target out of range",
+    // `cg_gameMessageWidth` and `cg_gameBoldMessageWidth` as registered.
+    print_width: 455.0,
+    bold_menu: "boldgamemessages",
+    bold_window: 1,
+    // `con_gameMsgWindow1*` as registered.
+    bold_timing: MessageWindow {
+        msg_time_ms: 8000,
+        line_count: 1,
+        scroll_time_ms: 250,
+        fade_in_ms: 250,
+        fade_out_ms: 10,
+    },
+    bold_width: 390.0,
 };
 
 const MOD_MELEE: i32 = 7;

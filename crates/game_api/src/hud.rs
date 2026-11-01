@@ -71,6 +71,15 @@ pub struct KillfeedRules {
     /// The victim of an obituary the client keeps no player for is an
     /// error the game drops the client for; the runtime logs it.
     pub out_of_range: &'static str,
+    /// The width a script print (`iprintln`) wraps at, in the window's
+    /// font, in virtual pixels.
+    pub print_width: f32,
+    /// The bold prints' (`iprintlnbold`) window: its menu, index, timing
+    /// and wrap width.
+    pub bold_menu: &'static str,
+    pub bold_window: i32,
+    pub bold_timing: MessageWindow,
+    pub bold_width: f32,
 }
 
 /// A game's compass: the overhead map its menus' owner draws show around
