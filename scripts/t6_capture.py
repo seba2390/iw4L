@@ -122,9 +122,7 @@ def compiled_module(read):
     opcodes = {1: 0x15, 2: 0x2E, 3: 0x32, 4: 0x30, 5: 0x34}
     for _ in range(half(54)):
         text(half(import_end))
-        namespace = half(import_end + 2)
-        if namespace:
-            text(namespace)
+        text(half(import_end + 2))
         count = half(import_end + 4)
         kind = number(import_end + 7, "B") & 15
         if kind not in opcodes:
