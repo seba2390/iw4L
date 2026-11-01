@@ -200,8 +200,6 @@ Each open section names the issue that works it.
       client button word whose layout is not matched to the runtime's
       commands yet; only the Sentry Gun / SAM placement (#659) and the
       camera spike read them.
-- [ ] **G** `spawnplane` is not implemented: the napalm and Rolling
-      Thunder planes (the spy planes are script models).
 - [ ] **G** `t5.mp.target_offset`: `Target_Set`'s aim offset is read but not
       kept, and its config string (offset, materials, flags) is not sent:
       nothing that aims at a target or draws one is ported;
@@ -225,8 +223,13 @@ Each open section names the issue that works it.
       plane's static (`compass_static`) is drawn as the runtime draws a HUD
       material, laid like the map; its look in Black Ops (an animated noise)
       is not compared.
-- [ ] **G** `spawnnapalmgroundflame` and `spawntimedfx` are refused, so
-      the Napalm Strike burns nothing where it lands.
+- [ ] **G** `spawntimedfx` is refused (the artillery script's).
+- [ ] **V** `t5.mp.strike_visuals`: the client's Rolling Thunder bombs
+      (`_airstrike.csc`'s `callStrike_bomb`) stop at the client's
+      `bulletTrace`, which the client scripts cannot run (no collision world
+      on the client VM), and the planes' compass icons (`setCompassIcon`)
+      are not set; an entity's burnt look (`startTanning`, its entity flag
+      0x200000) is kept but not drawn.
 - [ ] **G** `t5.weapons.missile` (multiplayer): a missile `launchbomb` spawns
       flies and strikes by the runtime's Black Ops missile think, which is
       the zombies executable's; BlackOpsMP.exe's own think is not compared.
@@ -383,6 +386,19 @@ Each open section names the issue that works it.
       compensation of Black Ops' movement and weapons are unmeasured.
 
 ## Closed
+
+- [x] **G** The Napalm Strike and Rolling Thunder stopped at `SpawnPlane`
+      (missing) and the napalm's ground flames (`spawnNapalmGroundFlame`,
+      refused); `startTanning` and `stopBurning` faulted on a corpse. They are
+      BlackOpsMP.exe's: `SpawnPlane(owner, classname, origin, [flags])`
+      spawns the classname and makes it a plane whose entity state names the
+      owner ("Owner entity is not a player", "unable to spawn \"%s\"
+      entity"), which the client scripts see as a `plane` with that owner;
+      `spawnNapalmGroundFlame(origin, fx, angles, [seconds])` turns the
+      entity into the effect at the whole-unit origin for 10 seconds (or
+      the time given) and frees it; `startTanning` / `stopBurning` set and
+      clear any entity's burnt flag. Both strikes kill where they are called
+      (#658).
 
 - [x] **G** `launchbomb` was refused. It is BlackOpsMP.exe's: a player
       only ("LaunchBomb: entity must be a player entity"), three arguments

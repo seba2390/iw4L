@@ -11,6 +11,7 @@ pub(crate) mod t5_actionslot;
 pub(crate) mod t5_classes;
 pub(crate) mod t5_client;
 pub(crate) mod t5_location;
+pub(crate) mod t5_napalm;
 pub(crate) mod t5_obituary;
 pub(crate) mod t5_objectives;
 pub(crate) mod t5_perks;

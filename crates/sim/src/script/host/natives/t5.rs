@@ -37,6 +37,9 @@ pub(crate) struct T5State {
     randomness: f32,
     base_weights: Vec<(i32, [f32; 3], f32, f32)>,
     pub(crate) client_flags: BTreeMap<u64, u16>,
+    /// `SpawnPlane`'s planes and the player each names as its owner in
+    /// its entity state.
+    pub(crate) planes: BTreeMap<u64, u64>,
     pub(crate) has_eyes: std::collections::BTreeSet<u64>,
     pub(crate) transmit_targetname: std::collections::BTreeSet<u64>,
     pub(crate) blood_impact: BTreeMap<u64, BloodImpact>,
@@ -52,7 +55,9 @@ pub(crate) struct T5State {
     score_multipliers: BTreeMap<u32, i32>,
     /// Entities taken out of player collision (`setplayercollision`).
     pub(crate) no_player_collision: std::collections::BTreeSet<u64>,
-    statuses: std::collections::BTreeSet<(u32, &'static str)>,
+    pub(crate) statuses: std::collections::BTreeSet<(u32, &'static str)>,
+    /// Entities whose `startTanning` flag is set (a burnt look).
+    pub(crate) tanned: std::collections::BTreeSet<u64>,
     client_systems: Vec<Arc<str>>,
     spawn_ids: BTreeMap<u32, i32>,
 }
@@ -102,7 +107,7 @@ const STATS_REFERENCE: usize = 4;
 const STATS_CLASSES: usize = 11;
 const STATS_SLOT: usize = 13;
 
-fn t5(world: &mut World) -> &mut T5State {
+pub(crate) fn t5(world: &mut World) -> &mut T5State {
     &mut world.resource_mut::<RoundScript>().into_inner().t5
 }
 
@@ -1256,7 +1261,6 @@ fn register_player(registry: &mut NativeRegistry) {
         )*};
     }
     status!(
-        "stopburning" => "burning" = false,
         "startpoisoning" => "poisoned" = true,
         "stoppoisoning" => "poisoned" = false,
     );
@@ -1290,7 +1294,6 @@ fn register_player(registry: &mut NativeRegistry) {
         "directionalhitindicator",
         "visionsetlerpratio",
         "setplayerrenderoptions",
-        "starttanning",
         "setsprintduration",
         "setsprintcooldown",
         "setblockweaponpickup",
@@ -2011,7 +2014,7 @@ fn register_refused(registry: &mut NativeRegistry) {
     refused!(Function: "spawntimedfx", "boundswouldtelefrag", "testspawnpoint"
         => "not simulated");
     refused!(Method: "launch", "fakefire",
-        "spawnnapalmgroundflame", "revive", "docowardswayanims",
+        "revive", "docowardswayanims",
         "ghost", "teleport", "istouchingvolume", "playersighttrace",
         "throwbuttonpressed", "actionslotonebuttonpressed", "depthinwater",
         "devaddpitch", "devaddroll", "devaddyaw"
