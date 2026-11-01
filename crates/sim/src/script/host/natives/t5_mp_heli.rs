@@ -637,7 +637,11 @@ pub(crate) fn advance(world: &mut World, id: u64) -> bool {
         return true;
     };
     // A seat ends with the player's link (`unlink`).
-    let row = seats(world).seats.get(&id).copied().unwrap_or([None; SEATS]);
+    let row = seats(world)
+        .seats
+        .get(&id)
+        .copied()
+        .unwrap_or([None; SEATS]);
     for (seat, client) in row.iter().enumerate() {
         if let Some(client) = client
             && world

@@ -751,7 +751,10 @@ fn graph_value(motion: &game_api::heli::VehicleMotion, x: f32) -> f32 {
 /// helicopter's axes and a turn toward where they look.
 fn piloted_move(heli: &mut HeliMove, world: &mut dyn HeliWorld, notes: &mut HeliNotes) {
     let motion = heli.piloted.motion;
-    let pilot = heli.piloted.pilot.unwrap_or(game_api::heli::HeliPilot::default());
+    let pilot = heli
+        .piloted
+        .pilot
+        .unwrap_or(game_api::heli::HeliPilot::default());
     let mut sticks = [
         f32::from(pilot.forward),
         f32::from(pilot.right),
