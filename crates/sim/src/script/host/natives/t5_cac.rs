@@ -1,12 +1,15 @@
 //! Black Ops multiplayer's create-a-class commands, as BlackOpsMP.exe runs
 //! them on the local profile's own stats (its client buffer): `equipClass`,
-//! `equipClassItem`, `equipClassAttachment` and `copyclass`. A class is
+//! `equipClassItem`, `equipClassAttachment`, `copyclass`, the
+//! `equipDefault*` commands and the attachment and new-item clears. A class is
 //! `cacLoadouts.<class>.<slot>` in `ddl_mp/stats.ddl`; an item is a row of
 //! `mp/statsTable.csv`, an attachment one of `mp/attachmentTable.csv`.
 
 use super::t5_classes::ITEMS as SLOTS;
 use super::t5_stats::{BUFFER_BYTES, Cursor, ROOT, leaf, read_int, set_raw_int, step_name};
-use super::t5_stats_reset::{ATTACHMENTS, Item, items};
+use super::t5_stats_reset::{
+    ATTACHMENTS, CLASS_SLOTS, DEFAULT_CLASSES, GLOBAL_ROW, Item, default_table, items, slot_default,
+};
 use crate::script::{MatchScript, RoundScript, StringTable};
 use asset_core::BitLayout;
 use bevy_ecs::prelude::World;
@@ -139,7 +142,8 @@ struct Cac {
     layout: Arc<BitLayout>,
     /// The profile's client buffer.
     buffer: Vec<u8>,
-    items: BTreeMap<i32, Item>,
+    /// The item table, by index.
+    items: Vec<Item>,
     attachments: Vec<Attachment>,
     /// `mp/rankTable.csv`'s rows: the least and most XP of a rank, and the
     /// rank.
@@ -160,6 +164,10 @@ impl Cac {
             .map_or(default, |v| super::iw4::atoi(v))
     }
 
+    fn get(&self, n: i32) -> Option<&Item> {
+        self.items.iter().find(|item| item.index == n)
+    }
+
     /// A valid item, or none with the game's warning for an index outside
     /// the table.
     fn item(&self, n: i32) -> Option<&Item> {
@@ -167,7 +175,7 @@ impl Cac {
             self.say(format!("Invalid unlockable item {n} returning NULL"));
             return None;
         }
-        self.items.get(&n)
+        self.get(n)
     }
 
     /// The item named `name`, -1 for none.
@@ -176,7 +184,7 @@ impl Cac {
             return -1;
         }
         self.items
-            .values()
+            .iter()
             .find(|item| item.name.eq_ignore_ascii_case(name))
             .map_or(-1, |item| item.index)
     }
@@ -456,7 +464,7 @@ impl Cac {
         };
         let bodies = || {
             self.items
-                .values()
+                .iter()
                 .filter(|body| !body.null && body.slot == Some(BODY))
         };
         let found = if from_gun {
@@ -518,7 +526,7 @@ impl Cac {
             self.say(format!("Item {n} is invalid"));
             return;
         }
-        let Some(item) = self.items.get(&n) else {
+        let Some(item) = self.get(n) else {
             self.say(format!("Item {n} is invalid"));
             return;
         };
@@ -589,6 +597,98 @@ impl Cac {
         self.write_slot(Some(class), att as u32, &key);
     }
 
+    /// A slot's item when a default class names none.
+    fn slot_default(&self, slot: usize) -> u32 {
+        if slot >= SLOTS.len() {
+            return 0;
+        }
+        slot_default(&self.items, slot) as u32
+    }
+
+    /// `equipdefaultclass`: the default class's items in each of a class's
+    /// slots, then the Pro pass.
+    fn equip_default_class(&mut self, class: &str, row: usize) {
+        let table = self.default_table();
+        for slot in 0..CLASS_SLOTS {
+            let item = match table[row * CLASS_SLOTS + slot] {
+                -1 => self.slot_default(slot),
+                item => item as u32,
+            };
+            self.write_slot(Some(class), item, SLOTS[slot]);
+        }
+        self.pro_pass();
+    }
+
+    /// `equipdefaultglobalitems`: the default killstreaks and deathstreak.
+    fn equip_default_global_items(&mut self) {
+        let table = self.default_table();
+        for slot in CLASS_SLOTS..SLOTS.len() {
+            let item = match table[GLOBAL_ROW + slot] {
+                -1 => self.slot_default(slot),
+                item => item as u32,
+            };
+            self.write_slot(None, item, SLOTS[slot]);
+        }
+    }
+
+    fn default_table(&self) -> Vec<i32> {
+        default_table(&self.items)
+    }
+
+    /// The four attachment points of the item's slot, or one of them,
+    /// cleared.
+    fn clear_attachments(&mut self, class: &str, n: i32, point: Option<i32>) {
+        if !(0..MAX_ITEMS).contains(&n) {
+            self.say(format!("Invalid unlockable item {n} returning NULL"));
+            return;
+        }
+        let Some(slot) = self.get(n).and_then(|item| item.slot) else {
+            return;
+        };
+        let slot = SLOTS[slot];
+        let points = match point {
+            Some(point) => vec![point],
+            None => (1..5).collect(),
+        };
+        for point in points {
+            self.write_slot(
+                Some(class),
+                0,
+                &format!("{slot}attachment{}", point_name(point)),
+            );
+        }
+    }
+
+    /// The item is still marked new: never once everything is free, or
+    /// while it is locked.
+    fn is_new(&self, n: i32) -> bool {
+        if self.all_unlocked() || self.locked(n) || self.item(n).is_none() {
+            return false;
+        }
+        match self.walk(&["itemStats", &n.to_string(), "new"]) {
+            Some(at) => self.read(at) != 0,
+            None => {
+                self.say(format!("DDL: Error could not find item {n}"));
+                false
+            }
+        }
+    }
+
+    fn clear_new(&mut self, n: i32) {
+        if !self.is_new(n) {
+            return;
+        }
+        let Some(at) = self.walk(&["itemStats", &n.to_string(), "new"]) else {
+            self.say(format!("DDL: Error could not find item {n}"));
+            return;
+        };
+        if !set_raw_int(&self.layout, &mut self.buffer, at, 0) {
+            self.say(format!(
+                "DDL: Error could not set purchased flag for item {n}"
+            ));
+        }
+    }
+
     /// Each class's perks become their Pro versions where those are
     /// unlocked.
     fn pro_pass(&mut self) {
@@ -601,7 +701,7 @@ impl Cac {
             };
             for slot in PERK_SLOTS {
                 let n = self.read_slot(Some(&class), SLOTS[slot]) as i32;
-                let usable = self.items.get(&n).is_some_and(|item| !item.null);
+                let usable = self.get(n).is_some_and(|item| !item.null);
                 if !usable || !self.pro_unlocked(n) {
                     continue;
                 }
@@ -628,7 +728,18 @@ pub(crate) fn run(
 ) -> Option<Result<Vec<String>, String>> {
     if !matches!(
         name,
-        "equipclass" | "equipclassitem" | "equipclassattachment" | "copyclass"
+        "equipclass"
+            | "equipclassitem"
+            | "equipclassattachment"
+            | "copyclass"
+            | "equipdefaultclass"
+            | "equipdefaultitemtoslot"
+            | "equipdefaultglobalitemtoslot"
+            | "equipdefaultglobalitems"
+            | "clearitemnew"
+            | "clearallitemsnew"
+            | "clearallattachmentsforitem"
+            | "clearattachmentforitematpoint"
     ) {
         return None;
     }
@@ -652,12 +763,7 @@ fn run_command(world: &mut World, name: &str, args: &[String]) -> Result<Vec<Str
     let mut cac = Cac {
         buffer: bytes[..BUFFER_BYTES.min(bytes.len())].to_vec(),
         layout,
-        items: table(STATS_TABLE)
-            .map(items)
-            .unwrap_or_else(Vec::new)
-            .into_iter()
-            .map(|item| (item.index, item))
-            .collect(),
+        items: table(STATS_TABLE).map(items).unwrap_or_else(Vec::new),
         attachments: table(ATTACHMENT_TABLE).map_or_else(Vec::new, attachments),
         ranks,
         dvars: world.resource::<MatchScript>().dvars.clone(),
@@ -688,7 +794,7 @@ fn run_command(world: &mut World, name: &str, args: &[String]) -> Result<Vec<Str
                 });
                 match bare {
                     Some(weapon) => cac.equip_attachment(class, &weapon, "none", ""),
-                    None if cac.items.contains_key(&n) => cac.equip(class, n),
+                    None if cac.get(n).is_some() => cac.equip(class, n),
                     None => {}
                 }
             }
@@ -699,6 +805,73 @@ fn run_command(world: &mut World, name: &str, args: &[String]) -> Result<Vec<Str
         ),
         "equipclassattachment" => {
             cac.equip_attachment(arg(args, 0), arg(args, 1), arg(args, 2), arg(args, 3));
+        }
+        "equipdefaultclass" if args.len() < 2 => cac.say(
+            "equipdefaultclass usage: equipdefaultclass <customclassname> <defaultClass>".into(),
+        ),
+        "equipdefaultclass" => {
+            if let Some(row) = DEFAULT_CLASSES
+                .iter()
+                .position(|class| class.eq_ignore_ascii_case(arg(args, 1)))
+            {
+                cac.equip_default_class(arg(args, 0), row);
+            }
+        }
+        "equipdefaultitemtoslot" if args.len() < 2 => cac.say(
+            "equipdefaultitemtoslot usage: equipdefaultitemtoslot <customclassname> <slotname>"
+                .into(),
+        ),
+        "equipdefaultglobalitemtoslot" if args.is_empty() => cac.say(
+            "equipdefaultglobalitemtoslot usage: equipdefaultglobalitemtoslot <slotname>".into(),
+        ),
+        "equipdefaultitemtoslot" | "equipdefaultglobalitemtoslot" => {
+            let (class, slot) = if name == "equipdefaultitemtoslot" {
+                (Some(arg(args, 0)), arg(args, 1))
+            } else {
+                (None, arg(args, 0))
+            };
+            if let Some(index) = index_of(&SLOTS, slot) {
+                let item = cac.slot_default(index);
+                cac.write_slot(class, item, slot);
+            }
+        }
+        "equipdefaultglobalitems" => cac.equip_default_global_items(),
+        "clearitemnew" if args.is_empty() => {
+            cac.say("clearitemnew usage: clearitemnew <itemname>".into());
+        }
+        "clearitemnew" => {
+            let n = cac.index_by_name(arg(args, 0));
+            if n != -1 {
+                cac.clear_new(n);
+            }
+        }
+        "clearallitemsnew" => {
+            let all: Vec<i32> = cac
+                .items
+                .iter()
+                .filter(|item| !item.null)
+                .map(|item| item.index)
+                .collect();
+            for n in all {
+                cac.clear_new(n);
+            }
+        }
+        "clearallattachmentsforitem" if args.len() < 2 => cac.say(
+            "clearAllAttachmentsForItem usage: clearAllAttachmentsForItem <customClassName> <itemIndex>"
+                .into(),
+        ),
+        "clearallattachmentsforitem" => {
+            let n = super::iw4::atoi(arg(args, 1));
+            cac.clear_attachments(arg(args, 0), n, None);
+        }
+        "clearattachmentforitematpoint" if args.len() < 3 => cac.say(
+            "clearAttachmentForItemAtPoint usage: clearAttachmentForItemAtPoint <customClassName> <itemIndex> <attachmentPoint>"
+                .into(),
+        ),
+        "clearattachmentforitematpoint" => {
+            let n = super::iw4::atoi(arg(args, 1));
+            let point = super::iw4::atoi(arg(args, 2));
+            cac.clear_attachments(arg(args, 0), n, Some(point));
         }
         "copyclass" if args.len() < 2 => {
             cac.say(
