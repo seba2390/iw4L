@@ -114,6 +114,7 @@ pub(crate) struct T5CompassRadar {
     /// An enemy counter-spy plane is up.
     pub jammed: bool,
     pub pings: Vec<game_api::hud::CompassPing>,
+    pub friendlies: Vec<game_api::hud::CompassPing>,
     pub line: Option<game_api::hud::CompassRadarLine>,
 }
 
@@ -1332,7 +1333,15 @@ fn paint_owner(
             .and_then(|c| c.radar.as_ref())
             .is_some_and(|r| r.rules.enemies_owner_draw == n) =>
         {
-            paint_compass_enemies(state, &args, frame)
+            paint_compass_pings(state, &args, frame, false)
+        }
+        n if state
+            .compass
+            .as_ref()
+            .and_then(|c| c.radar.as_ref())
+            .is_some_and(|r| r.rules.friendlies_owner_draw == n) =>
+        {
+            paint_compass_pings(state, &args, frame, true)
         }
         n if state
             .compass
@@ -1735,10 +1744,13 @@ fn compass_offset(
 /// The enemies the radar shows: each icon `compassFriendlyWidth` by
 /// `compassFriendlyHeight` (scaled by `compassSize`) at its place, the
 /// satellite's turned to the enemy's heading.
-fn paint_compass_enemies(
+/// The radar's enemy icons, or the teammates' (`friendlies`), whose alpha
+/// the item's own holds down.
+fn paint_compass_pings(
     state: &T5HudState<'_>,
     args: &OwnerDrawArgs<'_>,
     frame: &mut ChromeFrame,
+    friendlies: bool,
 ) -> OwnerDrawPaint {
     let Some(compass) = state.compass.as_ref() else {
         return OwnerDrawPaint::Painted;
@@ -1764,12 +1776,22 @@ fn paint_compass_enemies(
         .catalog
         .and_then(|c| c.namespace)
         .unwrap_or(crate::images::HUD_CHROME_NAMESPACE);
-    for ping in &radar.pings {
+    let pings = if friendlies {
+        &radar.friendlies
+    } else {
+        &radar.pings
+    };
+    for ping in pings {
         let ([dx, dy], clamped) = compass_offset(compass, rotation, max_range, [w, h], ping.pos);
         if clamped && !(ping.clamps && clamp_icons) {
             continue;
         }
-        let [r, g, b, _] = args.color;
+        let [r, g, b, a] = args.color;
+        let alpha = if friendlies {
+            ping.alpha.min(a)
+        } else {
+            ping.alpha
+        };
         let applied = args.surface.apply_rect(
             x + w * 0.5 - icon_w * 0.5 + dx,
             y + h * 0.5 - icon_h * 0.5 + dy,
@@ -1788,7 +1810,7 @@ fn paint_compass_enemies(
             t0: 0.0,
             s1: 1.0,
             t1: 1.0,
-            color: [r, g, b, ping.alpha],
+            color: [r, g, b, alpha],
             material: ping.material.into(),
             op: match ping.turn {
                 Some(deg) => Draw2dOp::RotatedPic { deg },

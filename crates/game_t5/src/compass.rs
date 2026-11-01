@@ -24,14 +24,16 @@ pub(crate) static COMPASS: CompassRules = CompassRules {
     radar: Some(&RADAR),
 };
 
-/// The compass's enemies (owner draw 170), the spy plane's sweep line
-/// (332) and the counter-spy plane's static (328).
+/// The compass's enemies (owner draw 170), teammates (158), the spy
+/// plane's sweep line (332) and the counter-spy plane's static (328).
 static RADAR: CompassRadarRules = CompassRadarRules {
     enemies_owner_draw: 170,
+    friendlies_owner_draw: 158,
     line_owner_draw: 332,
     static_owner_draw: 328,
     update: radar_update,
     pings: radar_pings,
+    friendlies: friendly_pings,
     line: radar_line,
 };
 
@@ -42,6 +44,9 @@ const SEEN_MS: i32 = 1500;
 const PERK_GPSJAMMER: u32 = 25;
 /// Always on the radar.
 const PERK_SHOWONRADAR: u32 = 47;
+/// The client's team numbers with no teammates on the compass.
+const TEAM_FREE: i32 = 0;
+const TEAM_SPECTATOR: i32 = 3;
 
 fn dvar(view: &CompassRadarView<'_>, name: &str, default: f32) -> f32 {
     (view.dvar)(name).unwrap_or(default)
@@ -273,6 +278,43 @@ fn radar_pings(view: &CompassRadarView<'_>, radar: &CompassRadar) -> Vec<Compass
         }
     }
     pings
+}
+
+/// The teammates the client saw lately, in a team game: each an arrow
+/// turned to its heading (against the view when the compass turns with
+/// it, else against north), faded by the enemy's jamming and gone under
+/// an enemy counter-spy plane, kept at the compass's edge when off it with
+/// `compassClampIcons`.
+fn friendly_pings(view: &CompassRadarView<'_>, radar: &CompassRadar) -> Vec<CompassPing> {
+    let scale = jam_alpha(view);
+    if scale == 0.0 || matches!(view.local_team, TEAM_FREE | TEAM_SPECTATOR) {
+        return Vec::new();
+    }
+    let now = view.now;
+    let turn_from = if dvar(view, "compassRotation", 1.0) != 0.0 {
+        view.view_yaw
+    } else {
+        view.north_yaw
+    };
+    radar
+        .actors
+        .iter()
+        .enumerate()
+        .filter(|&(client, actor)| {
+            client != view.local_client
+                && !actor.enemy
+                && actor.seen_ms <= now
+                && now - SEEN_MS <= actor.seen_ms
+                && view.players.iter().any(|p| p.client == client)
+        })
+        .map(|(_, actor)| CompassPing {
+            pos: actor.pos,
+            material: "compassping_friendly_mp",
+            alpha: scale,
+            turn: Some(turn_from - actor.yaw),
+            clamps: true,
+        })
+        .collect()
 }
 
 /// The spy plane's line where the sweep is, across the compass's map.

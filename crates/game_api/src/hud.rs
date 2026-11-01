@@ -105,6 +105,8 @@ pub struct CompassRadarRules {
     /// static an enemy counter-spy plane lays over the map (the item's own
     /// material, placed like the map but never turned).
     pub enemies_owner_draw: i32,
+    /// The owner draw of the teammates.
+    pub friendlies_owner_draw: i32,
     pub line_owner_draw: i32,
     pub static_owner_draw: i32,
     /// Each frame: the enemies' latest places, the sweep's advance and the
@@ -112,6 +114,9 @@ pub struct CompassRadarRules {
     pub update: fn(&CompassRadarView<'_>, &mut CompassRadar),
     /// The enemy icons to draw this frame, in draw order.
     pub pings: fn(&CompassRadarView<'_>, &CompassRadar) -> Vec<CompassPing>,
+    /// The teammates' icons, in draw order; their alpha is also held to the
+    /// item's.
+    pub friendlies: fn(&CompassRadarView<'_>, &CompassRadar) -> Vec<CompassPing>,
     /// The sweep line's place across the compass, when a spy plane is up:
     /// the texture's centre `s` and its turn (degrees).
     pub line: fn(&CompassRadarView<'_>, &CompassRadar) -> Option<CompassRadarLine>,
