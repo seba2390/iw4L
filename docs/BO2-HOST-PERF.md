@@ -42,8 +42,9 @@ over 50 ms. Step-start gap p99/max: combat 66.39/70.05 ms, crowd worst 61.50/62.
 co-op 51.19/52.85 ms. Cheap computation does not imply uniform windowed dispatch.
 
 Co-op sent 2114 snapshots / 2,438,204 encoded bytes: 17.61 updates/s, 20.31 kB/s,
-excluding relay/TLS overhead. The existing 25 kB/s limiter held 286 updates;
-the worst ten-second window sent 120 and held 80. **Rate limiting, not packet loss**.
+excluding relay/TLS overhead. The shared pacer held 286 updates; worst ten-second
+window sent 120 and held 80. It combines a 25 kB/s budget and stale-ACK backoff;
+the counter does not separate them. **Pacing holds, not measured packet loss**.
 
 Compute headroom is substantial for this workload, not a maximum-capacity bound.
 Four-player/high-round combat, long-session stability and WAN latency/loss remain unmeasured.
