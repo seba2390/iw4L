@@ -408,8 +408,10 @@ Only the top-level items count. Runs are headless, with the test player
 - Zombies maps need the patch zone Black Ops II downloads at launch
   (`t6.scripts.ffotd`); a machine without a capture in
   `~/.config/iw4l/captured/` or `<artifacts>/captured/` cannot start
-  Nuketown, TranZit or Buried, and the capture tool is not in the repository;
-  the library greys those maps out and names the missing file and the
+  Nuketown, TranZit or Buried. `cargo xtask t6-capture --pid PID` scans the
+  owner's running original game for intact modules ([capture guide](T6-CAPTURE.md));
+  the original game must load the patch and retain an intact copy first.
+  The library greys those maps out and names the missing file and the
   folders instead of failing the launch.
 
 ## Black Ops II — Multiplayer
