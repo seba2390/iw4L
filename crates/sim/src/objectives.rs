@@ -141,6 +141,15 @@ impl ObjectiveMatch {
 }
 
 impl CompassObjective {
+    /// `shows_to` by the client state's team number.
+    pub fn shows_to_team_number(&self, team: i32, client: u32) -> bool {
+        let team = u8::try_from(team)
+            .ok()
+            .and_then(Team::from_packed_u8)
+            .unwrap_or(Team::Free);
+        self.shows_to(team, client)
+    }
+
     pub fn shows_to(&self, team: Team, client: u32) -> bool {
         self.state.drawn()
             && (self.team == Team::Free || self.team == team)

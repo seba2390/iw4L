@@ -118,6 +118,8 @@ pub struct CompassRadarRules {
     pub friendlies_owner_draw: i32,
     pub line_owner_draw: i32,
     pub static_owner_draw: i32,
+    /// The owner draw of the objectives' icons.
+    pub objectives_owner_draw: i32,
     /// Each frame: the enemies' latest places, the sweep's advance and the
     /// pings it and the satellite give.
     pub update: fn(&CompassRadarView<'_>, &mut CompassRadar),

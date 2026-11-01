@@ -116,6 +116,16 @@ pub(crate) struct T5CompassRadar {
     pub pings: Vec<game_api::hud::CompassPing>,
     pub friendlies: Vec<game_api::hud::CompassPing>,
     pub line: Option<game_api::hud::CompassRadarLine>,
+    /// The objectives the local player sees, in index order.
+    pub objectives: Vec<T5Objective>,
+}
+
+/// An objective on the compass: its place, its icon and whether it is the
+/// current one.
+pub(crate) struct T5Objective {
+    pub pos: [f32; 2],
+    pub icon: String,
+    pub current: bool,
 }
 
 /// The game's weapon info for a frame.
@@ -1367,6 +1377,14 @@ fn paint_owner(
                 _ => OwnerDrawPaint::Painted,
             }
         }
+        n if state
+            .compass
+            .as_ref()
+            .and_then(|c| c.radar.as_ref())
+            .is_some_and(|r| r.rules.objectives_owner_draw == n) =>
+        {
+            paint_compass_objectives(state, &args, frame)
+        }
         FULL_MAP_MAP => paint_full_map(state, &args, frame),
         FULL_MAP_LOCATOR => paint_locator(state, &args, frame),
         n => match state.owner_hints.iter().find(|(draw, _)| *draw == n) {
@@ -1710,13 +1728,14 @@ fn paint_locator(
 
 /// Where a world point falls on the compass, from the rect's centre, and
 /// whether it lay off the compass and was held at its edge.
-fn compass_offset(
+/// A place's offset from the compass's centre, not held to its edge.
+fn compass_project(
     compass: &T5Compass,
     rotation: bool,
     max_range: f32,
-    [w, h]: [f32; 2],
+    h: f32,
     pos: [f32; 2],
-) -> ([f32; 2], bool) {
+) -> [f32; 2] {
     let forward = if rotation {
         let (sin, cos) = compass.yaw.to_radians().sin_cos();
         [cos, sin]
@@ -1726,10 +1745,20 @@ fn compass_offset(
     let scale = h / max_range;
     let dx = (pos[0] - compass.origin[0]) * scale;
     let dy = (pos[1] - compass.origin[1]) * scale;
-    let mut p = [
+    [
         forward[1] * dx - forward[0] * dy,
         -(forward[1] * dy) - forward[0] * dx,
-    ];
+    ]
+}
+
+fn compass_offset(
+    compass: &T5Compass,
+    rotation: bool,
+    max_range: f32,
+    [w, h]: [f32; 2],
+    pos: [f32; 2],
+) -> ([f32; 2], bool) {
+    let mut p = compass_project(compass, rotation, max_range, h, pos);
     let mut clamped = false;
     for (axis, half) in [(0, w * 0.5), (1, h * 0.5)] {
         if p[axis].abs() > half {
@@ -1822,6 +1851,124 @@ fn paint_compass_pings(
     }
     OwnerDrawPaint::Painted
 }
+
+/// The objectives: each icon `compassObjectiveWidth` by
+/// `compassObjectiveHeight` (scaled by `compassSize`) at its place, held at
+/// the compass's edge when off it, faded from `compassMaxRange` to
+/// `compassObjectiveMaxRange` down to `compassObjectiveMinAlpha` and held
+/// to the item's alpha. A current objective on the compass also draws a
+/// line across it through its place each way, in the item's material,
+/// faded as the icon leaves the compass.
+fn paint_compass_objectives(
+    state: &T5HudState<'_>,
+    args: &OwnerDrawArgs<'_>,
+    frame: &mut ChromeFrame,
+) -> OwnerDrawPaint {
+    let Some(compass) = state.compass.as_ref() else {
+        return OwnerDrawPaint::Painted;
+    };
+    let Some(radar) = compass.radar.as_ref() else {
+        return OwnerDrawPaint::Painted;
+    };
+    let Some([x, y, w, h]) = compass_rect(state, compass, args) else {
+        return OwnerDrawPaint::Gap(ChromeGapKind::OwnerDraw);
+    };
+    let size = compass_dvar(state, "compassSize", compass.rules.size);
+    let icon_w = compass_dvar(state, "compassObjectiveWidth", 20.0) * size;
+    let icon_h = compass_dvar(state, "compassObjectiveHeight", 20.0) * size;
+    let max_range = compass_dvar(state, "compassMaxRange", compass.rules.max_range);
+    let objective_range = compass_dvar(state, "compassObjectiveMaxRange", 2048.0);
+    let min_alpha = compass_dvar(state, "compassObjectiveMinAlpha", 1.0);
+    let rotation = compass_dvar(
+        state,
+        "compassRotation",
+        f32::from(u8::from(compass.rules.rotation)),
+    ) != 0.0;
+    let namespace = args
+        .assets
+        .catalog
+        .and_then(|c| c.namespace)
+        .unwrap_or(crate::images::HUD_CHROME_NAMESPACE);
+    let line_material = background_key(&args.item.background).map(|(_, material)| material);
+    let [r, g, b, item_alpha] = args.color;
+    let (horz, vert) = (args.rect.horz_align as i32, args.rect.vert_align as i32);
+    let (cx, cy) = (x + w * 0.5, y + h * 0.5);
+    let quad = |frame: &mut ChromeFrame, rect: [f32; 4], material: String, alpha: f32| {
+        let applied = args
+            .surface
+            .apply_rect(rect[0], rect[1], rect[2], rect[3], horz, vert);
+        frame.list.cmds.push(Draw2dCmd {
+            material_namespace: namespace,
+            x: applied.x,
+            y: applied.y,
+            w: applied.w,
+            h: applied.h,
+            s0: 0.0,
+            t0: 0.0,
+            s1: 1.0,
+            t1: 1.0,
+            color: [r, g, b, alpha],
+            material,
+            op: Draw2dOp::StretchPic,
+            provenance: Draw2dProvenance::OwnerDraw(args.item.owner_draw),
+            layer: 1,
+        });
+    };
+    for objective in &radar.objectives {
+        let distance =
+            (objective.pos[0] - compass.origin[0]).hypot(objective.pos[1] - compass.origin[1]);
+        let mut alpha = if distance <= max_range {
+            1.0
+        } else if distance < objective_range {
+            let t = (distance - max_range) / (objective_range - max_range);
+            1.0 - (1.0 - min_alpha) * t
+        } else {
+            min_alpha
+        };
+        alpha = alpha.min(item_alpha);
+        let [ux, uy] = compass_project(compass, rotation, max_range, h, objective.pos);
+        let ([dx, dy], _) = compass_offset(compass, rotation, max_range, [w, h], objective.pos);
+        let (px, py) = (cx + ux, cy + uy);
+        let (half_w, half_h) = (icon_w * 0.5, icon_h * 0.5);
+        // How far the icon reaches past the compass, by its size.
+        let outside = [
+            (x - (px - half_w)) / icon_w,
+            (y - (py - half_h)) / icon_h,
+            ((px - half_w) + icon_w - (x + w)) / icon_w,
+            ((py - half_h) + icon_h - (y + h)) / icon_h,
+        ]
+        .into_iter()
+        .fold(0.0f32, f32::max)
+        .min(1.0);
+        if objective.current
+            && 1.0 - outside > 0.0
+            && let Some(material) = &line_material
+        {
+            let line_alpha = (1.0 - outside) * alpha;
+            if (y..=y + h).contains(&py) {
+                quad(
+                    frame,
+                    [x, py - 1.0, w, LINE_WIDTH],
+                    material.clone(),
+                    line_alpha,
+                );
+            }
+            if (x..=x + w).contains(&px) {
+                quad(frame, [px, y, LINE_WIDTH, h], material.clone(), line_alpha);
+            }
+        }
+        quad(
+            frame,
+            [cx + dx - half_w, cy + dy - half_h, icon_w, icon_h],
+            objective.icon.clone(),
+            alpha,
+        );
+    }
+    OwnerDrawPaint::Painted
+}
+
+/// The width of a current objective's lines across the compass.
+const LINE_WIDTH: f32 = 2.0;
 
 /// The spy plane's sweep line across the compass's map.
 fn paint_compass_radar_line(
