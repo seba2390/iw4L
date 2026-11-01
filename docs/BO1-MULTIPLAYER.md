@@ -62,7 +62,8 @@ through the rocket's own camera: the mouse steers, `+smoke` boosts, attack
 detonates. The Gunship (`helicopter_player_firstperson_mp`) flies in on its path,
 then is yours: move keys and the mouse fly it, `+gostand` and `+movedown` change
 height, attack fires the minigun, `+speed_throw` fires rockets. It leaves after a
-minute.
+minute. The Chopper Gunner (`helicopter_gunner_mp`) flies the map's own path; when
+its door opens, look and hold attack to fire.
 
 The host's console sets the scripts' limits, read each second as in Black
 Ops: `set scr_dm_scorelimit 100`, `set scr_dm_timelimit 2` (Team

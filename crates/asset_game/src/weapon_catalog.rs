@@ -397,6 +397,8 @@ pub struct VehicleMotion {
     pub tilt_from_velocity: [f32; 2],
     pub tilt_speed: [f32; 2],
     pub turret_span_right: f32,
+    /// The gunners' `gunnerWeapon`, nul padded.
+    pub gunner_weapon: [u8; 32],
     /// The `steerGraph` raw file's points; `steer_points` of them count.
     pub steer_graph: [[f32; 2]; 8],
     pub steer_points: u8,

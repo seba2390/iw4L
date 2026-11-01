@@ -616,6 +616,7 @@ pub fn apply_prepared_match(
                     tilt_from_velocity: motion.tilt_from_velocity,
                     tilt_speed: motion.tilt_speed,
                     turret_span_right: motion.turret_span_right,
+                    gunner_weapon: motion.gunner_weapon,
                     steer_graph: motion.steer_graph,
                     steer_points: motion.steer_points,
                 },

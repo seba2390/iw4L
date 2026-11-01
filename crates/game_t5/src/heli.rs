@@ -596,7 +596,18 @@ pub(crate) fn fire(
     let Some(def) = WeaponDefView::new(&def_bytes, &variant_bytes) else {
         return (None, vec![crate::movement::weapon_unknown()]);
     };
-    let (forward, right, up) = if heli.turret_aim.is_some() {
+    let (forward, right, up) = if let Some(aimed) = shot.aimed {
+        let along = std::array::from_fn(|i| aimed[i] - shot.origin[i]);
+        let size = length(along);
+        let forward = if size > 0.0 {
+            along.map(|v| v / size)
+        } else {
+            shot.axis[0]
+        };
+        let (_, right, up) =
+            movement_t5::math::angle_vectors([heli.angles[0], heli.angles[1], 0.0]);
+        (forward, right, up)
+    } else if heli.turret_aim.is_some() {
         movement_t5::math::angle_vectors(turret_world_angles(heli))
     } else {
         (shot.axis[0], shot.axis[1].map(|v| -v), shot.axis[2])
@@ -604,7 +615,7 @@ pub(crate) fn fire(
     // The model's tags are not turned with the gun here: the muzzle swings
     // about the gun's pivot by the gun's own turn.
     let muzzle = match shot.pivot {
-        Some(pivot) if heli.turret_aim.is_some() => {
+        Some(pivot) if heli.turret_aim.is_some() && shot.aimed.is_none() => {
             let arm = length(std::array::from_fn(|i| shot.origin[i] - pivot[i]));
             std::array::from_fn(|i| pivot[i] + forward[i] * arm)
         }
@@ -621,7 +632,7 @@ pub(crate) fn fire(
         0 => {
             let time = world.level_time();
             crate::fire::Bullets {
-                attacker: shot.entity,
+                attacker: shot.attacker,
                 weapon_entity: shot.entity,
                 hand: 0,
                 zombies: false,
@@ -633,7 +644,7 @@ pub(crate) fn fire(
         2 => {
             let dir = crate::missile::spread_dir(def.ads_spread(), forward, right, up, world);
             missile = crate::missile::spawn_rocket_mp(
-                shot.entity,
+                shot.attacker,
                 shot.entity,
                 shot.weapon,
                 &def,
@@ -663,7 +674,9 @@ pub(crate) fn frame(
 ) -> (HeliNotes, Option<&'static Unknown>) {
     let mut notes = HeliNotes::default();
     heli.previous_yaw = heli.angles[1];
-    let gap = if !heli.has_goal {
+    let gap = if heli.on_path {
+        None
+    } else if !heli.has_goal {
         if heli.piloted.pilot.is_some() || heli.piloted.yaw_rate != 0.0 || heli.speed != 0.0 {
             piloted_move(heli, world, &mut notes);
         }

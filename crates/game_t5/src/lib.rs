@@ -79,6 +79,9 @@ const MULTIPLAYER_ENGINE_DVARS: &[(&str, &str)] = &[
     ("bg_gravity", "800"),
     // How far a player reaches to use an entity.
     ("player_useRadius", "128"),
+    // How long a downed player bleeds out, Second Chance's script reads them.
+    ("player_lastStandBleedoutTime", "30"),
+    ("player_lastStandBleedoutTimeNoRevive", "10"),
     // The share of damage a vehicle takes by side.
     ("vehicle_damage_zone_front", "1"),
     ("vehicle_damage_zone_side", "1.2"),

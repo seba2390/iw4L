@@ -733,6 +733,36 @@ pub(crate) fn tag_world(
     ))
 }
 
+/// A tag on an entity's model in its bind pose at the entity's place: for a
+/// model whose script animation the server cannot pose.
+pub(crate) fn tag_world_bound(
+    world: &mut World,
+    object: u64,
+    tag: &str,
+) -> Option<([f32; 3], [[f32; 3]; 3])> {
+    let (model, origin, angles) = {
+        let mut runtime = world.resource_mut::<RoundScript>();
+        (
+            model_field(&mut runtime, object)?,
+            vector(&mut runtime, object, "origin"),
+            vector(&mut runtime, object, "angles"),
+        )
+    };
+    let frame = FrameWorld::from_world(world);
+    let capability = frame.model_capability(&model).flatten()?;
+    let dobj = AuthorityDObjState::at_pose(&model, Some(capability), origin, angles);
+    let matrix = dobj.tag_world_matrix(tag)?;
+    let axis = |v: glam::Vec4| v.truncate().normalize_or_zero().to_array();
+    Some((
+        matrix.w_axis.truncate().to_array(),
+        [
+            axis(matrix.x_axis),
+            axis(matrix.y_axis),
+            axis(matrix.z_axis),
+        ],
+    ))
+}
+
 /// A tag's world position and axis.
 pub(crate) type TagPose = ([f32; 3], [[f32; 3]; 3]);
 

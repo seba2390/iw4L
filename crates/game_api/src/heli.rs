@@ -60,6 +60,8 @@ pub struct HeliMove {
     pub piloted: PilotedFlight,
     /// `setheliheightlock`: the pilot's altitude holds over the ground.
     pub height_lock: bool,
+    /// On a map's vehicle path: the path, not this frame, moves it.
+    pub on_path: bool,
 }
 
 /// What a piloted helicopter's frame reads from its pilot and keeps.
@@ -137,6 +139,8 @@ pub struct VehicleMotion {
     pub tilt_from_velocity: [f32; 2],
     pub tilt_speed: [f32; 2],
     pub turret_span_right: f32,
+    /// The gunners' `gunnerWeapon`, nul padded.
+    pub gunner_weapon: [u8; 32],
     /// Points of its `steerGraph`, x then y; empty when it has none.
     pub steer_graph: [[f32; 2]; 8],
     pub steer_points: u8,
@@ -170,6 +174,10 @@ pub struct HeliShot {
     /// The tag the gun turns about, when the model has one.
     pub pivot: Option<[f32; 3]>,
     pub target: Option<i32>,
+    /// Who the shot is credited to: its seat's player, else the vehicle.
+    pub attacker: i32,
+    /// Where a gunner's aim points the shot.
+    pub aimed: Option<[f32; 3]>,
 }
 
 /// What a helicopter's frame reads from the match.

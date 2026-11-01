@@ -72,6 +72,19 @@ impl WeaponCatalog {
                 ],
                 tilt_speed: [value("tiltSpeedPitch"), value("tiltSpeedRoll")],
                 turret_span_right: value("turretHorizSpanRight"),
+                gunner_weapon: {
+                    let mut name = [0; 32];
+                    if let Some(weapon) = parts
+                        .chunks(2)
+                        .find(|pair| pair[0] == "gunnerWeapon")
+                        .and_then(|pair| pair.get(1))
+                    {
+                        let bytes = weapon.as_bytes();
+                        let count = bytes.len().min(name.len());
+                        name[..count].copy_from_slice(&bytes[..count]);
+                    }
+                    name
+                },
                 steer_graph,
                 steer_points,
             },
