@@ -66,3 +66,6 @@ first minute as zombies come in (#257):
 
 With a crowd the snapshots near the 25 kB/s rate and the host's step nears
 its 50 ms tick (the joined client runs on the same machine).
+
+For deterministic shared-network checks without assets or a live game, use
+`make network-impairments` ([coverage and limits](NETWORK-TESTING.md)).

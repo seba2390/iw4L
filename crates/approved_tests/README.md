@@ -2,7 +2,7 @@
 
 APPROVED TEST POLICY
 
-Only explicitly owner-approved end-to-end scenarios may exist in this crate.
+Only explicitly owner-approved scenarios may exist in this crate.
 Agents may create temporary tests and probes during development, but those
 must be deleted before the final squash/push unless specifically approved. A
 useful test is not automatically an approved test.
@@ -18,6 +18,7 @@ directories everywhere in the workspace, this crate included.
 | --- | --- |
 | `master_duo_chaos` | two real clients join one dev master lobby, load `mp_boneyard` once, move for 4 seconds and run 16 seconds of RPG chaos with seven bots |
 | `heavy_gameplay_lifecycle` | cold load `mp_overgrown` for free-for-all (`dm`) with 16 players, three input scenes, production disconnect, a watched menu, a second map with three scenes, production quit |
+| `network_impairments` | asset-free production networking sessions over seeded loss, latency, jitter and reordering; no game process, sockets or display ([details](../../docs/NETWORK-TESTING.md)) |
 
 The scenario's steps are in `src/scenarios/heavy_gameplay_lifecycle.rs` and
 nowhere else: maps, seed rule, scenes, positions, angles, weapons, durations

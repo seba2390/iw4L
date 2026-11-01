@@ -298,12 +298,16 @@ logs:
 #                         Empty / dir / non-rs refuse; CI checks the whole
 #                         tree with `cargo fmt --all -- --check`.
 FILES ?=
-# Owner-approved end-to-end scenarios (crates/approved_tests/README.md).
+# Owner-approved scenarios (crates/approved_tests/README.md).
 SCENARIO ?= heavy_gameplay_lifecycle
 # Cold cache by default; ARGS='--seed N' | '--replay <run.json>' | '--cache shared'.
 approved: require-games
 	cd $(ROOT) && $(CARGO) build --profile play -p launcher
 	cd $(ROOT) && $(CARGO) run --quiet -p approved_tests -- $(SCENARIO) $(ARGS)
+
+.PHONY: network-impairments
+network-impairments:
+	cd $(ROOT) && $(CARGO) run --quiet -p approved_tests -- network_impairments $(ARGS)
 
 # What a push would publish: nothing under `context/`, no `.env`, no key, no
 # piece of a game install, and no retail offsets left over in the code. It is a

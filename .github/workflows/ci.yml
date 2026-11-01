@@ -62,3 +62,12 @@ jobs:
       - name: cargo xtask lints --enforce
         if: runner.os == 'Linux'
         run: cargo run -q -p xtask -- lints --enforce
+      - name: Headless network impairment scenarios
+        run: cargo run -p approved_tests -- network_impairments --seed 1234
+      - name: Network impairment reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: network-impairments
+          path: iw4l-artifacts/approved-tests/*-network_impairments-*/run.json
+          if-no-files-found: ignore

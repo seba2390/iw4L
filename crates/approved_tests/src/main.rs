@@ -1,4 +1,4 @@
-//! The owner-approved end-to-end scenarios; see README.md.
+//! The owner-approved scenarios; see README.md.
 
 mod report;
 mod runner;
@@ -6,6 +6,7 @@ mod scenario;
 mod scenarios {
     pub mod heavy_gameplay_lifecycle;
     pub mod master_duo_chaos;
+    pub mod network_impairments;
 }
 
 use std::path::{Path, PathBuf};
@@ -32,12 +33,28 @@ struct Args {
 
 fn main() {
     let root = repo_root();
+    let cli: Vec<String> = std::env::args().skip(1).collect();
+    if cli
+        .first()
+        .is_some_and(|name| name == "network_impairments")
+    {
+        std::process::exit(
+            match scenarios::network_impairments::run(&root, &cli[1..]) {
+                Ok(true) => 0,
+                Ok(false) => 1,
+                Err(error) => {
+                    eprintln!("network_impairments: {error}");
+                    2
+                }
+            },
+        );
+    }
     let args = match parse_args(&root) {
         Ok(args) => args,
         Err(message) => {
             eprintln!("{message}");
             eprintln!(
-                "usage: approved_tests <heavy_gameplay_lifecycle|master_duo_chaos> [--seed N | --replay run.json] \
+                "usage: approved_tests <heavy_gameplay_lifecycle|master_duo_chaos|network_impairments> [--seed N | --replay run.json] \
                  [--cache cold|shared] [--bin path]"
             );
             std::process::exit(2);
@@ -62,7 +79,7 @@ fn main() {
     }
     if args.scenario != SCENARIO.name {
         eprintln!(
-            "approved scenarios: {}, master_duo_chaos (asked for {:?})",
+            "approved scenarios: {}, master_duo_chaos, network_impairments (asked for {:?})",
             SCENARIO.name, args.scenario
         );
         std::process::exit(2);
