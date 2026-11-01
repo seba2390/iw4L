@@ -1302,6 +1302,7 @@ impl Host {
             "RegisterFont",
             "RegisterMaterial",
             "GetTextDimensions",
+            "ProjectRootCoordinate",
         ] {
             self.bind(tables, &globals, name)?;
         }
@@ -2675,6 +2676,16 @@ impl Bindings for Host {
                     .element(args.first().ok_or(FaultKind::Argument(1))?)?
                     .local_rectangle();
                 Ok(vec![Value::Number((rect[3] - rect[1]).abs())])
+            }
+            "ProjectRootCoordinate" => {
+                if text(args.first().ok_or(FaultKind::Argument(1))?)? != "UIRootFull" {
+                    return Err(FaultKind::Unknown(super::script::ENGINE_API));
+                }
+                // Mouse events already use the full-screen root's units.
+                Ok(vec![
+                    Value::Number(number(args.get(1))?),
+                    Value::Number(number(args.get(2))?),
+                ])
             }
             "RootPixelsToUnits" => Ok(self
                 .elements
