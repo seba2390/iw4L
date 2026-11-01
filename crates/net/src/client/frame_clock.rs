@@ -13,6 +13,10 @@ pub struct FrameClock {
     started: bool,
 
     frac_ms: f32,
+    remote_skews: [Option<(i32, f32)>; 16],
+    remote_sample_at: usize,
+    remote_slew_frac_ms: f32,
+    remote_recovery_pending: bool,
 
     last_server: Option<i32>,
     reset_n: u32,
@@ -90,6 +94,11 @@ impl FrameClock {
 
     pub const ADJUST_TIME_DELTA_FAST_MS: i32 = 100;
 
+    const REMOTE_SLEW_RATE: f32 = 0.2;
+    const REMOTE_SAMPLE_WINDOW_MS: f32 = 400.0;
+    const REMOTE_RECOVERY_SAMPLES: usize = 5;
+    const REMOTE_RECOVERY_SPREAD_MS: i32 = 8;
+
     pub fn last_adjust(&self) -> Option<&'static str> {
         match self.last_adjust {
             1 => Some("reset"),
@@ -163,6 +172,10 @@ impl FrameClock {
         let dt_ms = self.frac_ms as i32;
         self.frac_ms -= dt_ms as f32;
         let mut next = self.time.wrapping_add(dt_ms);
+        let mut fresh_skew = None;
+        for (_, age) in self.remote_skews.iter_mut().flatten() {
+            *age += delta_secs.max(0.0) * 1000.0;
+        }
         self.extrapolated = self.last_server.is_some_and(|s| next >= s.wrapping_sub(8));
         if let Some(st) = server_time {
             let server = st.ms();
@@ -170,15 +183,33 @@ impl FrameClock {
                 self.last_server = Some(server);
                 let skew = server.wrapping_sub(next);
                 let mag = skew.unsigned_abs();
-                if mag > Self::ADJUST_TIME_DELTA_RESET_MS as u32 {
+                if monotonic {
+                    let uncertainty = Self::REMOTE_RECOVERY_SPREAD_MS.max(dt_ms);
+                    let prior = self
+                        .remote_skews
+                        .iter()
+                        .flatten()
+                        .filter(|(_, age)| *age <= Self::REMOTE_SAMPLE_WINDOW_MS)
+                        .map(|(offset, _)| (*offset, *offset, 1))
+                        .reduce(|(a, b, n), (c, d, m)| (a.min(c), b.max(d), n + m));
+                    if let Some((low, high, count)) = prior
+                        && count >= Self::REMOTE_RECOVERY_SAMPLES
+                        && high.saturating_sub(low) <= uncertainty
+                        && skew > 0
+                        && skew.saturating_sub(high) > uncertainty
+                    {
+                        self.remote_recovery_pending = true;
+                    } else if skew < -uncertainty {
+                        self.remote_recovery_pending = false;
+                    }
+                    fresh_skew = Some(skew);
+                    self.remote_skews[self.remote_sample_at] = Some((skew, 0.0));
+                    self.remote_sample_at = (self.remote_sample_at + 1) % self.remote_skews.len();
+                } else if mag > Self::ADJUST_TIME_DELTA_RESET_MS as u32 {
                     self.frac_ms = 0.0;
                     self.reset_n = self.reset_n.saturating_add(1);
                     self.last_adjust = 1;
-                    self.assign_server_time(if monotonic {
-                        server.max(self.time)
-                    } else {
-                        server
-                    });
+                    self.assign_server_time(server);
                     return;
                 } else if mag > Self::ADJUST_TIME_DELTA_FAST_MS as u32 {
                     next = next.wrapping_add(skew / 2);
@@ -186,6 +217,69 @@ impl FrameClock {
                     self.last_adjust = 2;
                 } else if mag > 0 {
                     next = next.wrapping_add(skew.signum());
+                    self.nudge_n = self.nudge_n.saturating_add(1);
+                    self.last_adjust = 3;
+                }
+            }
+        }
+
+        if monotonic
+            && let Some((low, high, count)) = self
+                .remote_skews
+                .iter()
+                .flatten()
+                .filter(|(_, age)| *age <= Self::REMOTE_SAMPLE_WINDOW_MS)
+                .map(|(skew, _)| (*skew, *skew, 1))
+                .reduce(|(a, b, n), (c, d, m)| (a.min(c), b.max(d), n + m))
+        {
+            let recovering = self.remote_recovery_pending
+                && low > 0
+                && count >= Self::REMOTE_RECOVERY_SAMPLES
+                && high.saturating_sub(low) <= Self::REMOTE_RECOVERY_SPREAD_MS.max(dt_ms);
+            let skew = if recovering {
+                low
+            } else {
+                fresh_skew.unwrap_or(0)
+            };
+            if skew > Self::ADJUST_TIME_DELTA_RESET_MS {
+                self.frac_ms = 0.0;
+                self.remote_slew_frac_ms = 0.0;
+                self.remote_recovery_pending = false;
+                self.remote_skews.fill(None);
+                self.reset_n = self.reset_n.saturating_add(1);
+                self.last_adjust = 1;
+                self.assign_server_time(next.saturating_add(skew));
+                return;
+            }
+            let limit = delta_secs.max(0.0) * 1000.0 * Self::REMOTE_SLEW_RATE;
+            let whole_ms = if recovering {
+                self.remote_slew_frac_ms += (skew as f32).min(limit);
+                let whole = self.remote_slew_frac_ms as i32;
+                self.remote_slew_frac_ms -= whole as f32;
+                whole
+            } else {
+                self.remote_slew_frac_ms = 0.0;
+                if skew.unsigned_abs() > Self::ADJUST_TIME_DELTA_FAST_MS as u32 {
+                    skew / 2
+                } else {
+                    skew.signum()
+                }
+            };
+            let adjusted = next.wrapping_add(whole_ms).max(self.time);
+            let whole_ms = adjusted.wrapping_sub(next);
+            next = adjusted;
+            if recovering && whole_ms >= low {
+                self.remote_recovery_pending = false;
+            }
+            // Every stored offset is relative to the clock being corrected.
+            for (remaining, _) in self.remote_skews.iter_mut().flatten() {
+                *remaining = remaining.saturating_sub(whole_ms);
+            }
+            if whole_ms != 0 {
+                if !recovering && skew.unsigned_abs() > Self::ADJUST_TIME_DELTA_FAST_MS as u32 {
+                    self.fast_n = self.fast_n.saturating_add(1);
+                    self.last_adjust = 2;
+                } else {
                     self.nudge_n = self.nudge_n.saturating_add(1);
                     self.last_adjust = 3;
                 }

@@ -459,11 +459,7 @@ fn apply_presented_script_model_dobjs(
                 && rt.pose_time_ms > previous_time
             {
                 let span = (rt.pose_time_ms - previous_time) as f32;
-                let base_time = if archived {
-                    previous_time
-                } else {
-                    rt.pose_time_ms
-                };
+                let base_time = script_mover_lerp_base_ms(previous_time, archived);
                 let elapsed = sub_tick_elapsed_ms(
                     base_time,
                     at_time,
@@ -482,6 +478,14 @@ fn apply_presented_script_model_dobjs(
     }
 }
 
+fn script_mover_lerp_base_ms(previous_time: i32, archived: bool) -> i32 {
+    if archived {
+        previous_time
+    } else {
+        previous_time.saturating_add(net::AUTHORITY_MS)
+    }
+}
+
 fn sample_script_mover_pose(
     runtime: &net::CEntityRuntime,
     at_time_ms: i32,
@@ -497,12 +501,16 @@ fn sample_script_mover_pose(
         && runtime.pose_time_ms > previous_time
     {
         let span = (runtime.pose_time_ms - previous_time) as f32;
-        let base_time = if archived {
-            previous_time
-        } else {
-            runtime.pose_time_ms
-        };
+        let base_time = script_mover_lerp_base_ms(previous_time, archived);
         let elapsed = sub_tick_elapsed_ms(base_time, at_time_ms, snap_time_ms, cg_clock, fixed);
+        if !archived && elapsed > span {
+            let ahead = (elapsed - span).min(net::AUTHORITY_MS as f32) as i32;
+            let sample_time = runtime.pose_time_ms.saturating_add(ahead);
+            return (
+                eval(&runtime.current.pos, sample_time),
+                eval(&runtime.current.apos, sample_time),
+            );
+        }
         let fraction = (elapsed / span).clamp(0.0, 1.0);
         let old_origin = eval(&previous.pos, previous_time);
         let old_angles = eval(&previous.apos, previous_time);
@@ -515,6 +523,11 @@ fn sample_script_mover_pose(
         });
         return (origin, angles);
     }
+    let at_time_ms = if clock_started && !archived {
+        runtime.pose_time_ms
+    } else {
+        at_time_ms
+    };
     (
         eval(&runtime.current.pos, at_time_ms),
         eval(&runtime.current.apos, at_time_ms),
