@@ -9,6 +9,11 @@ use bevy_ecs::prelude::World;
 use crate::frame::FrameWorld;
 use crate::script::{RoundScript, Value};
 
+/// The registered defaults of the aggressive attack's dvars.
+const AGGRESSIVE_REACH: f32 = 1.5;
+const AGGRESSIVE_HEIGHT: f32 = 24.0;
+/// A target this far behind the way the dog looks is out of its lunge.
+const AGGRESSIVE_AHEAD: f32 = -0.707;
 /// How far ahead a moving enemy's position is predicted, in seconds.
 const PREDICT_SECONDS: f32 = 0.25;
 /// Added to `meleeAttackDist` for the bite's reach, once more for a moving enemy.
@@ -40,6 +45,9 @@ pub(crate) fn think(world: &mut World, actor: u64, enemy: u64) -> (bool, Option<
     let Some(dog) = vector(world, actor, "origin") else {
         return (false, None);
     };
+    if aggressive_attack(world, actor, enemy, dog) {
+        return (true, Some(dog));
+    }
     let (target, reach) = predicted_target(world, actor, enemy);
     let height = dog[2] - target[2];
     let close = height * height <= CLOSE_HEIGHT * CLOSE_HEIGHT
@@ -50,6 +58,42 @@ pub(crate) fn think(world: &mut World, actor: u64, enemy: u64) -> (bool, Option<
         None => close && clear(world, dog, target),
     };
     (bite, spot)
+}
+
+/// Black Ops multiplayer's dog (`dog_aggressive_attack`) also lunges, standing
+/// in its stop animscript, at a player within
+/// `dog_aggressive_attack_multiplier` of its reach and
+/// `dog_aggressive_attack_height_threshold` of its height, not behind it and
+/// clear to reach. It holds to the hellhound's rules otherwise.
+fn aggressive_attack(world: &mut World, actor: u64, enemy: u64, dog: [f32; 3]) -> bool {
+    if !super::actor_brain::runs_multiplayer_dog_rules(world, actor)
+        || super::actor_nav::dvar_f32(world, "dog_aggressive_attack", 1.0) == 0.0
+        || !super::actor_brain::stands_interruptible(world, actor)
+        || world
+            .resource::<RoundScript>()
+            .player_client(enemy)
+            .is_none()
+    {
+        return false;
+    }
+    let (target, _) = predicted_target(world, actor, enemy);
+    let reach = float_field(world, actor, "meleeattackdist")
+        * super::actor_nav::dvar_f32(world, "dog_aggressive_attack_multiplier", AGGRESSIVE_REACH);
+    let height = super::actor_nav::dvar_f32(
+        world,
+        "dog_aggressive_attack_height_threshold",
+        AGGRESSIVE_HEIGHT,
+    );
+    let to_target = [target[0] - dog[0], target[1] - dog[1], target[2] - dog[2]];
+    let length =
+        (to_target[0] * to_target[0] + to_target[1] * to_target[1] + to_target[2] * to_target[2])
+            .sqrt();
+    if length > reach || to_target[2].abs() > height || length == 0.0 {
+        return false;
+    }
+    let look = super::actor_nav::look_dir(world, actor);
+    let ahead = (look[0] * to_target[0] + look[1] * to_target[1] + look[2] * to_target[2]) / length;
+    ahead >= AGGRESSIVE_AHEAD && clear(world, dog, target)
 }
 
 /// Where the dog aims, and how far its bite reaches.

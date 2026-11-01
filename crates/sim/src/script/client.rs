@@ -231,6 +231,12 @@ pub(crate) enum ClientMessage {
         surface: &'static str,
         dog: bool,
     },
+    /// A dog's paw step: where it sounds and the surface's name.
+    DogStep {
+        entity: u64,
+        position: [f32; 3],
+        surface: &'static str,
+    },
 }
 
 /// How the game's client sounds an actor's footstep, when it does.
@@ -239,6 +245,22 @@ pub(crate) fn ai_footstep_rule(server: &World) -> Option<game_api::AiFootstep> {
         .get_resource::<ClientScripts>()?
         .callbacks?
         .ai_footstep
+}
+
+/// How the game's client sounds a dog's step its own way, when it does.
+pub(crate) fn dog_step_rule(server: &World) -> Option<game_api::DogStep> {
+    server.get_resource::<ClientScripts>()?.callbacks?.dog_step
+}
+
+/// A dog's paw step, for the client scripts.
+pub(crate) fn dog_step(server: &mut World, entity: u64, position: [f32; 3], surface: &'static str) {
+    if let Some(mut runtime) = server.get_resource_mut::<RoundScript>() {
+        runtime.client_messages.push(ClientMessage::DogStep {
+            entity,
+            position,
+            surface,
+        });
+    }
 }
 
 /// An actor's footstep, for the client scripts.
@@ -827,6 +849,8 @@ struct ServerEntitySnapshot {
     /// The entity's team and its owner's entity number.
     team: Option<Value>,
     owner: Option<i32>,
+    /// A Black Ops dog's animation state.
+    anim_state: Option<u32>,
     client_flags: u16,
     has_eyes: bool,
     hidden: bool,
@@ -836,6 +860,11 @@ struct ServerEntitySnapshot {
 /// Each client entity's owner, by entity number (`getOwner`).
 #[derive(Resource, Default)]
 pub(crate) struct ClientOwners(pub(crate) std::collections::BTreeMap<u64, i32>);
+
+/// Each client entity's animation state, by client entity
+/// (`GetAnimStateCategory`).
+#[derive(Resource, Default)]
+pub(crate) struct ClientAnimStates(pub(crate) std::collections::BTreeMap<u64, u32>);
 
 /// The client VM: its world, and the entries it starts with once the
 /// client has a snapshot.
@@ -1422,6 +1451,8 @@ fn collect_server_entities(server: &mut World) -> Vec<ServerEntitySnapshot> {
                 origin, angles, model, species, is_dog, targetname, team, owner,
             )
         };
+        let anim_state =
+            super::host::actor_dog_states::state_of(server.resource::<RoundScript>(), id);
         if entity.kind == EntityKind::Player
             && let Some(ps) =
                 crate::frame::player_ref(server, crate::ClientId(entity.number as u32))
@@ -1459,6 +1490,7 @@ fn collect_server_entities(server: &mut World) -> Vec<ServerEntitySnapshot> {
             targetname,
             team,
             owner,
+            anim_state,
             client_flags: flags,
             has_eyes,
             hidden: entity.hidden,
@@ -1701,6 +1733,27 @@ fn run_frame(
                 start_callback(world, rule.callback, Value::level(), args);
                 continue;
             }
+            ClientMessage::DogStep {
+                entity,
+                position,
+                surface,
+            } => {
+                let (Some(mirrored), Some(rule)) =
+                    (client.mirrored.get(&entity), callbacks.dog_step)
+                else {
+                    continue;
+                };
+                // Black Ops' actors have no burning flag here: never on fire.
+                let args = vec![
+                    Value::Int(0),
+                    Value::Object(mirrored.client_object),
+                    Value::Vector(position),
+                    Value::string(surface),
+                    Value::Int(0),
+                ];
+                start_callback(world, rule.callback, Value::level(), args);
+                continue;
+            }
             ClientMessage::GibEvent { entity, bits } => {
                 let Some(mirrored) = client.mirrored.get(&entity) else {
                     continue;
@@ -1902,6 +1955,13 @@ fn sync_snapshot_entities(
         match snap.owner {
             Some(owner) => owners.0.insert(client_object, owner),
             None => owners.0.remove(&client_object),
+        };
+        let mut anim_states = client
+            .world
+            .get_resource_or_insert_with(ClientAnimStates::default);
+        match snap.anim_state {
+            Some(state) => anim_states.0.insert(client_object, state),
+            None => anim_states.0.remove(&client_object),
         };
         if let Some(dobj) = &snap.dobj {
             dobjs.insert(client_object, dobj.clone());

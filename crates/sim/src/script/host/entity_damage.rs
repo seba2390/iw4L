@@ -543,10 +543,7 @@ pub(crate) fn shot_target(world: &mut World, target: ScriptModelId) -> Option<Sh
         _ => None,
     };
     let health = int(runtime.object_field(object, "health")).unwrap_or(0);
-    let team = named(
-        runtime.object_field(object, "team"),
-        &["axis", "allies", "neutral"],
-    );
+    let team = named(runtime.actor_team(object), &["axis", "allies", "neutral"]);
     let ai_type = named(
         runtime.object_field(object, "type"),
         &["human", "zombie", "zombie_dog", "dog"],

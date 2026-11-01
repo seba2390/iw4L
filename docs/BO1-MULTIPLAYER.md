@@ -52,7 +52,7 @@ carried in front of you (yellow where it fits, red where it does not; fire
 to put it down, the slot button again to keep it) and shoots enemies it
 sees; the SAM Turret tracks enemy aircraft and fires homing missiles at
 them.
-The other killstreaks (#660 … #662) still need their own engine pieces. To get one at once:
+The RC-XD (#660) still needs its own engine pieces. To get one at once:
 `script maps/mp/gametypes/_hardpoints::givekillstreak player0 radar_mp`
 (`counteruav_mp`, `radardirection_mp`, `autoturret_mp`, `auto_tow_mp`).
 The Attack Helicopter (`helicopter_comlink_mp`) flies in and hunts enemies by
@@ -64,6 +64,13 @@ then is yours: move keys and the mouse fly it, `+gostand` and `+movedown` change
 height, attack fires the minigun, `+speed_throw` fires rockets. It leaves after a
 minute. The Chopper Gunner (`helicopter_gunner_mp`) flies the map's own path; when
 its door opens, look and hold attack to fire.
+The Attack Dogs (`dogs_mp`) come in from the map's dog spawn nodes, four at a
+time and eight in all (`scr_dog_count`, `scr_dog_max_at_once`), patrol, run
+down enemies and bite (a kill is yours). Shooting one hurts it, it heals after
+a pause, and three hits from most guns kill it, leaving its body in its death
+pose; a fresh dog takes its place. After a minute (`scr_dog_time`) they run off
+and are gone. An enemy's dogs at once:
+`script maps/mp/_dogs::useKillstreakDogs player1 dogs_mp`.
 
 The host's console sets the scripts' limits, read each second as in Black
 Ops: `set scr_dm_scorelimit 100`, `set scr_dm_timelimit 2` (Team

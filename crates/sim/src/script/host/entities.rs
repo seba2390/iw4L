@@ -502,6 +502,7 @@ impl RoundScript {
 
     pub(crate) fn delete_entity(&mut self, id: u64) {
         self.actor_anims.remove(&id);
+        self.dog_anim_states.remove(&id);
         self.actor_brains.remove(&id);
         self.actor_moves.remove(&id);
         self.t5.blood_impact.remove(&id);

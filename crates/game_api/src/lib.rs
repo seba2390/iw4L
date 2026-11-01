@@ -118,6 +118,27 @@ pub struct ClientCallbacks {
     pub level_notify: &'static str,
     /// An actor's foot struck the ground, when the game's client sounds it.
     pub ai_footstep: Option<AiFootstep>,
+    /// A dog's paw struck the ground, when the game's client sounds it its
+    /// own way.
+    pub dog_step: Option<DogStep>,
+}
+
+/// How a game's client sounds a dog's step (its `dogstep_` notetrack):
+/// `callback(local client, dog, position, surface, on fire)` on the level,
+/// once for each paw the note names.
+#[derive(Clone, Copy, Debug)]
+pub struct DogStep {
+    pub callback: &'static str,
+    /// The paw tags: front right, front left, back right, back left. The
+    /// step sounds at the paw's tag, else at the dog's origin.
+    pub tags: [&'static str; 4],
+    /// The trace for the ground under the step: this far above and below
+    /// it, stopping on these contents.
+    pub trace_up: f32,
+    pub trace_down: f32,
+    pub trace_mask: u32,
+    /// The surface name a trace's surface flags give.
+    pub surface: fn(surface_flags: u32) -> &'static str,
 }
 
 /// How a game's client sounds an actor's footstep (its `footstep_` or
@@ -223,7 +244,28 @@ pub enum KeyType {
     Vector,
 }
 
+/// One node of an animation tree a game's executable builds in code.
+#[derive(Clone, Copy, Debug)]
+pub struct CodeAnimNode {
+    pub name: &'static str,
+    pub parent: Option<u16>,
+    pub additive: bool,
+}
+
+/// An animation tree a game's executable builds in code: its node indices are
+/// what the code drives it by.
+#[derive(Clone, Copy, Debug)]
+pub struct CodeAnimTree {
+    pub name: &'static str,
+    pub nodes: &'static [CodeAnimNode],
+}
+
 pub trait GameScripts: Sync {
+    /// The trees the game's multiplayer executable builds in code.
+    fn multiplayer_code_anim_trees(&self) -> &'static [CodeAnimTree] {
+        &[]
+    }
+
     fn program(
         &self,
         request: &ScriptRequest<'_>,

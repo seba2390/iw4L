@@ -3521,7 +3521,7 @@ fn actor_badplace_teams(world: &mut World, actor: u64) -> u8 {
     if aware <= 0.0 {
         return 0;
     }
-    match runtime.object_field(actor, "team") {
+    match runtime.actor_team(actor) {
         Value::String(team) => match &*team {
             "free" => 1 << 0,
             "axis" => 1 << 1,
@@ -4792,7 +4792,12 @@ fn melee(world: &mut World, actor: u64, direction: Option<[f32; 3]>) -> Option<u
         }
         movement.melee_time = Some(now);
         let (_, angles) = pose(&mut runtime, actor);
-        let weapon = match runtime.object_field(actor, "weapon") {
+        // Black Ops multiplayer's actors carry it as `aiweapon`.
+        let weapon = match runtime.object_field(actor, "aiweapon") {
+            Value::Undefined => runtime.object_field(actor, "weapon"),
+            weapon => weapon,
+        };
+        let weapon = match weapon {
             Value::String(name) => Some(name),
             _ => None,
         };
@@ -4935,6 +4940,15 @@ pub(crate) fn wants_dog_turn(world: &mut World, actor: u64) -> bool {
         return false;
     };
     min_dist <= look_dist && delta_turn_yaw(world, actor).abs() > angle
+}
+
+/// The way along the actor's path it looks ahead.
+pub(crate) fn look_dir(world: &World, actor: u64) -> [f32; 3] {
+    world
+        .resource::<RoundScript>()
+        .actor_moves
+        .get(&actor)
+        .map_or([0.0; 3], |movement| movement.path.look_dir)
 }
 
 /// How far the lookahead's way turns from the way the actor faces

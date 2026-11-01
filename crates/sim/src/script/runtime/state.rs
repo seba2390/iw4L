@@ -51,6 +51,8 @@ pub(crate) struct RoundScript {
     pub(crate) actor_moves: BTreeMap<u64, host::actor_nav::ActorMove>,
     /// Each enemy's hellhound attack spots, by the dogs holding them.
     pub(crate) dog_spots: BTreeMap<u64, host::actor_dog::AttackSpots>,
+    /// Black Ops multiplayer's dogs' animation states.
+    pub(crate) dog_anim_states: BTreeMap<u64, host::actor_dog_states::DogAnimState>,
     /// When each actor spawner last spawned (ms); one spawn a frame.
     pub(crate) spawner_times: BTreeMap<u64, i64>,
     /// `setailimit`: no spawn while this many actors are in use (0: none).
@@ -135,6 +137,15 @@ pub(crate) struct RoundScript {
 }
 
 impl RoundScript {
+    /// A sentient's team: Black Ops multiplayer's actors carry it as `aiteam`,
+    /// its players and zombies' actors as `team`.
+    pub(crate) fn actor_team(&mut self, id: u64) -> Value {
+        match self.object_field(id, "aiteam") {
+            Value::Undefined => self.object_field(id, "team"),
+            team => team,
+        }
+    }
+
     pub(crate) fn new(_: &MatchScript) -> Self {
         Self {
             program: Default::default(),
@@ -173,6 +184,7 @@ impl RoundScript {
             actor_brains: Default::default(),
             actor_moves: Default::default(),
             dog_spots: Default::default(),
+            dog_anim_states: Default::default(),
             spawner_times: Default::default(),
             ai_limit: Default::default(),
             path_node_objects: Default::default(),

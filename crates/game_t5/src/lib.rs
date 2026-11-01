@@ -5,6 +5,7 @@ mod client_catalog;
 mod code_hud;
 mod compass;
 mod crosshair_scan;
+mod dog_anims;
 mod fire;
 mod fire_autosim;
 mod fire_sound;
@@ -82,6 +83,15 @@ const MULTIPLAYER_ENGINE_DVARS: &[(&str, &str)] = &[
     // How long a downed player bleeds out, Second Chance's script reads them.
     ("player_lastStandBleedoutTime", "30"),
     ("player_lastStandBleedoutTimeNoRevive", "10"),
+    ("player_reviveTriggerRadius", "64"),
+    // The dogs' think.
+    ("dog_turn90_angle", "70"),
+    ("dog_turn180_angle", "135"),
+    ("dog_turn_min_goal_dist", "40"),
+    ("dog_aggressive_attack", "1"),
+    ("dog_aggressive_attack_multiplier", "1.5"),
+    ("dog_aggressive_attack_height_threshold", "24"),
+    ("perk_dogsAttackGhost", "1"),
     // The share of damage a vehicle takes by side.
     ("vehicle_damage_zone_front", "1"),
     ("vehicle_damage_zone_side", "1.2"),
@@ -164,6 +174,10 @@ const ZOMBIE_ENGINE_DVARS: &[(&str, &str)] = &[
 ];
 
 impl game_api::GameScripts for T5 {
+    fn multiplayer_code_anim_trees(&self) -> &'static [game_api::CodeAnimTree] {
+        &[dog_anims::DOG_TREE]
+    }
+
     fn program(
         &self,
         request: &ScriptRequest<'_>,
@@ -285,6 +299,7 @@ impl game_api::GameScripts for T5 {
                 trace_mask: 0x0282_0011,
                 surface: surface::name_of_flags,
             }),
+            dog_step: None,
         })
     }
 
@@ -540,6 +555,17 @@ const MULTIPLAYER_CLIENT_CALLBACKS: game_api::ClientCallbacks = game_api::Client
     trigger_delete: "codescripts/delete::main",
     level_notify: "clientscripts/mp/_callbacks::level_notify",
     ai_footstep: None,
+    // The multiplayer client sounds a dog's `dogstep_` note itself, at the
+    // paw's tag (its back left paw reads `j_palm_ri`, as the executable's
+    // table has it), the ground traced 15 units either side, world only.
+    dog_step: Some(game_api::DogStep {
+        callback: "clientscripts/mp/_dogs::playdogstep",
+        tags: ["j_palm_ri", "j_palm_le", "j_ball_ri", "j_palm_ri"],
+        trace_up: 15.0,
+        trace_down: 15.0,
+        trace_mask: 0x811,
+        surface: surface::name_of_flags,
+    }),
 };
 
 /// Black Ops' 3D UI texture: 1024 by 1024 on the front end and the `menu_`

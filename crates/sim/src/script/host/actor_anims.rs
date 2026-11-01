@@ -135,6 +135,83 @@ impl ActorAnim {
     fn put(&mut self, node: u16, state: xmodel_runtime::XAnimNodeState) {
         let _ = self.runtime.set_state(XAnimNodeId(node), state);
     }
+
+    /// Fades the node and all below it out.
+    pub(crate) fn clear_node(&mut self, node: u16, time: f32) {
+        self.clear_goal(node, time);
+    }
+
+    /// Sets the node's goal as the executable's own callers of the tree do.
+    pub(crate) fn set_node(&mut self, node: u16, goal: NodeGoal) {
+        let tree = Arc::clone(&self.tree);
+        if goal.restart {
+            for leaf in tree.descendants(node) {
+                let mut state = self.state(leaf);
+                let run = state.time != 0.0 || state.cycle_count != 0;
+                if run && state.cycle_count == state.old_cycle_count {
+                    state.time = 0.0;
+                    state.old_time = 0.0;
+                    state.cycle_count = 0;
+                    state.old_cycle_count = 0;
+                    self.put(leaf, state);
+                }
+            }
+        }
+        self.set_goal(node, goal.weight, goal.blend);
+        if goal.knob {
+            for sibling in tree.siblings(node).collect::<Vec<_>>() {
+                self.clear_goal(sibling, goal.blend);
+            }
+        }
+        if !goal.limited {
+            let mut parent = tree.parent(node);
+            while let Some(ancestor) = parent {
+                if self.state(ancestor).goal_weight == 0.0 {
+                    self.set_goal(ancestor, 1.0, goal.blend);
+                }
+                parent = tree.parent(ancestor);
+            }
+        }
+        match goal.flag {
+            Some(flag) => {
+                self.flags.insert(node, flag.into());
+            }
+            None => {
+                self.flags.remove(&node);
+            }
+        }
+    }
+
+    /// Puts a leaf that does not loop at its end, its weight untouched.
+    pub(crate) fn hold_end(&mut self, node: u16) {
+        let XAnimNodeKind::Leaf { clip, .. } = &self.tree.definition.nodes()[node as usize].kind
+        else {
+            return;
+        };
+        if clip.looping {
+            return;
+        }
+        let mut state = self.state(node);
+        state.time = 1.0;
+        state.old_time = 1.0;
+        state.cycle_count = 0;
+        state.old_cycle_count = 0;
+        self.put(node, state);
+    }
+}
+
+/// A goal for one node of a tree the game's code drives by node number.
+#[derive(Clone, Copy, Debug)]
+pub(crate) struct NodeGoal {
+    pub(crate) weight: f32,
+    pub(crate) blend: f32,
+    /// The notify its notetracks and end report under.
+    pub(crate) flag: Option<&'static str>,
+    pub(crate) restart: bool,
+    /// Also fades its siblings out.
+    pub(crate) knob: bool,
+    /// Leaves its ancestors alone.
+    pub(crate) limited: bool,
 }
 
 /// The variants of the `SetAnim` family.
@@ -480,11 +557,15 @@ fn set_anim(
 /// Advances every actor's tree one authority tick and reports the notetracks
 /// that flagged animations crossed, then `end` for ones that finished.
 pub(crate) fn advance(world: &mut World, seconds: f32) {
+    super::actor_dog_states::drive(world);
     let mut notifies = Vec::new();
     let footsteps = crate::script::client::ai_footstep_rule(world);
+    let dog_steps = crate::script::client::dog_step_rule(world);
     let mut steps = Vec::new();
+    let mut paws = Vec::new();
     {
         let mut runtime = world.resource_mut::<RoundScript>();
+        let runtime = &mut *runtime;
         for (actor, anim) in &mut runtime.actor_anims {
             if anim.runtime.update(seconds).is_err() {
                 continue;
@@ -512,6 +593,19 @@ pub(crate) fn advance(world: &mut World, seconds: f32) {
                         let name = note.name.to_ascii_lowercase();
                         if name.starts_with("footstep_") || name.starts_with("dogstep_") {
                             steps.push((*actor, name.as_bytes().get(9) == Some(&b'l')));
+                        }
+                    }
+                }
+                if dog_steps.is_some()
+                    && runtime
+                        .entities
+                        .get(actor)
+                        .is_some_and(|e| e.kind == EntityKind::Actor)
+                {
+                    for note in clip.notifies.iter().filter(|note| crossed(note.time)) {
+                        let name = note.name.to_ascii_lowercase();
+                        if name.starts_with("dogstep_") {
+                            paws.push((*actor, paws_of(&name)));
                         }
                     }
                 }
@@ -547,6 +641,73 @@ pub(crate) fn advance(world: &mut World, seconds: f32) {
             footstep(world, &rule, actor, left);
         }
     }
+    if let Some(rule) = dog_steps {
+        for (actor, paws) in paws {
+            for paw in paws {
+                dog_step(world, &rule, actor, paw);
+            }
+        }
+    }
+}
+
+/// The paws a `dogstep_` note names, in the order the client sounds them:
+/// its ninth letter `l` or `r` picks a side and its tenth `f` the front
+/// paws (else the back); any other ninth letter is both sides, front for
+/// `f`. Paws: 0 front right, 1 front left, 2 back
+/// right, 3 back left.
+fn paws_of(note: &str) -> Vec<usize> {
+    let letter = |at: usize| note.as_bytes().get(at).copied();
+    let (right, left, front) = match letter(8) {
+        Some(b'l') => (false, true, letter(9) == Some(b'f')),
+        Some(b'r') => (true, false, letter(9) == Some(b'f')),
+        other => (true, true, other == Some(b'f')),
+    };
+    let mut paws = Vec::new();
+    if front && left {
+        paws.push(1);
+    }
+    if front && right {
+        paws.push(0);
+    }
+    if !front && left {
+        paws.push(3);
+    }
+    if !front && right {
+        paws.push(2);
+    }
+    paws
+}
+
+/// A dog's paw step as the multiplayer client sounds it: at the paw's tag,
+/// else at its origin, on the surface a short world trace finds under it.
+fn dog_step(world: &mut World, rule: &game_api::DogStep, actor: u64, paw: usize) {
+    let field = |world: &mut World, name: &str| {
+        world
+            .resource_mut::<RoundScript>()
+            .object_field(actor, name)
+    };
+    let (Value::Vector(origin), Value::Vector(angles)) =
+        (field(world, "origin"), field(world, "angles"))
+    else {
+        return;
+    };
+    let position =
+        super::presence::tag_offset(world, actor, rule.tags[paw]).map_or(origin, |offset| {
+            let axis = math_iw4::angles_to_axis(angles);
+            std::array::from_fn(|i| {
+                origin[i] + axis[0][i] * offset[0] + axis[1][i] * offset[1] + axis[2][i] * offset[2]
+            })
+        });
+    let tick = world.resource::<crate::step::StepRequest>().tick;
+    let flags = crate::game_fire::surface_trace(
+        &mut FrameWorld::from_world(world),
+        tick,
+        [position[0], position[1], position[2] + rule.trace_up],
+        [position[0], position[1], position[2] - rule.trace_down],
+        actor,
+        rule.trace_mask,
+    );
+    crate::script::client::dog_step(world, actor, position, (rule.surface)(flags));
 }
 
 /// An actor's footstep as the game's client sounds it: at its foot tag

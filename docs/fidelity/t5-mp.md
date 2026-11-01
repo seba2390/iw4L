@@ -155,7 +155,7 @@ Each open section names the issue that works it.
       code tests that have no effect here yet (setting one logs the gap):
       `_twogrenades` (a second grenade picked up);
       `_grenadepulldeath`, `_pin_back`, `_loudenemies`,
-      `_nottargetedbyai`, `_noname`, `_quieter` (footsteps the AI hears);
+      `_noname`, `_quieter` (footsteps the AI hears, and no AI hears here);
       its client's `_reconnaissance`, `_showenemyequipment`,
       `_bulletflinch`, `_gas_mask`. `specialty_fastads` divides the
       aim-down-sight lerp by `perk_weapAdsMultiplier` except for two
@@ -343,7 +343,43 @@ Each open section names the issue that works it.
       not read in this path.
 - [ ] **V** A crate may rest tilted: the runtime's `physicslaunch` body, not
       compared with Black Ops' on a Care Package.
-- [ ] **G** `spawnactor` (attack dogs) is refused (#758).
+- [ ] **V** Attack Dogs (#758): a real bullet on a dog was not fired in a run;
+      the dog's posed bone collision with body hits was seen, and the damage
+      path was driven through the multiplayer actor damage callback. The
+      `dog_bite` shellshock was not seen, since a bite (150 damage) kills a
+      100-health player outright. Dog step sounds were heard only as calls
+      to `playDogstep` (sound off in the runs).
+- [ ] **G** `t5.mp.dog_threat`: a dog's choice of enemy keeps the executable's
+      filters and most of its score, but leaves out the accuracy-by-distance
+      term, the threat bias groups, the 200 for a target actor, a target's
+      need for a path node within 200 and the attacker limit dvar. It also
+      does not read a client flag at offset 0x28e4 of the target, or apply the
+      seated-in-a-vehicle check. Sound does not make a dog notice anyone: only
+      sight does.
+- [ ] **G** `t5.mp.dog_lean`: the run's lean animations never play. The lean
+      field is read on the client, and what writes it on the server is not read.
+- [ ] **G** `t5.mp.dog_enemy_model`: `setenemymodel` only checks its argument,
+      so every viewer sees the friendly model, whatever their team. Black
+      Ops' handler stores the model in the entity state, and the client draws
+      it instead of the friendly one when the entity's team is none or not
+      the viewer's (the followed player's when spectating), unless the
+      entity is the viewer's own. Needs a model chosen per viewer at draw
+      time; collision keeps the friendly model.
+- [ ] **G** `t5.mp.dog_hazard`: a dog's check for a damaging volume ahead of it,
+      which turns it, is not ported; nor is the lock on changing script during
+      `dog_jump`.
+- [ ] **G** `t5.mp.dog_restart`: a dog state's restart resets its animation's
+      time at once. The executable clones the playing node and fades the old
+      one out over the blend, so the restart pops. `move_walk`'s per-frame
+      restart is ported as read; no script line sets `a.movement` to walk.
+- [ ] **G** The dog's compass icon (`compassping_dog`, with #651) is not done.
+      A flash grenade does not flash a dog: the executable starts its
+      `dog_flashed` script from its own flash code, which is not read.
+      `setflashbangimmunity` (no multiplayer script calls it) is not
+      registered.
+- [ ] **G** `heliturretdogtrace`: the handler first retries what blocked the
+      trace last time, a cache this does not keep; any block answers 1, which
+      the scripts only compare with 0.
 - [ ] **G** A player killed while their camera is on a Valkyrie rocket: Black
       Ops' `player_die` runs the killed callback and then stops for a player
       with `EF2_REMOTE_CONTROL` (no body, no spectator state, no death
@@ -491,6 +527,18 @@ Each open section names the issue that works it.
       compensation of Black Ops' movement and weapons are unmeasured.
 
 ## Closed
+
+- [x] **G** Attack Dogs (#758): `setanimstate`'s 47 states and their rules from
+      BlackOpsMP.exe's table run on the tree `Dog_CreateAnims` builds; a dog
+      is hurt through `maps/mp/gametypes/_callbacksetup`'s actor damage
+      callback, regenerates by `_dogs.gsc`, dies by `dog_death` into a corpse
+      that holds its death animation at its end (the table's corpse column),
+      and `dog_leave` (`clearentitytarget`, the exit node, the delete) runs at
+      the end of `scr_dog_time`. The client's `GetAnimStateCategory` reads
+      the state's category from the same table, and a `dogstep_` note goes to
+      `clientscripts/mp/_dogs::playDogstep` per paw, as the multiplayer client
+      parses it. `specialty_nottargetedbyai` is tested by the dog's choice of
+      enemy and by the Sentry Gun's search.
 
 - [x] **G** The Chopper Gunner (`helicopter_gunner_mp`): `attachpath` and
       `startpath` run BlackOpsMP.exe's vehicle path: the chain of
