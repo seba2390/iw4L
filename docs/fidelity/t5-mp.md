@@ -487,8 +487,11 @@ Each open section names the issue that works it.
       teammate's last stand reaching the client), the squad icons
       (`compassping_squad_mp` and its overlays, with
       `cg_drawFriendInColor`; a friends list), and the wager's
-      `compassping_firstplace`. Not drawn yet:
-      objectives (152), the grid (317, 319),
+      `compassping_firstplace`. The objectives (152) draw their icons
+      (Closed); an objective's own size and colour (unset by the
+      scripts; no builtin here sets them) are not carried, and an
+      objective on an entity is placed at the server's entity origin,
+      not the client's interpolated one. Not drawn yet: the grid (317, 319),
       the killstreak icons (helicopters, planes, dogs, turrets, tanks,
       guided missiles, artillery: 146–156) and the Jammer, flicker and
       fake-fire effects (325, 312, 376). The map's frame is
@@ -570,6 +573,16 @@ Each open section names the issue that works it.
       compensation of Black Ops' movement and weapons are unmeasured.
 
 ## Closed
+
+- [x] **V** Compass objectives (#651, owner draw 152): each active or
+      current objective the local player sees draws its icon
+      `compassObjectiveWidth` by `compassObjectiveHeight` (20, scaled by
+      `compassSize`), held at the compass's edge when off it, faded from
+      `compassMaxRange` to `compassObjectiveMaxRange` (2048) down to
+      `compassObjectiveMinAlpha` (1) and held to the item's alpha; a
+      current objective also draws a 2-unit line each way across the
+      compass through its place in the item's material, faded as its icon
+      leaves the compass.
 
 - [x] **V** Script prints (#651): `iprintln` (server command `f`, channel
       `gamenotify`) draws in game message window 0 under the obituaries,

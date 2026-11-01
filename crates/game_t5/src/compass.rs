@@ -25,12 +25,14 @@ pub(crate) static COMPASS: CompassRules = CompassRules {
 };
 
 /// The compass's enemies (owner draw 170), teammates (158), the spy
-/// plane's sweep line (332) and the counter-spy plane's static (328).
+/// plane's sweep line (332), the counter-spy plane's static (328) and the
+/// objectives (152).
 static RADAR: CompassRadarRules = CompassRadarRules {
     enemies_owner_draw: 170,
     friendlies_owner_draw: 158,
     line_owner_draw: 332,
     static_owner_draw: 328,
+    objectives_owner_draw: 152,
     update: radar_update,
     pings: radar_pings,
     friendlies: friendly_pings,

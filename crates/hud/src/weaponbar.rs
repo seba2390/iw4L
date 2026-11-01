@@ -950,6 +950,7 @@ pub(crate) fn update_weaponbar(
                 let corners = compass.corners?;
                 let north_yaw = compass.north_yaw.unwrap_or(0.0);
                 let frame = (rules.frame)(corners.a, corners.b, north_yaw)?;
+                let team = meta.map_or(0, |m| m.client_state_team);
                 let radar = rules.radar.map(|radar| {
                     let players: Vec<game_api::hud::CompassRadarPlayer> = snap
                         .meta
@@ -1002,6 +1003,20 @@ pub(crate) fn update_weaponbar(
                         pings: (radar.pings)(&view, &client_input.compass_radar),
                         friendlies: (radar.friendlies)(&view, &client_input.compass_radar),
                         line: (radar.line)(&view, &client_input.compass_radar),
+                        objectives: snap
+                            .meta
+                            .objectives
+                            .compass
+                            .iter()
+                            .filter(|o| {
+                                o.shows_to_team_number(team, local.0.0) && !o.icon.is_empty()
+                            })
+                            .map(|o| crate::t5_hud::T5Objective {
+                                pos: [o.origin[0], o.origin[1]],
+                                icon: o.icon.clone(),
+                                current: o.state == sim::ObjectiveState::Current,
+                            })
+                            .collect(),
                     }
                 });
                 Some(crate::t5_hud::T5Compass {
