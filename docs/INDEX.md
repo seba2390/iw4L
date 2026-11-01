@@ -35,6 +35,7 @@ Files here aim for ≤50 lines; `PROGRESS.md`, `fidelity/*` and `GSC-RUNTIME.md`
 | **Measure** | | |
 | [`PERF.md`](PERF.md) | native Perfetto tracing (Linux/macOS), the manifest, `IW4L_PERF`, SQL | why a frame took 80 ms |
 | [`NETWORK-TESTING.md`](NETWORK-TESTING.md) | asset-free, deterministic packet loss, latency, jitter and reordering scenario | checking shared networking without a live game |
+| [`NETWORK-PRESENTATION.md`](NETWORK-PRESENTATION.md) | clock/interpolation stalls, motion error and sustained recovery goals | diagnosing uneven snapshot arrival and recovery |
 | [`BENCH.md`](BENCH.md) | `make bench`: map-load waterfall, frame time as a span tree, counters, the run package | where a run spent its time |
 | [`FFI.md`](FFI.md) | native data ownership, lifetimes, nullability, Perfetto adapters | changing a native boundary |
 | **Engine** | | |

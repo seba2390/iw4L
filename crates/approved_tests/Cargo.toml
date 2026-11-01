@@ -13,6 +13,7 @@ layer = "session"
 asset_transport.workspace = true
 master_protocol.workspace = true
 net.workspace = true
+render_anim.workspace = true
 sim.workspace = true
 serde_json.workspace = true
 updater = { path = "../updater" }

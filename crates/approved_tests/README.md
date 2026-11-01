@@ -18,7 +18,7 @@ directories everywhere in the workspace, this crate included.
 | --- | --- |
 | `master_duo_chaos` | two real clients join one dev master lobby, load `mp_boneyard` once, move for 4 seconds and run 16 seconds of RPG chaos with seven bots |
 | `heavy_gameplay_lifecycle` | cold load `mp_overgrown` for free-for-all (`dm`) with 16 players, three input scenes, production disconnect, a watched menu, a second map with three scenes, production quit |
-| `network_impairments` | asset-free production networking sessions over seeded loss, latency, jitter and reordering; no game process, sockets or display ([details](../../docs/NETWORK-TESTING.md)) |
+| `network_impairments` | asset-free production networking plus player/entity presentation over seeded loss, latency, jitter, reordering and blackouts; no game process, sockets or display ([details](../../docs/NETWORK-TESTING.md)) |
 
 The scenario's steps are in `src/scenarios/heavy_gameplay_lifecycle.rs` and
 nowhere else: maps, seed rule, scenes, positions, angles, weapons, durations

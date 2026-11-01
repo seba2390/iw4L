@@ -218,7 +218,8 @@ struct PeerReplicationState {
 struct SendWindow {
     started: Option<Tick>,
     snapshots: u32,
-    paced_out: u32,
+    budget_holds: u32,
+    stale_ack_holds: u32,
     bytes: u64,
     largest: usize,
     entities: usize,
@@ -243,9 +244,10 @@ impl SendWindow {
             / 1000.0;
         diag::info!(
             Net,
-            "snapshots to {target:?}: {} in {seconds:.1}s ({} held by the rate), {:.0} bytes/s, average {} bytes, largest {} bytes, last carried {} entities",
+            "snapshots to {target:?}: {} in {seconds:.1}s ({} held by byte budget, {} by stale ACK), {:.0} bytes/s, average {} bytes, largest {} bytes, last carried {} entities",
             self.snapshots,
-            self.paced_out,
+            self.budget_holds,
+            self.stale_ack_holds,
             self.bytes as f64 / seconds,
             self.bytes / u64::from(self.snapshots.max(1)),
             self.largest,
@@ -265,16 +267,31 @@ const SNAPSHOT_CREDIT_PER_TICK: i64 =
 const STALE_BASELINE_SNAPSHOTS: u32 = 29;
 const MAX_STALE_BACKOFF: u32 = 4;
 
+/// Counts the first blocking gate; byte credit is checked before stale-ACK backoff.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub struct SnapshotPacingStats {
+    pub byte_budget_holds: u64,
+    pub stale_ack_holds: u64,
+    pub snapshots_sent: u64,
+    pub encoded_bytes_sent: u64,
+}
+
+enum SnapshotHold {
+    ByteBudget,
+    StaleAck,
+}
+
 #[derive(Debug, Default)]
 struct SnapshotPace {
     credit: i64,
     refilled: Option<Tick>,
     backoff: u32,
     stale_until: Option<Tick>,
+    stats: SnapshotPacingStats,
 }
 
 impl SnapshotPace {
-    fn ready(&mut self, tick: Tick, unacked: Option<u32>) -> bool {
+    fn ready(&mut self, tick: Tick, unacked: Option<u32>) -> Result<(), SnapshotHold> {
         let elapsed = self
             .refilled
             .map_or(1, |last| i64::from(tick.0.saturating_sub(last.0)));
@@ -282,23 +299,27 @@ impl SnapshotPace {
         self.credit =
             (self.credit + elapsed * SNAPSHOT_CREDIT_PER_TICK).min(SNAPSHOT_CREDIT_PER_TICK);
         if self.credit <= 0 {
-            return false;
+            self.stats.byte_budget_holds += 1;
+            return Err(SnapshotHold::ByteBudget);
         }
         if unacked.is_none_or(|age| age < STALE_BASELINE_SNAPSHOTS) {
             self.backoff = 0;
             self.stale_until = None;
-            return true;
+            return Ok(());
         }
         if self.stale_until.is_some_and(|until| tick.0 < until.0) {
-            return false;
+            self.stats.stale_ack_holds += 1;
+            return Err(SnapshotHold::StaleAck);
         }
         self.stale_until = Some(Tick(tick.0.saturating_add(1 << self.backoff)));
         self.backoff = (self.backoff + 1).min(MAX_STALE_BACKOFF);
-        true
+        Ok(())
     }
 
     fn charge(&mut self, bytes: usize) {
         self.credit -= bytes as i64 + SNAPSHOT_PACKET_OVERHEAD;
+        self.stats.snapshots_sent += 1;
+        self.stats.encoded_bytes_sent += bytes as u64;
     }
 }
 
@@ -414,6 +435,18 @@ fn applied_action(
 }
 
 impl UdpAuthorityHub {
+    /// Totals for current peers; retiring a peer or resetting the match removes its counters.
+    pub fn snapshot_pacing_stats(&self) -> SnapshotPacingStats {
+        let mut total = SnapshotPacingStats::default();
+        for peer in self.replication.values() {
+            total.byte_budget_holds += peer.pace.stats.byte_budget_holds;
+            total.stale_ack_holds += peer.pace.stats.stale_ack_holds;
+            total.snapshots_sent += peer.pace.stats.snapshots_sent;
+            total.encoded_bytes_sent += peer.pace.stats.encoded_bytes_sent;
+        }
+        total
+    }
+
     pub fn relay(hello: HandshakeHello, first_client: u32, mailbox: RelayMailbox) -> Self {
         let limits = hello.limits;
         Self {
@@ -1081,8 +1114,11 @@ impl UdpAuthorityHub {
             let unacked =
                 (baseline_seq != 0).then(|| peer.next_snap_seq.wrapping_sub(baseline_seq));
             peer.sent.roll(snapshot.tick, target);
-            if !via_bootstrap && !peer.pace.ready(snapshot.tick, unacked) {
-                peer.sent.paced_out += 1;
+            if !via_bootstrap && let Err(reason) = peer.pace.ready(snapshot.tick, unacked) {
+                match reason {
+                    SnapshotHold::ByteBudget => peer.sent.budget_holds += 1,
+                    SnapshotHold::StaleAck => peer.sent.stale_ack_holds += 1,
+                }
                 continue;
             }
             let mut encoder = std::mem::take(&mut peer.encoder);

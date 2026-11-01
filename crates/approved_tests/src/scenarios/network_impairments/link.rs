@@ -40,6 +40,8 @@ struct Delivery {
 
 #[derive(Default)]
 struct Stats {
+    datagram_packets: u64,
+    encoded_datagram_bytes: u64,
     attempts: u64,
     dropped: u64,
     datagram_attempts: u64,
@@ -113,6 +115,8 @@ impl Link {
             return Err("modeled reliable stream exhausted 128 retry attempts".into());
         }
         let fragments = self.fragmenter.split(&bytes).map_err(String::from)?;
+        self.stats.datagram_packets += 1;
+        self.stats.encoded_datagram_bytes += bytes.len() as u64;
         self.stats.fragmented_packets += u64::from(fragments.len() > 1);
         for fragment in fragments {
             self.stats.attempts += 1;
@@ -204,6 +208,8 @@ impl Link {
         json!({
             "attempts": self.stats.attempts, "dropped_attempts": self.stats.dropped,
             "datagram_attempts": self.stats.datagram_attempts,
+            "datagram_packets": self.stats.datagram_packets,
+            "encoded_datagram_bytes": self.stats.encoded_datagram_bytes,
             "datagram_drops": self.stats.datagram_drops,
             "modeled_stream_attempts": self.stats.stream_attempts,
             "modeled_stream_retries": self.stats.stream_retries,

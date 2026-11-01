@@ -682,7 +682,7 @@ impl ScriptMoverGentity {
 
     /// Poses a script mover's state at `time_ms`: moving on from where it stood
     /// one tick before at the speed between the two, else standing.
-    pub(crate) fn pose(&mut self, time_ms: i32, origin: [f32; 3], angles: [f32; 3]) {
+    pub fn pose(&mut self, time_ms: i32, origin: [f32; 3], angles: [f32; 3]) {
         const TELEPORT_DIST_SQ: f32 = 10_000.0;
         let state = &mut self.state;
         let step_sq: f32 = (0..3).map(|i| (origin[i] - state.tr_base[i]).powi(2)).sum();

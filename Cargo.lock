@@ -264,6 +264,7 @@ dependencies = [
  "asset_transport",
  "master_protocol",
  "net",
+ "render_anim",
  "serde_json",
  "sim",
  "toml 0.9.12+spec-1.1.0",

@@ -48,7 +48,7 @@ death, feel, …).
 ## Without a trace: the host's ten-second summaries
 
 A host logs, every ten seconds, each peer's snapshots (`snapshots to …`:
-sent, held by the 25 kB/s rate, bytes per second, average and largest
+sent, held by byte budget or stale ACK, bytes per second, average and largest
 packet, entities in the last one) and its authority steps (`authority
 steps: …`: average and longest step against the 50 ms tick). Black Ops
 Zombies co-op, Kino round 5 (`IW4L_SCRIPT_DVARS='set mutator_quickStart 1'`),
@@ -66,6 +66,8 @@ first minute as zombies come in (#257):
 
 With a crowd the snapshots near the 25 kB/s rate and the host's step nears
 its 50 ms tick (the joined client runs on the same machine).
+The historical held counts above combine both pacing gates; they do not
+identify byte-budget pressure alone and are not packet-loss measurements.
 
 For deterministic shared-network checks without assets or a live game, use
 `make network-impairments` ([coverage and limits](NETWORK-TESTING.md)).
