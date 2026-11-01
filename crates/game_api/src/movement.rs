@@ -1010,6 +1010,19 @@ pub trait PlayerMovement: Sync {
         None
     }
 
+    /// A helicopter's shot; the missile it fired, if any.
+    fn helicopter_fire(
+        &self,
+        _heli: &crate::heli::HeliMove,
+        _shot: &crate::heli::HeliShot,
+        _world: &mut dyn crate::fire::FireWorld,
+    ) -> (Option<i32>, Vec<&'static Unknown>) {
+        (None, Vec::new())
+    }
+
+    /// The entity a missile homes on (`missile_settarget`).
+    fn set_missile_target(&self, _missile: &mut crate::fire::GameMissile, _target: Option<i32>) {}
+
     /// A missile exploding now (`detonate`); `None` when the game does not
     /// explode its missiles this way.
     fn detonate_missile(

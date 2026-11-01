@@ -29,6 +29,7 @@ impl WeaponCatalog {
                 rot_accel: value("rotAccel"),
                 max_body_pitch: value("maxBodyPitch"),
                 max_body_roll: value("maxBodyRoll"),
+                turret_rot_rate: value("turretRotRate"),
             },
         );
     }

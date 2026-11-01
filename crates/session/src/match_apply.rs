@@ -607,6 +607,7 @@ pub fn apply_prepared_match(
                     rot_accel: motion.rot_accel,
                     max_body_pitch: motion.max_body_pitch,
                     max_body_roll: motion.max_body_roll,
+                    turret_rot_rate: motion.turret_rot_rate,
                 },
             )
         }));

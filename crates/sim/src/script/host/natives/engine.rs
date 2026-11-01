@@ -152,6 +152,14 @@ pub(crate) fn trace_ignore(world: &World, value: Option<&Value>) -> TraceIgnore 
     }
 }
 
+/// Nothing in the world's solid geometry between the two points.
+pub(crate) fn sight_clear_of_world(world: &mut World, from: [f32; 3], to: [f32; 3]) -> bool {
+    matches!(
+        entity_trace(world, from, to, 0x3801, trace_ignore(world, None)),
+        TraceOutcome::Miss { .. }
+    )
+}
+
 pub(crate) fn entity_trace(
     world: &mut World,
     start: [f32; 3],

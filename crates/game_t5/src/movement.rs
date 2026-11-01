@@ -1180,6 +1180,21 @@ impl PlayerMovement for T5Movement {
         Some(crate::heli::frame(heli, world))
     }
 
+    fn helicopter_fire(
+        &self,
+        heli: &game_api::heli::HeliMove,
+        shot: &game_api::heli::HeliShot,
+        world: &mut dyn game_api::fire::FireWorld,
+    ) -> (Option<i32>, Vec<&'static Unknown>) {
+        crate::heli::fire(heli, shot, world)
+    }
+
+    fn set_missile_target(&self, missile: &mut game_api::fire::GameMissile, target: Option<i32>) {
+        let mut state = crate::missile::State::read(&missile.game);
+        state.target = target;
+        state.write(&mut missile.game);
+    }
+
     fn detonate_missile(
         &self,
         missile: &mut game_api::fire::GameMissile,
