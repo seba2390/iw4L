@@ -157,10 +157,10 @@ Each open section names the issue that works it.
       `_grenadepulldeath`, `_pin_back`, `_loudenemies`,
       `_noname`, `_quieter` (footsteps the AI hears, and no AI hears here);
       its client's `_reconnaissance`, `_showenemyequipment`,
-      `_bulletflinch`, `_gas_mask`. `specialty_fastads` divides the
-      aim-down-sight lerp by `perk_weapAdsMultiplier` except for two
-      weapons the engine looks up, which are not identified, so it is not
-      applied. Lightweight's `specialty_movefaster` is tested only by
+      `_bulletflinch` (it scales Black Ops' own damage view kick by
+      `perk_damageKickReduction`, and the client here runs another kick),
+      `_gas_mask` (it holds off the client's gas overlay, which waits on
+      Nova gas). Lightweight's `specialty_movefaster` is tested only by
       vehicle code (#660). The scripts' own perk rules apply (#650).
 - [ ] **G** Create-a-class: a player's custom classes live in Black Ops'
       stats (`getdstat("cacLoadouts", "customclassN", slot)` in a hosted
@@ -527,6 +527,11 @@ Each open section names the issue that works it.
       compensation of Black Ops' movement and weapons are unmeasured.
 
 ## Closed
+
+- [x] **G** `specialty_fastads` (#734): the aim-down-sight lerp, in and out,
+      is divided by `perk_weapAdsMultiplier` (0.5) unless the weapon's
+      `playerAnimType` is `sniper` or `rearclipsniper`, the two entries of
+      `mp/playeranimtypes.txt` BlackOpsMP.exe looks up for this test.
 
 - [x] **G** Attack Dogs (#758): `setanimstate`'s 47 states and their rules from
       BlackOpsMP.exe's table run on the tree `Dog_CreateAnims` builds; a dog

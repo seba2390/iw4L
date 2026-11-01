@@ -66,12 +66,11 @@ const PERKS: [&str; 52] = [
 /// not run here yet; its movement, weapon and damage ones (`bulletaccuracy`,
 /// `bulletpenetration`, `fallheight`, `fastmantle`, `fastmeleerecovery`,
 /// `fastreload`, `fastweaponswitch`, `longersprint`, `pistoldeath`,
-/// `shellshock`, `sprintrecovery`, `unlimitedsprint`) run in the game's
-/// movement, fire and damage rules and in `shellshock`, and
+/// `shellshock`, `sprintrecovery`, `unlimitedsprint`, `fastads`) run in
+/// the game's movement, fire and damage rules and in `shellshock`, and
 /// `nottargetedbyai` in the Sentry Gun's search and a dog's choice of enemy.
-const ENGINE_PERKS: [&str; 12] = [
+const ENGINE_PERKS: [&str; 11] = [
     "specialty_bulletflinch",
-    "specialty_fastads",
     "specialty_gas_mask",
     "specialty_grenadepulldeath",
     "specialty_loudenemies",
