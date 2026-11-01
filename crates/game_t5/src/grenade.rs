@@ -5,8 +5,8 @@
 
 use fastfile_t5::weapon_def::WeaponDefView;
 use game_api::fire::{
-    BulletTrace, FireEntityKind, FireWorld, GAME_MISSILE_BYTES, GameMissile, GameTrajectory,
-    MissileExplosion, MissileRun, NotifyArg, RadiusDamage, TrajectoryKind,
+    BulletTrace, FireEntityKind, FireTeam, FireWorld, GAME_MISSILE_BYTES, GameMissile,
+    GameTrajectory, MissileExplosion, MissileRun, NotifyArg, RadiusDamage, TrajectoryKind,
 };
 use game_api::movement::{ENTITY_NONE, ENTITY_WORLD};
 use game_api::{Unknown, unknown};
@@ -47,6 +47,10 @@ const ROLL_STRIKE: f32 = 25.0;
 const BOUNCE_HEARD: f32 = 100.0;
 const CONTENTS_WATER: u32 = 0x20;
 const SURF_FLESH: u8 = 7;
+/// `projExplosionType`: a flash grenade.
+const EXPLOSION_FLASHBANG: i32 = 2;
+/// What a flash's sight to an eye is blocked by.
+const FLASH_SIGHT_MASK: u32 = 0x807823;
 /// How far below a grenade its explosion looks for the surface it lies on.
 const EXPLOSION_FLOOR: f32 = 16.0;
 /// Surface names, by surface type, as scripts get them.
@@ -1038,7 +1042,123 @@ pub(crate) fn explode(
             world,
         ));
     }
+    if def.proj_explosion_type() == EXPLOSION_FLASHBANG {
+        let team = match world.entity(missile.entity).and_then(|e| e.team) {
+            Some(FireTeam::Axis) => "axis",
+            Some(FireTeam::Allies) => "allies",
+            _ => "free",
+        };
+        let flash = Flash {
+            at,
+            outer: def.explosion_radius() as f32,
+            inner: def.explosion_radius_min() as f32,
+            attacker: missile.owner,
+            team,
+        };
+        flash_players(&flash, world);
+    }
     MissileRun::Gone
+}
+
+/// A flash grenade's blast: where, its radii, who threw it and its team.
+struct Flash {
+    at: [f32; 3],
+    outer: f32,
+    inner: f32,
+    attacker: i32,
+    team: &'static str,
+}
+
+/// Each player in reach of a flash who takes damage and whose eye the
+/// flash sees is told `flashbang`: how near it was (1 within the inner
+/// radius, falling to 0 at the outer), how much it faced the flash (1
+/// straight at it, 0 away), who threw it and its team. The inner radius is
+/// at least 1 and the outer at least the inner.
+fn flash_players(flash: &Flash, world: &mut dyn FireWorld) {
+    let inner = flash.inner.max(1.0);
+    let outer = flash.outer.max(inner);
+    let reach = outer * std::f32::consts::SQRT_2;
+    let at = flash.at;
+    let mins = [at[0] - reach, at[1] - reach, at[2] - reach];
+    let maxs = [at[0] + reach, at[1] + reach, at[2] + reach];
+    for entity in world.entities_in_box(mins, maxs) {
+        let Some(target) = world.entity(entity) else {
+            continue;
+        };
+        // Black Ops also flashes the RC-XD's driver through the car
+        // (`t5.mp.flash_vehicle` in the ledger).
+        let Some(player) = world.player(entity) else {
+            continue;
+        };
+        if !target.takes_damage {
+            continue;
+        }
+        let distance = match target.bounds {
+            Some((min, max)) => box_distance(at, min, max),
+            None => length(sub(target.origin, at)),
+        };
+        if distance > outer {
+            continue;
+        }
+        let eye = target.eye.unwrap_or(target.origin);
+        if !world.sight_clear(at, eye, [entity, ENTITY_NONE], FLASH_SIGHT_MASK) {
+            continue;
+        }
+        let near = if inner >= distance {
+            1.0
+        } else {
+            1.0 - (distance - inner) / (outer - inner)
+        };
+        let (forward, _, _) = movement_t5::math::angle_vectors(player.viewangles);
+        let to = sub(at, eye);
+        let scale = fast_inverse_sqrt(dot(to, to));
+        let facing = (forward[2] * to[2] * scale
+            + forward[1] * to[1] * scale
+            + forward[0] * to[0] * scale
+            + 1.0)
+            * 0.5;
+        let attacker = if flash.attacker >= 0 {
+            NotifyArg::Entity(flash.attacker)
+        } else {
+            NotifyArg::Undefined
+        };
+        world.notify(
+            entity,
+            "flashbang",
+            &[
+                NotifyArg::Float(near),
+                NotifyArg::Float(facing),
+                attacker,
+                NotifyArg::String(flash.team),
+            ],
+        );
+    }
+}
+
+fn sub(a: [f32; 3], b: [f32; 3]) -> [f32; 3] {
+    [a[0] - b[0], a[1] - b[1], a[2] - b[2]]
+}
+
+/// The distance from a point to a box (0 inside it).
+fn box_distance(p: [f32; 3], min: [f32; 3], max: [f32; 3]) -> f32 {
+    let axis = |i: usize| {
+        if min[i] > p[i] {
+            min[i] - p[i]
+        } else if p[i] > max[i] {
+            p[i] - max[i]
+        } else {
+            0.0
+        }
+    };
+    let d = [axis(0), axis(1), axis(2)];
+    (d[0] * d[0] + d[1] * d[1] + d[2] * d[2]).sqrt()
+}
+
+/// `1 / sqrt(x)` as Black Ops' flash takes it: the bit-trick estimate and
+/// one Newton step.
+fn fast_inverse_sqrt(x: f32) -> f32 {
+    let y = f32::from_bits(0x5f3759df_u32.wrapping_sub(x.to_bits() >> 1));
+    (1.5 - x * 0.5 * y * y) * y
 }
 
 /// The angles a grenade that sticks to the ground rests at: keeping its
