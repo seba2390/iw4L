@@ -694,6 +694,21 @@ impl<'a> WeaponDefView<'a> {
         f32::from_le_bytes(Self::word(self.def, 0x768))
     }
 
+    /// `scanSpeed`
+    pub fn scan_speed(&self) -> f32 {
+        f32::from_le_bytes(Self::word(self.def, 0x7dc))
+    }
+
+    /// `scanAccel`
+    pub fn scan_accel(&self) -> f32 {
+        f32::from_le_bytes(Self::word(self.def, 0x7e0))
+    }
+
+    /// `scanPauseTime`
+    pub fn scan_pause_time(&self) -> i32 {
+        i32::from_le_bytes(Self::word(self.def, 0x7e4))
+    }
+
     /// `pitchConvergenceTime`
     pub fn pitch_convergence_time(&self) -> f32 {
         f32::from_le_bytes(Self::word(self.def, 0x76c))

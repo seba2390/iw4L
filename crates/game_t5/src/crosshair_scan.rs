@@ -72,8 +72,13 @@ pub(crate) fn scan(ps: &mut PlayerState, scan: &CrosshairScan<'_>) {
     let Some(weapon) = (scan.weapon)(ps.weapon) else {
         return;
     };
-    let range = WeaponDefView::new(&weapon.def, &weapon.variant)
-        .map_or(0.0, |def| def.enemy_crosshair_range());
+    // Multiplayer reads 600 units for a player carrying a turret.
+    let range = if !flag(scan, "zombiemode") && ps.weap_flags & weap_flags::CARRYING_TURRET != 0 {
+        600.0
+    } else {
+        WeaponDefView::new(&weapon.def, &weapon.variant)
+            .map_or(0.0, |def| def.enemy_crosshair_range())
+    };
     let d = std::array::from_fn::<f32, 3, _>(|i| hit.origin[i] - start[i]);
     let dist_sq = d[2] * d[2] + d[1] * d[1] + d[0] * d[0];
     let (allied, actor) = match hit.kind {

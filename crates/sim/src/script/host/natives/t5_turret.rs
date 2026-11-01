@@ -109,6 +109,42 @@ fn spawn(world: &mut World, rules: &TurretRules, id: u64) -> Result<Turret, Stri
         Value::String(name) => String::from_utf8_lossy(name.as_bytes()).into_owned(),
         _ => return Err("no weaponinfo specified for turret".into()),
     };
+    let keys = map_keys(world, id);
+    build(world, rules, id, &weapon_name, &keys)
+}
+
+/// A turret a script spawns (`spawnturret`): the game's turret spawn with
+/// no keys, on an entity that has no model yet.
+pub(crate) fn spawn_scripted(world: &mut World, id: u64, weapon_name: &str) -> Result<(), String> {
+    let Some(rules) = rules(world) else {
+        return Err("this mode has no turrets".into());
+    };
+    let turrets = world.get_resource_or_insert_with(Turrets::default);
+    if turrets.0.len() == rules.max {
+        return Err(format!(
+            "G_SpawnTurret: max number of turrets ({}) exceeded",
+            rules.max
+        ));
+    }
+    present(world, id)?;
+    let presence = world.resource::<RoundScript>().entities[&id].presence;
+    if let Some(number) =
+        presence.and_then(|presence| FrameWorld::from_world(world).gentity_number(presence))
+    {
+        world
+            .resource_mut::<RoundScript>()
+            .entities
+            .get_mut(&id)
+            .unwrap()
+            .number = number;
+    }
+    let turret = build(world, &rules, id, weapon_name, &BTreeMap::new())?;
+    world.resource_mut::<Turrets>().0.insert(id, turret);
+    Ok(())
+}
+
+/// The spawn keys a map sets on a turret.
+fn map_keys(world: &mut World, id: u64) -> BTreeMap<&'static str, f32> {
     let mut keys = BTreeMap::new();
     for key in [
         "rightarc",
@@ -134,6 +170,17 @@ fn spawn(world: &mut World, rules: &TurretRules, id: u64) -> Result<Turret, Stri
         };
         keys.insert(key, value);
     }
+    keys
+}
+
+fn build(
+    world: &mut World,
+    rules: &TurretRules,
+    id: u64,
+    weapon_name: &str,
+    keys: &BTreeMap<&'static str, f32>,
+) -> Result<Turret, String> {
+    let weapon_name = weapon_name.to_owned();
     let frame = FrameWorld::from_world(world);
     let index = crate::script_player::weapon_named(&frame, &weapon_name).ok();
     let weapon = index.and_then(|index| frame.content().game_weapon(index).cloned());
@@ -203,7 +250,28 @@ fn turret(world: &World, receiver: &Value, message: &str) -> Result<u64, String>
     ))
 }
 
-const NOT_A_TURRET: &str = "entity type '{classname}' is not a turret";
+pub(crate) const NOT_A_TURRET: &str = "entity type '{classname}' is not a turret";
+
+/// A multiplayer handler's change to a turret's game state and owner.
+pub(crate) fn edit_mp(
+    world: &mut World,
+    receiver: &Value,
+    message: &str,
+    change: impl FnOnce(&mut GameTurret, &mut Option<u64>),
+) -> Result<Value, String> {
+    let id = turret(world, receiver, message)?;
+    let mut turrets = world.resource_mut::<Turrets>();
+    let turret = turrets.0.get_mut(&id).unwrap();
+    change(&mut turret.game, &mut turret.owner);
+    Ok(Value::Undefined)
+}
+
+/// Whether an entity is a turret.
+pub(crate) fn is_turret(world: &World, id: u64) -> bool {
+    world
+        .get_resource::<Turrets>()
+        .is_some_and(|t| t.0.contains_key(&id))
+}
 
 fn edit(
     world: &mut World,
@@ -690,6 +758,8 @@ pub(crate) struct SentientView {
     pub(crate) mins: [f32; 3],
     pub(crate) maxs: [f32; 3],
     pub(crate) pm_type: Option<i32>,
+    pub(crate) spectating: bool,
+    pub(crate) perks: u64,
 }
 
 /// A player's eye at its view height; an actor's at its `tag_eye`, else
@@ -715,6 +785,9 @@ pub(crate) fn sentient_view(world: &mut World, object: u64) -> Option<SentientVi
         _ => None,
     };
     let ignore_me = matches!(entity_field(world, object, "ignoreme"), Value::Int(n) if n != 0);
+    let spectating = client.is_some()
+        && matches!(entity_field(world, object, "sessionstate"), Value::String(s) if s.as_bytes() == b"spectator");
+    let perks = client.map_or(0, |client| super::t5_perks::perk_bits(world, client));
     let (mins, maxs) = super::super::triggers::entity_bounds(world, object);
     let (eye, pm_type) = match client {
         Some(client) => {
@@ -746,6 +819,8 @@ pub(crate) fn sentient_view(world: &mut World, object: u64) -> Option<SentientVi
         mins,
         maxs,
         pm_type,
+        spectating,
+        perks,
     })
 }
 

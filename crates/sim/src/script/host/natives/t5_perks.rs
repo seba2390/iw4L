@@ -95,6 +95,13 @@ impl PlayerPerks {
     }
 }
 
+/// A player's perk bits.
+pub(crate) fn perk_bits(world: &World, client: u32) -> u64 {
+    world
+        .get_resource::<PlayerPerks>()
+        .map_or(0, |perks| perks.of(client))
+}
+
 fn bit(name: &str) -> Result<u64, String> {
     PERKS
         .iter()
