@@ -287,8 +287,18 @@ Each open section names the issue that works it.
       (`getwheelsurface`, `iswheelcolliding`, …) are missing.
 - [ ] **G** `setvehgoalpos`'s third argument, the map's vehicle path
       (`t5.vehicle.heli_path`), errors; nothing in the multiplayer scripts
-      passes it. `attachpath` and `startpath` are refused, so the Chopper
-      Gunner's flight and its gunner seats do not run (#661).
+      passes it. A vehicle path's nodes blend an unset speed and look ahead by
+      distance as BlackOpsMP.exe's setup appears to; the blend's float result
+      is lost to the decompiler, so the formula is mine. `setswitchnode`,
+      `setwaitnode`, `drivepath` and the path's `on_node` speed notifies are not
+      ported; a path for a land vehicle's physics is #660.
+- [ ] **V** The Chopper Gunner's view sits at `tag_gunner<n>` by the runtime's
+      linked view, without the client's fake arms and the door's animation
+      (`clientscripts/mp/_helicopter_player.csc`, `chopperGunnerOpenDoor`);
+      `tag_flash_gunner<n>` is read with the model at rest. Its gun's arcs
+      (`gunnerWeapon`'s arcs) are not applied. `firegunnerweapon`,
+      `setgunnertargetent` and `setgunnertargetvec` remain refused; no
+      multiplayer script reaches them.
 - [ ] **G** A pilot's controls: Black Ops' `+vehiclemoveup` and
       `+vehiclemovedown` buttons have no binds in the runtime, so `+gostand`
       climbs and `+movedown` descends; `+attack` fires where its
@@ -481,6 +491,15 @@ Each open section names the issue that works it.
       compensation of Black Ops' movement and weapons are unmeasured.
 
 ## Closed
+
+- [x] **G** The Chopper Gunner (`helicopter_gunner_mp`): `attachpath` and
+      `startpath` run BlackOpsMP.exe's vehicle path: the chain of
+      `info_vehicle_node`s with their speed, look ahead and rotate flag, the step
+      toward a point ahead, the place on a segment by the planes bisecting its
+      joints, `reached_node`, `reached_end_node`, and `setspeed` and `resumespeed`
+      on a path. A seated gunner holding attack fires `gunnerWeapon` from
+      `tag_flash_gunner<n>` at its `fireTime` (with its overheat), credited to
+      them. With the Gunship and the shoot-down this completes #661.
 
 - [x] **G** The Gunship (`helicopter_player_firstperson_mp`): `usevehicle` seats
       the player with their body left behind (`EF2_REMOTE_CONTROL`, the vehicle

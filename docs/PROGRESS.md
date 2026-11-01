@@ -265,7 +265,7 @@ Each milestone names its issues; open rules are in
   - [x] SAM Turret and Sentry Gun (#659): the Sentry Gun is carried, put down where Black Ops' placement finds room, sweeps its arcs, picks enemies and kills them for its owner; the SAM Turret tracks enemy aircraft on the lock-on list and its homing missiles shoot down an enemy spy plane.
   - [ ] RC-XD (#660).
   - [x] Attack Helicopter: flies in, hovers, turns its turret on players and shoots them, credited to its owner (#661).
-  - [ ] Chopper Gunner and Gunship (#661).
+  - [x] Chopper Gunner and Gunship (#661).
   - [x] Valkyrie Rockets: the owner steers the rocket through its camera; it boosts, burns its fuel and detonates on attack (#662). Its Care Package delivery is #661.
   - [x] Care Package: the helicopter flies in, drops the crate, and a player captures it (#661).
   - [ ] Attack Dogs (#758).

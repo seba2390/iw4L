@@ -27,6 +27,15 @@ const HELI_CLIP_MASK: u32 = 0x0080_0400;
 const SEATS: usize = 11;
 /// A remote controller's view sits this far over the vehicle's `tag_player`.
 const REMOTE_EYE_UP: f32 = 60.0;
+/// The seats with guns, the driver's first.
+const GUNNER_SEATS: usize = 5;
+/// The weapon definition's fields a gunner's gun reads.
+const DEF_FIRE_TIME: usize = 0x3ac;
+const DEF_HEAT: usize = 0x50;
+const DEF_HEAT_RATE: usize = 0x54;
+const DEF_COOL_RATE: usize = 0x58;
+const DEF_COOL_RESUME: usize = 0x5c;
+const HEAT_FULL: f32 = 100.0;
 /// How far ahead of their view a pilot's gun aims, and what stops the aim.
 const AIM_RANGE: f32 = 10240.0;
 /// A splash's share of the blended damage zones.
@@ -116,6 +125,10 @@ fn set_speed(world: &mut World, receiver: &Value, args: &[Value]) -> Result<Valu
     let speed = float(args, 0)? * MPH;
     let accel = optional(args, 1, float)?.map(|v| v * MPH);
     let decel = optional(args, 2, float)?.map(|v| v * MPH);
+    if let Value::Object(vehicle) = receiver {
+        let rate = accel.unwrap_or(speed.max(MPH) * 0.5);
+        super::t5_mp_vehpath::set_path_speed(world, *vehicle, speed.max(0.0), rate);
+    }
     let heli = flight(world, receiver)?;
     heli.script_speed = true;
     heli.max_speed = speed.max(0.0);
@@ -391,16 +404,20 @@ fn fire_weapon(world: &mut World, receiver: &Value, args: &[Value]) -> Result<Va
         return Ok(Value::Undefined);
     };
     let tick = world.resource::<crate::step::StepRequest>().tick;
+    let driver = seats(world).seats.get(&id).and_then(|row| row[0]);
     let (missile, gaps) = {
         let mut frame = FrameWorld::from_world(world);
         let mut around = crate::game_fire::MatchFireWorld::new(&mut frame, tick, None);
+        let entity = around.number_of_object(id);
         let shot = HeliShot {
-            entity: around.number_of_object(id),
+            entity,
             weapon,
             origin,
             axis,
             pivot,
             target,
+            attacker: driver.map_or(entity, |client| client as i32),
+            aimed: None,
         };
         movement.helicopter_fire(&heli, &shot, &mut around)
     };
@@ -418,12 +435,157 @@ fn fire_weapon(world: &mut World, receiver: &Value, args: &[Value]) -> Result<Va
     Ok(Value::Object(object))
 }
 
+/// A weapon's `fireTime`, in milliseconds, from its definition.
+fn weapon_fire_ms(frame: &FrameWorld, weapon: u32) -> i32 {
+    frame
+        .content()
+        .game_weapon(weapon)
+        .and_then(|game| game.def.get(DEF_FIRE_TIME..DEF_FIRE_TIME + 4))
+        .map_or(0, |bytes| {
+            i32::from_le_bytes(bytes.try_into().expect("four bytes"))
+        })
+}
+
+fn def_f32(frame: &FrameWorld, weapon: u32, at: usize) -> f32 {
+    frame
+        .content()
+        .game_weapon(weapon)
+        .and_then(|game| game.def.get(at..at + 4))
+        .map_or(0.0, |bytes| {
+            f32::from_le_bytes(bytes.try_into().expect("four bytes"))
+        })
+}
+
+/// A gunner seat's gun: its fire time and how hot it is.
+#[derive(Clone, Copy, Debug, Default)]
+struct GunnerGun {
+    fire_ms: i32,
+    heat: f32,
+    overheated: bool,
+}
+
 /// The vehicle a player sits in, and the seats of each vehicle.
 #[derive(bevy_ecs::prelude::Resource, Default)]
 struct VehicleSeats {
     seats: BTreeMap<u64, [Option<u32>; SEATS]>,
     /// What is left of a vehicle's fire time, in milliseconds.
     fire_ms: BTreeMap<u64, i32>,
+    guns: BTreeMap<(u64, usize), GunnerGun>,
+}
+
+/// BlackOpsMP.exe's gunner think: a seated gunner holding attack fires the
+/// seat's `gunnerWeapon` from `tag_flash_gunner<n>` where they look, as their
+/// own shot, until the gun's heat stops it.
+fn gunner_frame(world: &mut World, id: u64, heli: &HeliMove) {
+    let row = seats(world)
+        .seats
+        .get(&id)
+        .copied()
+        .unwrap_or([None; SEATS]);
+    let name_end = heli
+        .piloted
+        .motion
+        .gunner_weapon
+        .iter()
+        .position(|b| *b == 0)
+        .unwrap_or(32);
+    let Ok(name) = std::str::from_utf8(&heli.piloted.motion.gunner_weapon[..name_end]) else {
+        return;
+    };
+    let name = name.to_owned();
+    if name.is_empty() {
+        return;
+    }
+    let Some(weapon) = FrameWorld::from_world(world).weapon_index_by_script_name(&name) else {
+        return;
+    };
+    let frame_ms = crate::MATCH_TICK_MS as i32;
+    for (seat, client) in row.iter().enumerate().take(GUNNER_SEATS).skip(1) {
+        let Some(client) = *client else {
+            continue;
+        };
+        let (held, view, fire_ms, heat_on, gain, cool, resume) = {
+            let mut frame = FrameWorld::from_world(world);
+            let id_client = crate::ClientId(client);
+            let held = crate::script_player::buttons(&mut frame, id_client)
+                & crate::script::command_buttons("+attack")
+                != 0;
+            let view = frame.player(id_client).map(|ps| ps.viewangles);
+            (
+                held,
+                view,
+                weapon_fire_ms(&frame, weapon),
+                frame
+                    .content()
+                    .game_weapon(weapon)
+                    .and_then(|game| game.def.get(DEF_HEAT..DEF_HEAT + 4))
+                    .is_some_and(|bytes| bytes != [0; 4]),
+                def_f32(&frame, weapon, DEF_HEAT_RATE),
+                def_f32(&frame, weapon, DEF_COOL_RATE),
+                def_f32(&frame, weapon, DEF_COOL_RESUME),
+            )
+        };
+        let gun = seats(world).guns.entry((id, seat)).or_default();
+        gun.fire_ms = (gun.fire_ms - frame_ms).max(0);
+        if heat_on {
+            let per_frame = frame_ms as f32 * 0.001;
+            if !held || gun.overheated {
+                gun.heat = (gun.heat - per_frame * cool).max(0.0);
+                if gun.heat <= resume {
+                    gun.overheated = false;
+                }
+            } else {
+                gun.heat += per_frame * gain;
+                if HEAT_FULL <= gun.heat {
+                    gun.overheated = true;
+                    gun.heat = HEAT_FULL;
+                }
+            }
+        }
+        let gun = *gun;
+        if !held || gun.fire_ms > 0 || gun.overheated {
+            continue;
+        }
+        let tag = format!("tag_flash_gunner{seat}");
+        // The doors' animation is the client's: the server has the tag at rest.
+        let pose = super::super::presence::tag_world(world, id, &tag)
+            .or_else(|| super::super::presence::tag_world_bound(world, id, &tag));
+        let Some((origin, axis)) = pose else {
+            continue;
+        };
+        let Some(view) = view else {
+            continue;
+        };
+        let Some(movement) = crate::game_move::rules(&FrameWorld::from_world(world)) else {
+            continue;
+        };
+        let (forward, _, _) = math_iw4::angle_vectors(view);
+        let aimed = std::array::from_fn(|i| origin[i] + forward[i] * AIM_RANGE);
+        let tick = world.resource::<crate::step::StepRequest>().tick;
+        let gaps = {
+            let mut frame = FrameWorld::from_world(world);
+            let mut around = crate::game_fire::MatchFireWorld::new(&mut frame, tick, None);
+            let entity = around.number_of_object(id);
+            let shot = HeliShot {
+                entity,
+                weapon,
+                origin,
+                axis,
+                pivot: None,
+                target: None,
+                attacker: client as i32,
+                aimed: Some(aimed),
+            };
+            movement.helicopter_fire(heli, &shot, &mut around).1
+        };
+        let mut frame = FrameWorld::from_world(world);
+        for gap in gaps {
+            frame.report_game_gap(gap);
+        }
+        if let Some(gun) = seats(world).guns.get_mut(&(id, seat)) {
+            gun.fire_ms = fire_ms;
+        }
+    }
 }
 
 fn seats(world: &mut World) -> &mut VehicleSeats {
@@ -486,7 +648,13 @@ fn use_vehicle(world: &mut World, receiver: &Value, args: &[Value]) -> Result<Va
         let mut frame = FrameWorld::from_world(world);
         crate::game_move::set_script_flag(&mut frame, id, ScriptFlag::RemoteVehicle, true);
     }
-    let (_, axis) = super::super::players::link_parent_pose(world, vehicle, Some("tag_player"));
+    // A gunner rides their seat's tag; the driver's view sits over `tag_player`.
+    let tag = if seat == 0 {
+        "tag_player".to_owned()
+    } else {
+        format!("tag_gunner{seat}")
+    };
+    let (_, axis) = super::super::players::link_parent_pose(world, vehicle, Some(&tag));
     let restore_view = FrameWorld::from_world(world)
         .player(id)
         .map(|ps| ps.viewangles);
@@ -495,8 +663,12 @@ fn use_vehicle(world: &mut World, receiver: &Value, args: &[Value]) -> Result<Va
         client,
         PlayerLink {
             parent: vehicle,
-            tag: Some(Arc::from("tag_player")),
-            origin: [0.0, 0.0, REMOTE_EYE_UP],
+            tag: Some(Arc::from(tag.as_str())),
+            origin: if seat == 0 {
+                [0.0, 0.0, REMOTE_EYE_UP]
+            } else {
+                [0.0; 3]
+            },
             angles: [0.0; 3],
             view: LinkView::WeaponDelta,
             clamp: None,
@@ -653,8 +825,23 @@ pub(crate) fn advance(world: &mut World, id: u64) -> bool {
             leave_seat(world, id, seat, *client);
         }
     }
+    // BlackOpsMP.exe's path frame comes first when the path has started.
+    let mut path_frame = None;
+    if super::t5_mp_vehpath::is_running(world, id) {
+        heli.on_path = true;
+        path_frame = super::t5_mp_vehpath::frame(world, id);
+        if let Some(path) = &path_frame {
+            heli.velocity = std::array::from_fn(|i| (path.origin[i] - heli.origin[i]) * 20.0);
+            heli.origin = path.origin;
+            heli.angles = path.angles;
+            heli.speed = path.speed;
+        }
+    } else {
+        heli.on_path = false;
+    }
     let driver = seats(world).seats.get(&id).and_then(|row| row[0]);
     heli.piloted.pilot = driver.and_then(|client| pilot_controls(world, client));
+    gunner_frame(world, id, &heli);
     // BlackOpsMP.exe's fire think: attack held with the fire time run out says
     // `turret_fire` to the vehicle; its `fireweapon` starts the fire time.
     let left = seats(world).fire_ms.entry(id).or_insert(0);
@@ -720,6 +907,19 @@ pub(crate) fn advance(world: &mut World, id: u64) -> bool {
     );
     runtime.set_object_field(id, "angles", Value::Vector(heli.angles));
     let receiver = Value::Object(id);
+    if let Some(path) = path_frame {
+        for node in path.reached {
+            raise(
+                world,
+                receiver.clone(),
+                "reached_node",
+                vec![Value::Object(node)],
+            );
+        }
+        if path.ended {
+            raise(world, receiver.clone(), "reached_end_node", Vec::new());
+        }
+    }
     if let Some(normal) = notes.collision {
         raise(
             world,
@@ -932,6 +1132,16 @@ fn apply_damage(
 }
 
 fn register_seats(registry: &mut NativeRegistry) {
+    registry.register(Method, "attachpath", |world, receiver, args| {
+        let vehicle = vehicle_id(receiver)?;
+        let node = super::engine::entity_id(world, arg(args, 0)?)?;
+        super::t5_mp_vehpath::attach(world, vehicle, node)?;
+        Ok(Value::Undefined)
+    });
+    registry.register(Method, "startpath", |world, receiver, _| {
+        super::t5_mp_vehpath::start(world, vehicle_id(receiver)?)?;
+        Ok(Value::Undefined)
+    });
     registry.register(Method, "isvehicleimmunetodamage", immune_to_damage);
     registry.register(Method, "finishvehicledamage", finish_damage);
     registry.register(Method, "finishvehicleradiusdamage", finish_radius_damage);
@@ -1066,7 +1276,11 @@ pub(crate) fn register(registry: &mut NativeRegistry) {
     registry.register(Method, "getspeedmph", |world, receiver, _| {
         Ok(Value::Float(flight(world, receiver)?.speed / MPH))
     });
-    registry.register(Method, "resumespeed", |world, receiver, _| {
+    registry.register(Method, "resumespeed", |world, receiver, args| {
+        if let Value::Object(vehicle) = receiver {
+            let rate = optional(args, 0, float)?.map_or(MPH, |rate| rate * MPH);
+            super::t5_mp_vehpath::resume_path_speed(world, *vehicle, rate);
+        }
         flight(world, receiver)?.script_speed = false;
         Ok(Value::Undefined)
     });
