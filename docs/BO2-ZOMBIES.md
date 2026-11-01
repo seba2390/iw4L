@@ -7,8 +7,11 @@ weapons (`movement_t6`). What runs and what is open: [PROGRESS.md](PROGRESS.md)
 
 ## Start
 
-From the game library: Black Ops II → Zombies → a map → START MATCH (the page
-lists the installed maps). A direct launch needs the gametype, as the default
+From the game library: Black Ops II → Zombies → ONLINE → SOLO PLAY → map →
+start location → mode → START MATCH. Left/Right changes the globe's focused
+map; Enter selects it. Mouse selection uses the map icons. The focused map's
+name appears beneath the globe; an unavailable map names its missing
+installation or patch capture and cannot be selected. A direct launch needs the gametype, as the default
 is Free for All (`make map ZONE=t6:zm_nuked` and `scripts/play.ps1` read it too):
 
 ```bash
@@ -32,11 +35,12 @@ at launch and keeps only in memory. Without a capture of that patch zone
 `~/.config/iw4l/captured/` or `<artifacts>/captured/` the game's scripts are
 refused (`t6.scripts.ffotd`). [Capture from your own running game](T6-CAPTURE.md)
 with `cargo xtask t6-capture --pid PID`. A machine without a capture cannot
-start these maps yet: the
-library's Zombies page then greys out every Black Ops 2 map that needs it
-(Origins, on IW4L's rules, does not) and names the file and the folders it is
-read from. Copying a capture you made from your own game into one of those
-folders makes the maps startable at the next visit to the page.
+start these maps yet: the library's Zombies selector blocks every Black Ops 2 map that needs it
+(Origins, on IW4L's rules, does not) and displays a capture-required reason.
+Copying a capture you made from your own game into one of those
+folders makes the maps startable at the next visit to the page. The native
+selector also recognizes individually captured compiled modules in
+`captured/scripts_zm/`, including `maps/mp/gametypes_zm/_globallogic.gsc`.
 
 ## Maps
 

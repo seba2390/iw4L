@@ -95,6 +95,16 @@ impl State {
     pub fn interpolate(&mut self, source: &Self, target: &Self, fraction: f32) {
         let inverse = 1.0 - fraction;
         let blend = |start: f32, end: f32| start * inverse + end * fraction;
+        for ((value, start), end) in self
+            .shader_vectors
+            .iter_mut()
+            .zip(source.shader_vectors)
+            .zip(target.shader_vectors)
+        {
+            if let (Some(start), Some(end)) = (start, end) {
+                *value = Some(std::array::from_fn(|i| blend(start[i], end[i])));
+            }
+        }
         for (indices, enabled) in [
             (
                 [0, 2],
