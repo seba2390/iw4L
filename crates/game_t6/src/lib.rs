@@ -660,8 +660,9 @@ static ZOMBIES_LIBRARY: LibraryMode = LibraryMode {
     // (`t6.scripts.ffotd`); Origins runs IW4L's rules without it.
     capture: Some(game_api::LibraryCapture {
         suffix: "_zm",
+        module: "maps/mp/gametypes_zm/_globallogic.gsc",
         exempt: &[ORIGINS],
-        note: "Black Ops II's zombies scripts need the patch zone the game downloads at launch (ffotd_*_zm*.ff), captured from your own running game. Put it in",
+        note: "Missing Black Ops II Zombies launch-patch capture (ffotd_*_zm*.ff or scripts_zm) from your own running game. Expected in",
     }),
     // TranZit's Survival and Grief and Buried's Grief and Turned starts, as
     // `zm/gametypestable.csv` lists them (TranZit's Diner Turned needs a zone

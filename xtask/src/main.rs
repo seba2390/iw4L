@@ -35,6 +35,7 @@ const REPO_TOOLS: &[&str] = &[
     "progress [--write]",
     "licenses",
     "port-graph [check [--ci]|build|builtin|addr|unimplemented|ledger|event|sql …]",
+    "t6-capture --pid PID [--output CAPTURE_FOLDER]",
 ];
 
 const SHIP_TOOLS: &[&str] = &[
@@ -124,6 +125,7 @@ fn repo(cmd: &str, rest: &[String]) -> Option<Res<()>> {
         "ledger-guard" => Some(xtask::ledger_guard::run_cli(&root, rest)),
         "progress" => Some(xtask::progress::run_cli(&root, rest)),
         "port-graph" => Some(xtask::port_graph::run_cli(&root, rest)),
+        "t6-capture" => Some(xtask::t6_capture::run_cli(&root, rest)),
         _ => None,
     }
 }

@@ -190,6 +190,19 @@ pub fn capture_folders() -> Vec<std::path::PathBuf> {
         .collect()
 }
 
+pub fn has_captured_script(suffix: &str, module: &str) -> bool {
+    use std::io::Read;
+
+    capture_folders().iter().any(|folder| {
+        let path = folder.join(format!("scripts{suffix}")).join(module);
+        let mut header = [0; 64];
+        std::fs::File::open(path)
+            .and_then(|mut file| file.read_exact(&mut header))
+            .is_ok()
+            && header[..8] == *b"\x80GSC\r\n\0\x06"
+    })
+}
+
 /// The captured downloaded patch zones (`ffotd_*<suffix>*.ff`) in the
 /// capture folders, by file name.
 pub fn captured_patch_files(suffix: &str) -> Vec<std::path::PathBuf> {
