@@ -262,8 +262,7 @@ Each milestone names its issues; open rules are in
   - [x] Killstreaks are earned by kill streaks, sit on the dpad and raise their weapon on Black Ops' own scripts; each killstreak is its own issue (#656).
   - [x] Spy Plane, Counter-Spy Plane and Blackbird (#657): the sweep pings enemies on the compass, the Blackbird shows them live with their heading, an enemy counter-spy plane hides them under static.
   - [x] Napalm Strike, Mortar Team and Rolling Thunder (#658): Black Ops' location selector places them, the planes (`SpawnPlane`) and shells (`launchbomb`) strike there and kill, and napalm leaves its ground flames.
-  - [ ] SAM Turret and Sentry Gun (#659).
-    - [x] The Sentry Gun is carried, put down where Black Ops' placement finds room, sweeps its arcs, picks enemies and kills them for its owner; the SAM Turret tracks enemy aircraft on the lock-on list and fires, but launches no missile yet (#738).
+  - [x] SAM Turret and Sentry Gun (#659): the Sentry Gun is carried, put down where Black Ops' placement finds room, sweeps its arcs, picks enemies and kills them for its owner; the SAM Turret tracks enemy aircraft on the lock-on list and its homing missiles shoot down an enemy spy plane.
   - [ ] RC-XD (#660).
   - [ ] Care Package, Attack Helicopter, Chopper Gunner and Gunship (#661).
   - [ ] Valkyrie Rockets and Attack Dogs (#662).

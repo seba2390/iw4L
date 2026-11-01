@@ -324,6 +324,11 @@ impl<'a> WeaponDefView<'a> {
         i32::from_le_bytes(Self::word(self.def, 0x668))
     }
 
+    /// `maxSteeringAccel`
+    pub fn max_steering_accel(&self) -> f32 {
+        f32::from_le_bytes(Self::word(self.def, 0x66c))
+    }
+
     /// `noADSAutoReload`
     pub fn no_ads_auto_reload(&self) -> bool {
         self.def[0x583] != 0

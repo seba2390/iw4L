@@ -488,6 +488,22 @@ impl FireWorld for MatchFireWorld<'_, '_> {
         })
     }
 
+    fn entity_origin(&mut self, entity: i32) -> Option<[f32; 3]> {
+        if let Some(found) = self.entity(entity) {
+            return Some(found.origin);
+        }
+        let object = self.object_of(entity)?;
+        match self
+            .world
+            .ecs()
+            .resource_mut::<crate::script::RoundScript>()
+            .object_field(object, "origin")
+        {
+            crate::script::Value::Vector(origin) => Some(origin),
+            _ => None,
+        }
+    }
+
     fn penetration_depth(&self, penetrate_type: i32, surface_type: i32) -> Option<f32> {
         if !self.world.pen_table_loaded() {
             // A game whose scripts the runtime runs keeps its table in the
