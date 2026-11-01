@@ -44,6 +44,15 @@ Baseline smoothness is separate: no holds/backwards motion and reference/step
 error <=0.25/0.5 units. `--require-baseline-smoothness 1` gates it independently.
 Targets are explicit engineering comparisons, **not AAA playability certification**.
 
+Remote clocks accelerate catch-up after a previously steady stream shifts ahead, then
+at least five arrival offsets agree within 400 ms (spread <=one frame or 8 ms), at up
+to 20% extra clock speed. Noisy arrivals keep
+conservative packet-based corrections; clocks never rewind. Live entity poses use a
+fixed 50 ms view delay rather than a variable snapshot interval, bridging late updates
+with at most 50 ms of the latest trajectory before holding. This bounded prediction
+can be wrong after an unseen stop/turn; received stops and teleport resets take priority.
+Archived replay sampling is unchanged. The 25 kB/s budget and player-buffer policy remain.
+
 Known examples calibrate both samplers. Baseline bounds, phase isolation,
 monotonic clock and the trajectory oracle are regression checks.
 This samples player and actor-style entity positions, not native AI, animation,

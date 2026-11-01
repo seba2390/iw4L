@@ -514,7 +514,53 @@ impl Playback {
     }
 }
 
+fn calibrate_clock() -> Result<(), String> {
+    for hz in [30_u64, 60, 144] {
+        let mut clock = FrameClock::default();
+        let mut latest = 0;
+        let mut previous = 0;
+        for frame in 0..=hz * 5 {
+            let now = (frame * 1000).div_ceil(hz);
+            let delay = if (2000..4000).contains(&now) { 100 } else { 0 };
+            latest = latest.max((now - delay) / 50 * 50);
+            let before = clock.time();
+            clock.advance_remote(
+                (now - previous) as f32 / 1000.0,
+                true,
+                Some(ServerTime::from_ms(latest as i32)),
+            );
+            if clock.time() < before
+                || clock.time() - before > ((now - previous) as f64 * 1.2).ceil() as i32 + 1
+                || (now == 5000 && now as i32 - clock.time() > 1000_u64.div_ceil(hz) as i32 + 5)
+            {
+                return Err(format!(
+                    "calibration: clock slew/recovery failed at {hz} Hz, wall={now}, clock={}, previous={before}",
+                    clock.time()
+                ));
+            }
+            previous = now;
+        }
+        clock.reset();
+        clock.advance_remote(0.0, true, Some(ServerTime::from_ms(10)));
+        if clock.time() != 10 || clock.frametime() != 0 {
+            return Err("calibration: clock reset retained timing history".into());
+        }
+        clock.advance_remote(1.0, false, Some(ServerTime::from_ms(1000)));
+        if clock.time() != 10 {
+            return Err("calibration: inactive clock advanced".into());
+        }
+    }
+    let mut clock = FrameClock::default();
+    clock.advance_remote(0.0, true, Some(ServerTime::from_ms(1000)));
+    clock.advance_remote(0.016, true, Some(ServerTime::from_ms(2000)));
+    if clock.time() != 2000 {
+        return Err("calibration: remote clock did not adopt a large forward discontinuity".into());
+    }
+    Ok(())
+}
+
 pub(super) fn calibrate() -> Result<(), String> {
+    calibrate_clock()?;
     entity::calibrate()?;
     let mut proxy = RemoteProxy::default();
     for (tick, x) in [(0, 0.0), (2, 12.0)] {

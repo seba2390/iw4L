@@ -67,6 +67,18 @@ pub(super) fn metrics(measurements: &super::Measurements) -> Value {
 }
 
 pub(super) fn calibrate() -> Result<(), String> {
+    let mut fresh = EntityPlayback::default();
+    let mut snapshot = Snapshot::unpublished(Tick(2));
+    add_moving_entity(&mut snapshot);
+    fresh.adopt(&snapshot);
+    let mut clock = FrameClock::default();
+    clock.assign_server_time(300);
+    if !fresh
+        .sample(&clock)
+        .is_some_and(|x| (x - 12.0).abs() < 0.001)
+    {
+        return Err("calibration: new entity extrapolated without pose history".into());
+    }
     let mut runtime = EntityPlayback::default();
     for tick in [1, 2] {
         let mut snapshot = Snapshot::unpublished(Tick(tick));
@@ -76,8 +88,7 @@ pub(super) fn calibrate() -> Result<(), String> {
         }
         runtime.adopt(&snapshot);
     }
-    let mut clock = FrameClock::default();
-    for (at, expected) in [(125, 9.0), (133, 9.96), (300, 12.0)] {
+    for (at, expected) in [(125, 9.0), (133, 9.96), (175, 15.0), (300, 18.0)] {
         clock.assign_server_time(at);
         if !runtime
             .sample(&clock)
@@ -85,6 +96,44 @@ pub(super) fn calibrate() -> Result<(), String> {
         {
             return Err("calibration: entity pose interpolation/hold changed".into());
         }
+    }
+    let mut snapshot = Snapshot::unpublished(Tick(4));
+    add_moving_entity(&mut snapshot);
+    runtime.adopt(&snapshot);
+    clock.assign_server_time(225);
+    if !runtime
+        .sample(&clock)
+        .is_some_and(|x| (x - 21.0).abs() < 0.001)
+    {
+        return Err("calibration: sparse entity updates changed the view delay".into());
+    }
+    let mut mover = sim::ScriptMoverGentity {
+        state: sim::init_script_mover_state(ENTITY, [0.0; 3], [0.0; 3]),
+        ..Default::default()
+    };
+    for (at, x) in [(150, 18.0), (200, 24.0), (250, 24.0)] {
+        mover.pose(at, [x, 0.0, 64.0], [0.0; 3]);
+    }
+    let mut stopped = Snapshot::unpublished(Tick(5));
+    stopped.meta.entities.push(mover.state);
+    runtime.adopt(&stopped);
+    clock.assign_server_time(400);
+    if !runtime
+        .sample(&clock)
+        .is_some_and(|x| (x - 24.0).abs() < 0.001)
+    {
+        return Err("calibration: stopped entity continued moving".into());
+    }
+    mover.pose(300, [224.0, 0.0, 64.0], [0.0; 3]);
+    let mut teleported = Snapshot::unpublished(Tick(6));
+    teleported.meta.entities.push(mover.state);
+    runtime.adopt(&teleported);
+    clock.assign_server_time(317);
+    if !runtime
+        .sample(&clock)
+        .is_some_and(|x| (x - 224.0).abs() < 0.001)
+    {
+        return Err("calibration: entity teleport blended across epochs".into());
     }
     Ok(())
 }

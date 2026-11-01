@@ -63,9 +63,13 @@ jobs:
         if: runner.os == 'Linux'
         run: cargo run -q -p xtask -- lints --enforce
       - name: Headless network impairment scenarios
-        run: cargo run -p approved_tests -- network_impairments --seed 1234
+        run: cargo run -p approved_tests -- network_impairments --seed 1234 --require-baseline-smoothness 1
       - name: Short-disruption presentation recovery
         run: cargo run -p approved_tests -- network_impairments --profile burst --workload motion --require-recovery 1 --require-baseline-smoothness 1
+      - name: Latency-drop presentation recovery
+        run: |
+          cargo run -p approved_tests -- network_impairments --profile latency --require-recovery 1 --require-baseline-smoothness 1
+          cargo run -p approved_tests -- network_impairments --profile latency --workload motion --require-recovery 1 --require-baseline-smoothness 1
       - name: Network impairment reports
         if: always()
         uses: actions/upload-artifact@v4
