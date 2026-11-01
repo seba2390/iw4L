@@ -5,6 +5,7 @@ mod class_dispatch;
 mod class_menu;
 mod command;
 mod community_servers;
+mod create_a_class;
 mod debug_cg_gun;
 mod debug_cl_yawspeed;
 mod debug_distortion;

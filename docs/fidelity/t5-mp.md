@@ -171,8 +171,9 @@ Each open section names the issue that works it.
       reset (`mp/stats_init.cfg`, Combat Training forced on). Open: a
       remote client's stats are never sent to the host (two-machine play
       sends none, #729), so its integer stats read 0 and `setdstat`
-      writes nothing; editing a class (`ui_mp`'s create-a-class commands)
-      is #729. Offline (`onlinegame` 0) the scripts read
+      writes nothing. Of `ui_mp`'s create-a-class commands, `equipClass`,
+      `equipClassItem`, `equipClassAttachment` and `copyclass` edit the
+      profile's classes (Closed); the rest are #729. Offline (`onlinegame` 0) the scripts read
       `GetLoadoutItemFromProfile`, which is 0 on PC as in Black Ops.
       `calcweaponoptions (class, slot)` still reads the runtime's own
       class slots for the camo.
@@ -182,6 +183,31 @@ Each open section names the issue that works it.
       read, so a fresh profile's server buffer starts empty and the
       reset's writes (all to the client buffer, Combat Training being
       forced on) reach only the client buffer.
+- [ ] **G** The rest of Black Ops' create-a-class commands (#729):
+      `equipClassCurrentItem`, `equipClassCurrentAttachment`,
+      `equipClassCurrentOption`, `equipClassCurrentGlobalItem`,
+      `setCurrentItemIndex` and `buildItemListFor*` (they read the menus'
+      current item and lists, which the front end does not have, #664),
+      `equipDefaultClass`, `equipDefaultItemToSlot`,
+      `equipDefaultGlobalItemToSlot`, `equipDefaultGlobalItems` (run only
+      by the stats reset today), `equipItemInSlotSorted`,
+      `equipGlobalItemInSlotSorted`, `clearItemNew`, `clearAllItemsNew`,
+      `openAttachmentMenuForCurrentItem`, `clearAllAttachmentsForItem`,
+      `clearAttachmentForItemAtPoint`, `ToggleWeaponOption` and the
+      `purchase*`, `sellcurrentitem` and `PurchaseWeaponOption` commands.
+- [ ] **G** `unknown!t5.mp.cac_match_resend`: a class edited while the
+      host already holds the profile's stats (its client read one) is
+      kept in the profile for the next match; how Black Ops sends the host
+      an edited class (`ui_cac_ingame`) is not read. The scripts read a
+      player's custom classes once, at the first spawn (`cac_getdata`).
+- [ ] **G** `unknown!t5.mp.cac_custom_gametype_class`: with
+      `ui_useCustomClassInfo` set the create-a-class commands edit the
+      custom game mode's class table instead, which is not ported.
+- [ ] **I** The item lock reads the profile's XP for its rank from the
+      one client buffer the profile keeps; Black Ops reads it from another
+      copy of the client's stats (the one its rank uses), not read. An
+      attachment slot holding a number past the weapon's attachments reads
+      as none (Black Ops reads past the weapon's list).
 - [ ] **I** `unknown!t5.mp.stats_init_command`,
       `unknown!t5.mp.stats_init_condition`: the stats reset runs
       `mp/stats_init.cfg`'s and `mp/playerstats_reset.cfg`'s commands
@@ -542,6 +568,20 @@ Each open section names the issue that works it.
       compensation of Black Ops' movement and weapons are unmeasured.
 
 ## Closed
+
+- [x] **G** Create-a-class commands (#729): `equipClass`,
+      `equipClassItem`, `equipClassAttachment` and `copyclass` edit the
+      local profile's own stats (`cacLoadouts.<class>.<slot>`) as
+      BlackOpsMP.exe does: an item goes in only when unlocked (a hosted
+      private match whose menus set `ui_items_no_cost` frees every item;
+      otherwise its rank and prestige in `mp/statsTable.csv` and
+      `itemStats.<n>.purchased` when it costs anything); a new weapon
+      resets its attachments, camo, reticle, lens, tag and emblem, and a
+      new perk or weapon picks the body that goes with it (`bodyTypeFromGun`);
+      an attachment (`mp/attachmentTable.csv`) goes on at its point unless
+      the point is taken, it clashes with one on, or the weapon has
+      `maxAttachmentsPerWeapon`; one already on comes off; a copied class
+      takes Pro perks where they are unlocked, and its name.
 
 - [x] **G** `specialty_fastads` (#734): the aim-down-sight lerp, in and out,
       is divided by `perk_weapAdsMultiplier` (0.5) unless the weapon's

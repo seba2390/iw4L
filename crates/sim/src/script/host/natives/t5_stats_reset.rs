@@ -23,7 +23,7 @@ const STATS_VERSION_CHECK: bool = true;
 /// The header byte whose bits the reset sets (4) and clears (2).
 const FLAGS_AT: usize = 8;
 const MAX_ITEMS: usize = 0x100;
-const ITEM_GROUPS: [&str; 24] = [
+pub(super) const ITEM_GROUPS: [&str; 24] = [
     "weapon_smg",
     "weapon_assault",
     "weapon_cqb",
@@ -85,16 +85,62 @@ const DEFAULT_TABLE: usize = DEFAULT_CLASSES.len() * CLASS_SLOTS;
 const GLOBAL_ROW: usize = DEFAULT_TABLE - CLASS_SLOTS;
 
 /// One row of `mp/statsTable.csv`, as the game's item table keeps it.
-struct Item {
-    index: i32,
-    group: i32,
-    name: String,
+pub(super) struct Item {
+    pub(super) index: i32,
+    /// Its group's position in `ITEM_GROUPS`, -1 for none.
+    pub(super) group: i32,
+    pub(super) name: String,
     /// Column 9, which orders the default killstreaks.
     order: i32,
-    slot: Option<usize>,
+    pub(super) slot: Option<usize>,
     classes: Vec<usize>,
     all_classes: bool,
+    /// Column 5: a perk that is a Pro version.
+    pub(super) pro: bool,
+    /// Columns 6 and 7: the name a body's perk starts with, and the weapon
+    /// group a body goes with.
+    pub(super) body_perk: String,
+    pub(super) body_group: String,
+    /// The reference (column 4) names `null`: no body is chosen from it.
+    pub(super) null: bool,
+    /// Column 8: the weapon's attachments, by their index in
+    /// `ATTACHMENTS`, after the first, none.
+    pub(super) attachments: Vec<usize>,
+    /// Columns 10 and 14: the rank and the prestige that unlock it.
+    pub(super) unlock_rank: i32,
+    pub(super) unlock_prestige: i32,
+    /// Column 12; a dual-wield-only item's (its name ends `_DW`) is -1.
+    pub(super) cost: i32,
 }
+
+/// The attachments by index, as the weapon table's names; `dw` is the
+/// last an item lists.
+pub(super) const ATTACHMENTS: [&str; 24] = [
+    "none",
+    "reflex",
+    "elbit",
+    "acog",
+    "lps",
+    "vzoom",
+    "ir",
+    "gl",
+    "mk",
+    "silencer",
+    "grip",
+    "extclip",
+    "dualclip",
+    "saddle",
+    "fmj",
+    "hp",
+    "rf",
+    "ft",
+    "bayonet",
+    "auto",
+    "speed",
+    "upgradesight",
+    "snub",
+    "dw",
+];
 
 fn index_in(names: &[&str], name: &str) -> Option<usize> {
     names.iter().position(|n| n.eq_ignore_ascii_case(name))
@@ -102,9 +148,9 @@ fn index_in(names: &[&str], name: &str) -> Option<usize> {
 
 /// The item table: item `n` is the row whose first cell is `n`, kept when
 /// it has a name and a reference.
-fn items(table: &StringTable) -> Vec<Item> {
+pub(super) fn items(table: &StringTable) -> Vec<Item> {
     let cell = |row: usize, column: usize| table.cell(row, column).unwrap_or("");
-    (0..MAX_ITEMS)
+    let mut items: Vec<Item> = (0..MAX_ITEMS)
         .filter_map(|n| {
             let row = (0..table.rows).find(|&row| cell(row, 0) == n.to_string())?;
             if cell(row, 3).is_empty() || cell(row, 4).is_empty() {
@@ -129,9 +175,36 @@ fn items(table: &StringTable) -> Vec<Item> {
                     .and_then(|s| index_in(&SLOTS, s)),
                 classes,
                 all_classes: group >= KILLSTREAK_GROUP && cell(row, 11).eq_ignore_ascii_case("all"),
+                pro: super::iw4::atoi(cell(row, 5)) != 0,
+                body_perk: cell(row, 6).to_owned(),
+                body_group: cell(row, 7).to_owned(),
+                null: cell(row, 4).to_ascii_lowercase().contains("null"),
+                attachments: std::iter::once(0)
+                    .chain(
+                        cell(row, 8)
+                            .split_whitespace()
+                            .filter_map(|name| index_in(&ATTACHMENTS, name)),
+                    )
+                    .collect(),
+                unlock_rank: super::iw4::atoi(cell(row, 10)),
+                unlock_prestige: super::iw4::atoi(cell(row, 14)),
+                cost: super::iw4::atoi(cell(row, 12)),
             })
         })
-        .collect()
+        .collect();
+    // A dual-wield-only weapon (named `*_DW`) is bought apart from the
+    // weapon it is named after.
+    for item in &mut items {
+        let start = item.name.len().saturating_sub(3);
+        if item
+            .name
+            .get(start..)
+            .is_some_and(|end| end.eq_ignore_ascii_case("_DW"))
+        {
+            item.cost = -1;
+        }
+    }
+    items
 }
 
 /// The default classes' items and the default killstreaks: an item fills

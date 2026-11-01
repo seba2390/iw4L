@@ -36,8 +36,15 @@ kept in `profile_stats.dat` beside IW4L's settings (`IW4L_PROFILE_STATS_PATH`
 moves it). A hosted match (`onlinegame 1`) reads them; a fresh profile gets
 Black Ops' own default custom classes, as its `mp/stats_init.cfg` builds
 them (custom 1 is the MP5K and ASP with Lightweight, Hardened and Tactical
-Mask). Editing them in Black Ops' create-a-class menus is #729; a match not
-hosted reads the profile loadout, which Black Ops on PC leaves empty.
+Mask). Black Ops' create-a-class commands edit them from the console, as
+its menus do: `equipClassItem customclass1 26` (an item's number in
+`mp/statsTable.csv`), `equipClass customclass1 PERKS_SCAVENGER`,
+`equipClassAttachment customclass1 WEAPON_AK47 acog top` and
+`copyclass 0 1`. Locked items are refused; in a hosted match
+`set ui_items_no_cost 1` frees every item, as the private match's class
+menus do. A class edited during a match is used from the next match (the
+scripts read classes at the first spawn). A match not hosted reads the
+profile loadout, which Black Ops on PC leaves empty.
 
 Killstreaks are your custom class's (a fresh profile has Spy Plane, Care
 Package and Attack Helicopter): a kill streak earns one, its weapon goes on

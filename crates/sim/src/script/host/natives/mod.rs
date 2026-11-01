@@ -8,6 +8,7 @@ pub(crate) mod shared;
 pub(crate) mod skill;
 pub mod t5;
 pub(crate) mod t5_actionslot;
+pub(crate) mod t5_cac;
 pub(crate) mod t5_classes;
 pub(crate) mod t5_client;
 pub(crate) mod t5_guided;

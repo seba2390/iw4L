@@ -293,7 +293,7 @@ fn read_string(m: &BitMember, at: Cursor, buffer: &[u8]) -> String {
     String::from_utf8_lossy(&bytes).into_owned()
 }
 
-fn basic_training(world: &World) -> bool {
+pub(super) fn basic_training(world: &World) -> bool {
     world
         .resource::<MatchScript>()
         .dvars
@@ -301,7 +301,7 @@ fn basic_training(world: &World) -> bool {
         .is_some_and(|v| super::iw4::atoi(v) != 0)
 }
 
-fn layout(world: &World) -> Option<std::sync::Arc<BitLayout>> {
+pub(super) fn layout(world: &World) -> Option<std::sync::Arc<BitLayout>> {
     world
         .resource::<RoundScript>()
         .restart
@@ -318,23 +318,11 @@ fn client_stats(world: &mut World, client: u32) -> &mut ClientStats {
         .get_resource::<PlayerStats>()
         .and_then(|stats| stats.0.get(&client))
         .is_some_and(|stats| stats.received);
-    let profile = (!received)
-        .then(|| world.get_resource::<crate::ProfileStats>())
-        .flatten()
-        .filter(|profile| profile.client == Some(crate::ClientId(client)))
-        .map(|profile| profile.bytes.clone());
-    let profile = match (profile, layout(world)) {
-        (Some(bytes), Some(layout)) => {
-            if super::t5_stats_reset::needs_reset(world, &layout, bytes.as_deref()) {
-                let bytes = super::t5_stats_reset::reset(world, &layout);
-                let mut stored = world.resource_mut::<crate::ProfileStats>();
-                stored.bytes = Some(bytes.clone());
-                stored.revision += 1;
-                Some(bytes)
-            } else {
-                bytes
-            }
-        }
+    let profile_client = world
+        .get_resource::<crate::ProfileStats>()
+        .is_some_and(|profile| profile.client == Some(crate::ClientId(client)));
+    let profile = match layout(world) {
+        Some(layout) if !received && profile_client => profile_bytes(world, &layout),
         _ => None,
     };
     let test_client = world
@@ -357,6 +345,34 @@ fn client_stats(world: &mut World, client: u32) -> &mut ClientStats {
         stats.received = true;
     }
     stats
+}
+
+/// The local profile's stats, reset first when the profile has none or
+/// keeps an older stats version.
+pub(super) fn profile_bytes(world: &mut World, layout: &BitLayout) -> Option<Vec<u8>> {
+    let bytes = world.get_resource::<crate::ProfileStats>()?.bytes.clone();
+    if !super::t5_stats_reset::needs_reset(world, layout, bytes.as_deref()) {
+        return bytes;
+    }
+    let bytes = super::t5_stats_reset::reset(world, layout);
+    let mut stored = world.resource_mut::<crate::ProfileStats>();
+    stored.bytes = Some(bytes.clone());
+    stored.revision += 1;
+    Some(bytes)
+}
+
+/// The local profile's stats have reached its client's.
+pub(super) fn profile_received(world: &World) -> bool {
+    let Some(client) = world
+        .get_resource::<crate::ProfileStats>()
+        .and_then(|profile| profile.client)
+    else {
+        return false;
+    };
+    world
+        .get_resource::<PlayerStats>()
+        .and_then(|stats| stats.0.get(&client.0))
+        .is_some_and(|stats| stats.received)
 }
 
 /// Checks `buffer` against the layout's version: a buffer with none is
