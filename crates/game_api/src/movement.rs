@@ -627,6 +627,8 @@ pub struct MoveStatus {
     pub hull_height: i32,
     /// `disableweapons`: the player takes no weapon.
     pub weapons_disabled: bool,
+    /// The player's view and controls are on a missile or a remote vehicle.
+    pub remote_control: bool,
 }
 
 /// A player flag a script builtin sets in the game's own movement.
@@ -642,6 +644,9 @@ pub enum ScriptFlag {
     OffhandsDisabled,
     /// `linkguidedmissilecamera`: the player's view is on their missile.
     GuidedCamera,
+    /// `usevehicle` on a remote control vehicle: the player's body stays
+    /// behind and their controls go to the vehicle.
+    RemoteVehicle,
 }
 
 /// What a script may forbid a player.

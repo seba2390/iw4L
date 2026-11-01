@@ -889,7 +889,8 @@ impl PlayerMovement for T6Movement {
             // The runtime's command mask still runs these for Black Ops 2.
             ScriptFlag::WeaponsDisabled
             | ScriptFlag::OffhandsDisabled
-            | ScriptFlag::GuidedCamera => return None,
+            | ScriptFlag::GuidedCamera
+            | ScriptFlag::RemoteVehicle => return None,
         };
         let was = *word & bit != 0;
         if on {

@@ -59,7 +59,10 @@ The Attack Helicopter (`helicopter_comlink_mp`) flies in and hunts enemies by
 itself. The Care Package (`supply_drop_mp`) flies in where its marker lands; hold use
 on the crate to take what is inside. The Valkyrie Rockets (`m220_tow_mp`) fly
 through the rocket's own camera: the mouse steers, `+smoke` boosts, attack
-detonates.
+detonates. The Gunship (`helicopter_player_firstperson_mp`) flies in on its path,
+then is yours: move keys and the mouse fly it, `+gostand` and `+movedown` change
+height, attack fires the minigun, `+speed_throw` fires rockets. It leaves after a
+minute.
 
 The host's console sets the scripts' limits, read each second as in Black
 Ops: `set scr_dm_scorelimit 100`, `set scr_dm_timelimit 2` (Team

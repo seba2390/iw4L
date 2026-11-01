@@ -3,19 +3,35 @@
 //! script sets its speed, goal, yaw and tilt in the game's flight, and the
 //! game's frame (`PlayerMovement::helicopter_frame`) flies it.
 
-use super::super::args::{arg, float, optional, string, vector};
+use super::super::args::{arg, float, int, optional, string, vector};
+use super::super::arrays::new_array;
+use super::super::players::{LinkView, PlayerLink};
 use super::super::vehicles::{Heli, spawn_vehicle};
 use crate::frame::FrameWorld;
 use crate::script::Namespace::{Function, Method};
 use crate::script::runtime::raise;
 use crate::script::{NativeRegistry, RoundScript, Value};
 use bevy_ecs::prelude::World;
-use game_api::heli::{HeliAim, HeliMove, HeliShot, HeliWorld};
+use game_api::heli::{HeliAim, HeliMove, HeliPilot, HeliShot, HeliWorld};
+use game_api::movement::ScriptFlag;
+use std::collections::BTreeMap;
+use std::sync::Arc;
 
 /// Inches a second in a mile an hour.
 const MPH: f32 = 17.6;
 /// A vehicle's yaw deceleration by its yaw acceleration when spawned.
 const YAW_DECEL_SHARE: f32 = 0.65;
+/// What stops a helicopter (its entity's clip mask).
+const HELI_CLIP_MASK: u32 = 0x0080_0400;
+/// A vehicle's seats.
+const SEATS: usize = 11;
+/// A remote controller's view sits this far over the vehicle's `tag_player`.
+const REMOTE_EYE_UP: f32 = 60.0;
+/// How far ahead of their view a pilot's gun aims, and what stops the aim.
+const AIM_RANGE: f32 = 10240.0;
+/// A splash's share of the blended damage zones.
+const SPLASH_SHARE: f32 = 0.7;
+const AIM_MASK: u32 = 0x0280_e893;
 
 /// The flight of a helicopter the game flies, by its receiver.
 fn flight<'a>(world: &'a mut World, receiver: &Value) -> Result<&'a mut HeliMove, String> {
@@ -69,6 +85,10 @@ fn spawn_helicopter(world: &mut World, _: &Value, args: &[Value]) -> Result<Valu
         hover_speed: 176.0,
         hover_accel: 88.0,
         turret_rate: motion.turret_rot_rate,
+        piloted: game_api::heli::PilotedFlight {
+            motion,
+            ..Default::default()
+        },
         ..HeliMove::default()
     };
     let spawned = spawn_vehicle(
@@ -244,6 +264,63 @@ impl HeliWorld for MatchHeliWorld<'_> {
     fn sight_clear(&mut self, from: [f32; 3], to: [f32; 3], _target: i32) -> bool {
         super::engine::sight_clear_of_world(self.world, from, to)
     }
+
+    fn sweep(
+        &mut self,
+        from: [f32; 3],
+        to: [f32; 3],
+        mins: [f32; 3],
+        maxs: [f32; 3],
+    ) -> Option<(f32, [f32; 3])> {
+        let own = self
+            .world
+            .resource::<RoundScript>()
+            .entities
+            .get(&self.heli)
+            .and_then(|entity| entity.presence);
+        let hit = FrameWorld::from_world(self.world).trace_world_hull_except(
+            from,
+            to,
+            mins,
+            maxs,
+            HELI_CLIP_MASK,
+            &|owner| owner.script_model() == own,
+        );
+        (hit.startsolid == 0).then_some((hit.fraction, hit.normal))
+    }
+
+    fn height_lock_at(&mut self, at: [f32; 3], reach: f32) -> Option<f32> {
+        height_locks(self.world)
+            .into_iter()
+            .find_map(|(mins, maxs)| {
+                let inside = (0..2).all(|i| mins[i] <= at[i] && at[i] <= maxs[i]);
+                (inside && (at[2] - maxs[2]).abs() <= reach).then_some(maxs[2])
+            })
+    }
+}
+
+/// The world boxes of the map's height lock volumes.
+fn height_locks(world: &mut World) -> Vec<([f32; 3], [f32; 3])> {
+    let volumes: Vec<u64> = {
+        let runtime = world.resource::<RoundScript>();
+        runtime
+            .entities
+            .iter()
+            .filter(|(_, entity)| &*entity.classname == "heli_height_lock")
+            .map(|(id, _)| *id)
+            .collect()
+    };
+    volumes
+        .into_iter()
+        .map(|volume| {
+            let (mins, maxs) = super::super::triggers::entity_bounds(world, volume);
+            let place = super::engine::vector_field(world, volume, "origin");
+            (
+                std::array::from_fn(|i| mins[i] + place[i]),
+                std::array::from_fn(|i| maxs[i] + place[i]),
+            )
+        })
+        .collect()
 }
 
 fn player_eye(world: &mut World, object: u64) -> Option<[f32; 3]> {
@@ -341,6 +418,199 @@ fn fire_weapon(world: &mut World, receiver: &Value, args: &[Value]) -> Result<Va
     Ok(Value::Object(object))
 }
 
+/// The vehicle a player sits in, and the seats of each vehicle.
+#[derive(bevy_ecs::prelude::Resource, Default)]
+struct VehicleSeats {
+    seats: BTreeMap<u64, [Option<u32>; SEATS]>,
+    /// What is left of a vehicle's fire time, in milliseconds.
+    fire_ms: BTreeMap<u64, i32>,
+}
+
+fn seats(world: &mut World) -> &mut VehicleSeats {
+    world
+        .get_resource_or_insert_with(VehicleSeats::default)
+        .into_inner()
+}
+
+fn vehicle_id(receiver: &Value) -> Result<u64, String> {
+    match receiver {
+        Value::Object(id) => Ok(*id),
+        _ => Err("not an entity".into()),
+    }
+}
+
+fn seat_of(world: &World, client: u32) -> Option<(u64, usize)> {
+    world
+        .get_resource::<VehicleSeats>()?
+        .seats
+        .iter()
+        .find_map(|(vehicle, seats)| {
+            seats
+                .iter()
+                .position(|seat| *seat == Some(client))
+                .map(|seat| (*vehicle, seat))
+        })
+}
+
+/// `vehicle usevehicle(player, seat)`: the player takes the seat. A remote
+/// control vehicle leaves their body where it stands: their view rides its
+/// `tag_player`, turning with it by the file's `viewInfluence`, and it hears
+/// their controls. Both hear `enter_vehicle` (seat, the other).
+fn use_vehicle(world: &mut World, receiver: &Value, args: &[Value]) -> Result<Value, String> {
+    let vehicle = vehicle_id(receiver)?;
+    let object = super::engine::entity_id(world, arg(args, 0)?)?;
+    let client = world
+        .resource::<RoundScript>()
+        .player_client(object)
+        .ok_or("usevehicle: not a player")?;
+    let seat = int(args, 1)? as usize;
+    if seat >= SEATS {
+        return Err("usevehicle: no such seat".into());
+    }
+    let id = crate::ClientId(client);
+    if seats(world)
+        .seats
+        .get(&vehicle)
+        .is_some_and(|row| row[seat] == Some(client))
+    {
+        return Ok(Value::Undefined);
+    }
+    if let Some((old_vehicle, old_seat)) = seat_of(world, client)
+        && let Some(row) = seats(world).seats.get_mut(&old_vehicle)
+    {
+        row[old_seat] = None;
+    }
+    let motion = flight(world, receiver)?.piloted.motion;
+    seats(world).seats.entry(vehicle).or_default()[seat] = Some(client);
+    if motion.remote_control {
+        let mut frame = FrameWorld::from_world(world);
+        crate::game_move::set_script_flag(&mut frame, id, ScriptFlag::RemoteVehicle, true);
+    }
+    let (_, axis) = super::super::players::link_parent_pose(world, vehicle, Some("tag_player"));
+    let restore_view = FrameWorld::from_world(world)
+        .player(id)
+        .map(|ps| ps.viewangles);
+    super::super::players::link_player(
+        world,
+        client,
+        PlayerLink {
+            parent: vehicle,
+            tag: Some(Arc::from("tag_player")),
+            origin: [0.0, 0.0, REMOTE_EYE_UP],
+            angles: [0.0; 3],
+            view: LinkView::WeaponDelta,
+            clamp: None,
+            parent_axis: axis,
+            view_fraction: if seat == 0 {
+                motion.view_influence
+            } else {
+                1.0
+            },
+            use_tag_angles: false,
+            link_axis: math_iw4::angles_to_axis([0.0; 3]),
+            restore_view,
+        },
+    );
+    let player = Value::Object(object);
+    raise(
+        world,
+        player.clone(),
+        "enter_vehicle",
+        vec![Value::Int(seat as i32), receiver.clone()],
+    );
+    raise(
+        world,
+        receiver.clone(),
+        "enter_vehicle",
+        vec![Value::Int(seat as i32), player],
+    );
+    Ok(Value::Undefined)
+}
+
+/// Takes a player out of a seat: their controls come back, both hear
+/// `exit_vehicle` (seat, the other).
+fn leave_seat(world: &mut World, vehicle: u64, seat: usize, client: u32) {
+    if let Some(row) = seats(world).seats.get_mut(&vehicle) {
+        row[seat] = None;
+    }
+    let id = crate::ClientId(client);
+    let mut frame = FrameWorld::from_world(world);
+    crate::game_move::set_script_flag(&mut frame, id, ScriptFlag::RemoteVehicle, false);
+    let player = super::super::players::player_object(world, client);
+    if world
+        .resource::<RoundScript>()
+        .entities
+        .contains_key(&vehicle)
+    {
+        raise(
+            world,
+            player.clone(),
+            "exit_vehicle",
+            vec![Value::Int(seat as i32), Value::Object(vehicle)],
+        );
+        raise(
+            world,
+            Value::Object(vehicle),
+            "exit_vehicle",
+            vec![Value::Int(seat as i32), player],
+        );
+    }
+}
+
+/// `vehicle setviewclamp(player, right, left, up, down)`: arcs from 0 to 180.
+fn set_view_clamp(world: &mut World, _: &Value, args: &[Value]) -> Result<Value, String> {
+    if !(3..=5).contains(&args.len()) {
+        return Err("SetViewClamp:  Does not have manditory parameters".into());
+    }
+    let object = super::engine::entity_id(world, arg(args, 0)?)?;
+    let client = world
+        .resource::<RoundScript>()
+        .player_client(object)
+        .ok_or("SetViewClamp: not a player")?;
+    let arc = |index: usize| -> Result<f32, String> {
+        Ok(optional(args, index, float)?
+            .unwrap_or(180.0)
+            .clamp(0.0, 180.0))
+    };
+    let clamp = [-arc(3)?, arc(4)?, -arc(1)?, arc(2)?];
+    if let Some(link) = world
+        .resource_mut::<RoundScript>()
+        .players
+        .get_mut(&client)
+        .and_then(|slot| slot.link.as_mut())
+    {
+        link.clamp = Some(clamp);
+    }
+    Ok(Value::Undefined)
+}
+
+/// The pilot's controls this frame; their command's sticks and keys.
+fn pilot_controls(world: &mut World, client: u32) -> Option<HeliPilot> {
+    let id = crate::ClientId(client);
+    let mut frame = FrameWorld::from_world(world);
+    let held = crate::script_player::buttons(&mut frame, id);
+    let view = frame.player(id)?.viewangles;
+    let command = frame
+        .ecs()
+        .resource::<crate::step::StepRequest>()
+        .input
+        .cmds
+        .iter()
+        .rev()
+        .find(|command| command.client == id)
+        .map(|command| command.command);
+    let time_ms = frame.entity_kernel().level_time_ms();
+    Some(HeliPilot {
+        forward: command.map_or(0, |cmd| cmd.forwardmove),
+        right: command.map_or(0, |cmd| cmd.rightmove),
+        yaw_axis: command.map_or(0, |cmd| cmd.remote_control[1] as i8),
+        climb: held & crate::script::command_buttons("+gostand") != 0,
+        descend: held & crate::script::command_buttons("+movedown") != 0,
+        view,
+        time_ms,
+    })
+}
+
 /// A frame of a helicopter the game flies; false when this one is not.
 pub(crate) fn advance(world: &mut World, id: u64) -> bool {
     let Some(mut heli) = world
@@ -353,11 +623,68 @@ pub(crate) fn advance(world: &mut World, id: u64) -> bool {
     };
     if !world.resource::<RoundScript>().entities.contains_key(&id) {
         world.resource_mut::<RoundScript>().vehicles.remove(&id);
+        if let Some(row) = seats(world).seats.remove(&id) {
+            for (seat, client) in row.iter().enumerate() {
+                if let Some(client) = client {
+                    leave_seat(world, id, seat, *client);
+                    super::super::players::unlink_player(world, *client);
+                }
+            }
+        }
         return true;
     }
     let Some(movement) = crate::game_move::rules(&FrameWorld::from_world(world)) else {
         return true;
     };
+    // A seat ends with the player's link (`unlink`).
+    let row = seats(world).seats.get(&id).copied().unwrap_or([None; SEATS]);
+    for (seat, client) in row.iter().enumerate() {
+        if let Some(client) = client
+            && world
+                .resource::<RoundScript>()
+                .players
+                .get(client)
+                .is_none_or(|slot| slot.link.is_none())
+        {
+            leave_seat(world, id, seat, *client);
+        }
+    }
+    let driver = seats(world).seats.get(&id).and_then(|row| row[0]);
+    heli.piloted.pilot = driver.and_then(|client| pilot_controls(world, client));
+    // BlackOpsMP.exe's fire think: attack held with the fire time run out says
+    // `turret_fire` to the vehicle; its `fireweapon` starts the fire time.
+    let left = seats(world).fire_ms.entry(id).or_insert(0);
+    *left = (*left - crate::MATCH_TICK_MS as i32).max(0);
+    let ready = *left <= 0;
+    // The gun aims where the pilot looks, up to 10240 ahead of their view.
+    if let Some(client) = driver {
+        let frame = FrameWorld::from_world(world);
+        let id_client = crate::ClientId(client);
+        let view = frame
+            .client_meta(id_client)
+            .and_then(|meta| meta.linked_weapon_view);
+        if let (Some(view), Some(pilot)) = (view, heli.piloted.pilot) {
+            let (forward, _, _) = math_iw4::angle_vectors(pilot.view);
+            let end: [f32; 3] = std::array::from_fn(|i| view.origin[i] + forward[i] * AIM_RANGE);
+            let hit = frame.trace_world(view.origin, end, [0.0; 3], [0.0; 3], AIM_MASK);
+            heli.turret_aim = Some(HeliAim::Point(std::array::from_fn(|i| {
+                view.origin[i] + (end[i] - view.origin[i]) * hit.fraction
+            })));
+        }
+    }
+    if ready
+        && let Some(client) = driver
+        && heli_has_weapon(world, id)
+    {
+        let held = crate::script_player::buttons(
+            &mut FrameWorld::from_world(world),
+            crate::ClientId(client),
+        );
+        if held & crate::script::command_buttons("+attack") != 0 {
+            let player = super::super::players::player_object(world, client);
+            raise(world, Value::Object(id), "turret_fire", vec![player]);
+        }
+    }
     let look_at = world
         .resource::<RoundScript>()
         .vehicles
@@ -389,6 +716,22 @@ pub(crate) fn advance(world: &mut World, id: u64) -> bool {
     );
     runtime.set_object_field(id, "angles", Value::Vector(heli.angles));
     let receiver = Value::Object(id);
+    if let Some(normal) = notes.collision {
+        raise(
+            world,
+            receiver.clone(),
+            "veh_collision",
+            vec![Value::Vector(normal), Value::Vector(heli.velocity)],
+        );
+    }
+    if let Some(normal) = notes.predicted_collision {
+        raise(
+            world,
+            receiver.clone(),
+            "veh_predictedcollision",
+            vec![Value::Vector(normal), Value::Vector(heli.velocity)],
+        );
+    }
     for (said, name) in [
         (notes.near_goal, "near_goal"),
         (notes.goal_yaw, "goal_yaw"),
@@ -406,7 +749,307 @@ pub(crate) fn advance(world: &mut World, id: u64) -> bool {
     true
 }
 
+fn heli_has_weapon(world: &World, id: u64) -> bool {
+    world
+        .resource::<RoundScript>()
+        .vehicles
+        .get(&id)
+        .is_some_and(|heli| heli.weapon.is_some())
+}
+
+/// The smallest distance from a place to a side of the height lock it is in;
+/// 0 outside them all.
+fn height_lock_depth(world: &mut World, origin: [f32; 3]) -> i32 {
+    for (mins, maxs) in height_locks(world) {
+        if (0..2).all(|i| mins[i] <= origin[i] && origin[i] <= maxs[i]) {
+            let distance = (origin[0] - mins[0])
+                .min(maxs[0] - origin[0])
+                .min(origin[1] - mins[1])
+                .min(maxs[1] - origin[1]);
+            return distance as i32;
+        }
+    }
+    0
+}
+
+/// `vehicle isvehicleimmunetodamage(flags, means, weapon)`: every vehicle file
+/// in the multiplayer zones takes all six kinds of damage, so what is left of
+/// BlackOpsMP.exe's test is the means it never takes.
+fn immune_to_damage(world: &mut World, receiver: &Value, args: &[Value]) -> Result<Value, String> {
+    let means = string(args, 1)?;
+    let remote = flight(world, receiver)?.piloted.motion.remote_control;
+    let immune = match &*means {
+        "MOD_PISTOL_BULLET"
+        | "MOD_RIFLE_BULLET"
+        | "MOD_GRENADE"
+        | "MOD_GRENADE_SPLASH"
+        | "MOD_PROJECTILE"
+        | "MOD_IMPACT"
+        | "MOD_PROJECTILE_SPLASH"
+        | "MOD_EXPLOSIVE" => false,
+        "MOD_BURNED" => !remote,
+        _ => true,
+    };
+    Ok(Value::Int(i32::from(immune)))
+}
+
+/// The share of damage a vehicle takes by the side a point lies to: its
+/// `vehicle_damage_zone_*` dvars, a splash blending the two sides it lies
+/// between; a splash from under it takes the under zone's.
+fn damage_share(world: &World, heli: &HeliMove, point: Option<[f32; 3]>, splash: bool) -> f32 {
+    let dvar = |name: &str, default: f32| {
+        world
+            .resource::<crate::script::MatchScript>()
+            .dvars
+            .get(name)
+            .and_then(|value| value.to_string().parse().ok())
+            .unwrap_or(default)
+    };
+    let (front, side, rear) = (
+        dvar("vehicle_damage_zone_front", 1.0),
+        dvar("vehicle_damage_zone_side", 1.2),
+        dvar("vehicle_damage_zone_rear", 2.0),
+    );
+    let (delta_x, delta_y) = point.map_or((1.0, 0.0), |at| {
+        (at[0] - heli.origin[0], at[1] - heli.origin[1])
+    });
+    let length = (delta_x * delta_x + delta_y * delta_y).sqrt();
+    let scale = if length <= 0.0 { 1.0 } else { 1.0 / length };
+    let (forward, right, _) = math_iw4::angle_vectors(heli.angles);
+    let along = forward[0] * scale * delta_x + forward[1] * scale * delta_y;
+    let across = right[0] * scale * delta_x + right[1] * scale * delta_y;
+    let sideways = along.abs() < across.abs();
+    let dominant = if sideways { across } else { along };
+    if !splash {
+        if !sideways {
+            return if dominant >= 0.0 { front } else { rear };
+        }
+        return side;
+    }
+    let (near, far) = if sideways {
+        (side, if along < 0.0 { rear } else { front })
+    } else {
+        (if dominant >= 0.0 { front } else { rear }, side)
+    };
+    ((1.0 - dominant.abs()) * far + near * dominant.abs()) * SPLASH_SHARE
+}
+
+/// `vehicle finishvehicledamage(inflictor, attacker, damage, flags, means,
+/// weapon, point, dir, hitloc, offset, under, modelindex, part, friendly)`: the
+/// damage scaled by side comes off the entity's health and it hears `damage`.
+fn finish_damage(world: &mut World, receiver: &Value, args: &[Value]) -> Result<Value, String> {
+    let damage = int(args, 2)?;
+    if damage <= 0 {
+        return Ok(Value::Undefined);
+    }
+    let attacker = args.get(1).cloned().unwrap_or(Value::Undefined);
+    let means = string(args, 4)?;
+    let point = optional(args, 6, vector)?;
+    let dir = args.get(7).cloned().unwrap_or(Value::Undefined);
+    let heli = *flight(world, receiver)?;
+    let splash = matches!(&*means, "MOD_GRENADE_SPLASH" | "MOD_PROJECTILE_SPLASH");
+    let dealt = (damage as f32 * damage_share(world, &heli, point, splash)) as i32;
+    let weapon = args.get(5).cloned().unwrap_or(Value::Undefined);
+    apply_damage(world, receiver, dealt, attacker, dir, point, &means, weapon);
+    Ok(Value::Undefined)
+}
+
+/// `vehicle finishvehicleradiusdamage(inflictor, attacker, damage, inner,
+/// outer, flags, means, weapon, point, radius, cone, conedir, offset)`.
+fn finish_radius_damage(
+    world: &mut World,
+    receiver: &Value,
+    args: &[Value],
+) -> Result<Value, String> {
+    let attacker = args.get(1).cloned().unwrap_or(Value::Undefined);
+    let (inner, outer) = (float(args, 3)?, float(args, 4)?);
+    let means = string(args, 6)?;
+    let point = optional(args, 8, vector)?;
+    let radius = float(args, 9)?;
+    let heli = *flight(world, receiver)?;
+    let distance = point.map_or(0.0, |at| {
+        (0..3)
+            .map(|i| (at[i] - heli.origin[i]) * (at[i] - heli.origin[i]))
+            .sum::<f32>()
+            .sqrt()
+    });
+    if radius <= 0.0 || distance >= radius {
+        return Ok(Value::Undefined);
+    }
+    let at_range = inner + (outer - inner) * distance / radius;
+    let dealt = (at_range * damage_share(world, &heli, point, true)) as i32;
+    let weapon = args.get(7).cloned().unwrap_or(Value::Undefined);
+    apply_damage(
+        world,
+        receiver,
+        dealt,
+        attacker,
+        Value::Undefined,
+        point,
+        &means,
+        weapon,
+    );
+    Ok(Value::Undefined)
+}
+
+fn apply_damage(
+    world: &mut World,
+    receiver: &Value,
+    dealt: i32,
+    attacker: Value,
+    dir: Value,
+    point: Option<[f32; 3]>,
+    means: &str,
+    weapon: Value,
+) {
+    let Value::Object(id) = receiver else {
+        return;
+    };
+    let mut runtime = world.resource_mut::<RoundScript>();
+    if let Value::Int(health) = runtime.object_field(*id, "health") {
+        runtime.set_object_field(*id, "health", Value::Int(health - dealt));
+    }
+    raise(
+        world,
+        receiver.clone(),
+        "damage",
+        vec![
+            Value::Int(dealt),
+            attacker,
+            dir,
+            point.map_or(Value::Undefined, Value::Vector),
+            Value::string(means),
+            Value::Undefined,
+            Value::Undefined,
+            Value::Undefined,
+            weapon,
+        ],
+    );
+}
+
+fn register_seats(registry: &mut NativeRegistry) {
+    registry.register(Method, "isvehicleimmunetodamage", immune_to_damage);
+    registry.register(Method, "finishvehicledamage", finish_damage);
+    registry.register(Method, "finishvehicleradiusdamage", finish_radius_damage);
+    // `+speed_throw` presses aim and throw together; BlackOpsMP.exe's handler
+    // reads the throw half.
+    registry.register(Method, "throwbuttonpressed", |world, receiver, _| {
+        let object = super::engine::entity_id(world, receiver)?;
+        let Some(client) = world.resource::<RoundScript>().player_client(object) else {
+            return Err("not a player".into());
+        };
+        let held = crate::script_player::buttons(
+            &mut FrameWorld::from_world(world),
+            crate::ClientId(client),
+        );
+        Ok(Value::Int(i32::from(
+            held & crate::script::command_buttons("+speed_throw") != 0,
+        )))
+    });
+    registry.register(Method, "usevehicle", use_vehicle);
+    registry.register(Method, "setviewclamp", set_view_clamp);
+    registry.register(Method, "resetviewclamp", |world, _, args| {
+        let object = super::engine::entity_id(world, arg(args, 0)?)?;
+        let client = world
+            .resource::<RoundScript>()
+            .player_client(object)
+            .ok_or("ResetViewClamp: Player not on vehicle.")?;
+        if let Some(link) = world
+            .resource_mut::<RoundScript>()
+            .players
+            .get_mut(&client)
+            .and_then(|slot| slot.link.as_mut())
+        {
+            link.clamp = None;
+        }
+        Ok(Value::Undefined)
+    });
+    registry.register(Method, "returnplayercontrol", |world, receiver, _| {
+        let heli = flight(world, receiver)?;
+        heli.has_goal = false;
+        heli.hovering = false;
+        Ok(Value::Undefined)
+    });
+    registry.register(Method, "makevehicleunusable", |_, _, _| {
+        Ok(Value::Undefined)
+    });
+    registry.register(Method, "makevehicleusable", |_, _, _| Ok(Value::Undefined));
+    registry.register(Method, "setjitterparams", |world, receiver, args| {
+        let amplitude = vector(args, 0)?;
+        let min = optional(args, 1, float)?.unwrap_or(0.5);
+        let max = optional(args, 2, float)?.unwrap_or(1.0);
+        let jitter = &mut flight(world, receiver)?.piloted.jitter;
+        jitter.amplitude = amplitude;
+        jitter.min_ms = (min * 1000.0) as i32;
+        jitter.max_ms = (max * 1000.0) as i32;
+        jitter.next_ms = 0;
+        Ok(Value::Undefined)
+    });
+    registry.register(Method, "setheliheightlock", |world, receiver, args| {
+        flight(world, receiver)?.height_lock = int(args, 0)? != 0;
+        Ok(Value::Undefined)
+    });
+    registry.register(Method, "isinsideheliheightlock", |world, receiver, _| {
+        let origin = flight(world, receiver)?.origin;
+        Ok(Value::Int(height_lock_depth(world, origin)))
+    });
+    registry.register(Method, "getoccupantseat", |world, receiver, args| {
+        let vehicle = vehicle_id(receiver)?;
+        let object = super::engine::entity_id(world, arg(args, 0)?)?;
+        let Some(client) = world.resource::<RoundScript>().player_client(object) else {
+            return Ok(Value::Undefined);
+        };
+        Ok(match seat_of(world, client) {
+            Some((at, seat)) if at == vehicle => Value::Int(seat as i32),
+            _ => Value::Undefined,
+        })
+    });
+    registry.register(Method, "getseatoccupant", |world, receiver, args| {
+        let vehicle = vehicle_id(receiver)?;
+        let seat = int(args, 0)? as usize;
+        let client = seats(world)
+            .seats
+            .get(&vehicle)
+            .and_then(|row| row.get(seat).copied().flatten());
+        Ok(client.map_or(Value::Undefined, |client| {
+            super::super::players::player_object(world, client)
+        }))
+    });
+    registry.register(Method, "getvehoccupants", |world, receiver, _| {
+        let vehicle = vehicle_id(receiver)?;
+        let row = seats(world)
+            .seats
+            .get(&vehicle)
+            .copied()
+            .unwrap_or([None; SEATS]);
+        let list: Vec<Value> = row
+            .iter()
+            .flatten()
+            .map(|client| super::super::players::player_object(world, *client))
+            .collect();
+        new_array(world, list)
+    });
+    registry.register(Method, "getvehicleoccupied", |world, receiver, _| {
+        let object = super::engine::entity_id(world, receiver)?;
+        let Some(client) = world.resource::<RoundScript>().player_client(object) else {
+            return Err("not a player".into());
+        };
+        Ok(seat_of(world, client).map_or(Value::Undefined, |(vehicle, _)| Value::Object(vehicle)))
+    });
+    registry.register(Method, "isremotecontrolling", |world, receiver, _| {
+        let object = super::engine::entity_id(world, receiver)?;
+        let Some(client) = world.resource::<RoundScript>().player_client(object) else {
+            return Err("not a player".into());
+        };
+        let frame = FrameWorld::from_world(world);
+        let remote = crate::game_move::status(&frame, crate::ClientId(client))
+            .is_some_and(|status| status.remote_control);
+        Ok(Value::Int(i32::from(remote)))
+    });
+}
+
 pub(crate) fn register(registry: &mut NativeRegistry) {
+    register_seats(registry);
     registry.register(Function, "spawnhelicopter", spawn_helicopter);
     registry.register(Method, "setspeed", set_speed);
     registry.register(Method, "setvehgoalpos", set_goal);

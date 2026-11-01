@@ -56,6 +56,58 @@ pub struct HeliMove {
     pub turret_rate: f32,
     /// How far its turning has settled, for `turret_rotate_stopped`.
     pub turret_settling: u8,
+    /// The flight its seat 0 player steers while it has no goal.
+    pub piloted: PilotedFlight,
+    /// `setheliheightlock`: the pilot's altitude holds over the ground.
+    pub height_lock: bool,
+}
+
+/// What a piloted helicopter's frame reads from its pilot and keeps.
+#[derive(Clone, Copy, Debug, Default, PartialEq)]
+pub struct PilotedFlight {
+    /// This frame's pilot, when one sits in its driver's seat.
+    pub pilot: Option<HeliPilot>,
+    /// Its velocity along its own axes.
+    pub local_velocity: [f32; 3],
+    /// Degrees a second its yaw turns.
+    pub yaw_rate: f32,
+    /// How far it tilts, and how fast, pitch then roll.
+    pub tilt: [f32; 2],
+    pub tilt_rate: [f32; 2],
+    /// How high over its ground the pilot holds it, and that ground's height.
+    pub lift: f32,
+    pub ground: f32,
+    pub jitter: HeliJitter,
+    /// Its vehicle file.
+    pub motion: VehicleMotion,
+}
+
+/// `setjitterparams`: a shake of its tilt, stronger the slower it flies.
+#[derive(Clone, Copy, Debug, Default, PartialEq)]
+pub struct HeliJitter {
+    pub min_ms: i32,
+    pub max_ms: i32,
+    pub next_ms: i32,
+    pub amplitude: [f32; 3],
+    pub step: [f32; 3],
+    pub goal: [f32; 3],
+    pub smoothed: [f32; 3],
+}
+
+/// A pilot's controls for one frame.
+#[derive(Clone, Copy, Debug, Default, PartialEq)]
+pub struct HeliPilot {
+    /// The move sticks, -127 to 127.
+    pub forward: i8,
+    pub right: i8,
+    /// The yaw axis of the look stick.
+    pub yaw_axis: i8,
+    pub climb: bool,
+    pub descend: bool,
+    /// Where the pilot looks.
+    pub view: [f32; 3],
+    /// Now, for the jitter.
+    pub time_ms: i32,
 }
 
 /// What a helicopter's turret aims at.
@@ -76,10 +128,22 @@ pub struct VehicleMotion {
     pub max_body_pitch: f32,
     pub max_body_roll: f32,
     pub turret_rot_rate: f32,
+    /// The fields a pilot's move reads.
+    pub remote_control: bool,
+    pub view_pitch_offset: f32,
+    pub view_influence: f32,
+    pub tilt_from_accel: [f32; 2],
+    pub tilt_from_decel: [f32; 2],
+    pub tilt_from_velocity: [f32; 2],
+    pub tilt_speed: [f32; 2],
+    pub turret_span_right: f32,
+    /// Points of its `steerGraph`, x then y; empty when it has none.
+    pub steer_graph: [[f32; 2]; 8],
+    pub steer_points: u8,
 }
 
 /// What a frame of flight says to the scripts.
-#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, Default, PartialEq)]
 pub struct HeliNotes {
     pub goal: bool,
     pub near_goal: bool,
@@ -89,6 +153,10 @@ pub struct HeliNotes {
     pub turret_not_on_target: bool,
     pub turret_on_vistarget: bool,
     pub turret_no_vis: bool,
+    /// `veh_collision`: the surface's normal.
+    pub collision: Option<[f32; 3]>,
+    /// `veh_predictedcollision`: the surface ahead's normal.
+    pub predicted_collision: Option<[f32; 3]>,
 }
 
 /// A helicopter's shot (`fireweapon`): its gun, what it may home on.
@@ -116,4 +184,16 @@ pub trait HeliWorld {
     fn entity_origin(&mut self, entity: i32) -> Option<[f32; 3]>;
     /// Nothing solid between the two, the target itself left out.
     fn sight_clear(&mut self, from: [f32; 3], to: [f32; 3], target: i32) -> bool;
+    /// A box swept through what stops a vehicle: how far it got and what it
+    /// met, none when it started in something solid.
+    fn sweep(
+        &mut self,
+        from: [f32; 3],
+        to: [f32; 3],
+        mins: [f32; 3],
+        maxs: [f32; 3],
+    ) -> Option<(f32, [f32; 3])>;
+    /// The height the pilot's height lock meets at a place, searching this far
+    /// up and down.
+    fn height_lock_at(&mut self, at: [f32; 3], reach: f32) -> Option<f32>;
 }

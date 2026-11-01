@@ -608,6 +608,16 @@ pub fn apply_prepared_match(
                     max_body_pitch: motion.max_body_pitch,
                     max_body_roll: motion.max_body_roll,
                     turret_rot_rate: motion.turret_rot_rate,
+                    remote_control: motion.remote_control,
+                    view_pitch_offset: motion.view_pitch_offset,
+                    view_influence: motion.view_influence,
+                    tilt_from_accel: motion.tilt_from_accel,
+                    tilt_from_decel: motion.tilt_from_decel,
+                    tilt_from_velocity: motion.tilt_from_velocity,
+                    tilt_speed: motion.tilt_speed,
+                    turret_span_right: motion.turret_span_right,
+                    steer_graph: motion.steer_graph,
+                    steer_points: motion.steer_points,
                 },
             )
         }));
