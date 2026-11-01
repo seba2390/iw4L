@@ -5,6 +5,19 @@ impl WeaponCatalog {
     /// what its helicopter flight starts from. Speeds are in miles an hour.
     pub fn capture_t5_vehicle_file(&mut self, file: &str, text: &str) {
         const MPH: f32 = 17.6;
+        if file.ends_with(".graph") {
+            let (points, count) = graph_points(text);
+            for (path, name) in &self.vehicle_steer_paths {
+                if path == file
+                    && let Some(motion) = self.vehicle_motion.get_mut(name)
+                {
+                    motion.steer_graph = points;
+                    motion.steer_points = count;
+                }
+            }
+            self.vehicle_graphs.insert(file.to_owned(), (points, count));
+            return;
+        }
         let Some(name) = file.strip_prefix("vehicles/") else {
             return;
         };
@@ -20,6 +33,18 @@ impl WeaponCatalog {
                 .and_then(|value| value.parse::<f32>().ok())
                 .unwrap_or(0.0)
         };
+        let steer_path = parts
+            .chunks(2)
+            .find(|pair| pair[0] == "steerGraph")
+            .and_then(|pair| pair.get(1))
+            .filter(|path| !path.is_empty());
+        if let Some(path) = steer_path {
+            self.vehicle_steer_paths
+                .push(((*path).to_owned(), name.to_owned()));
+        }
+        let (steer_graph, steer_points) = steer_path
+            .and_then(|path| self.vehicle_graphs.get(*path).copied())
+            .unwrap_or(([[0.0; 2]; 8], 0));
         self.vehicle_motion.insert(
             name.to_owned(),
             VehicleMotion {
@@ -30,6 +55,25 @@ impl WeaponCatalog {
                 max_body_pitch: value("maxBodyPitch"),
                 max_body_roll: value("maxBodyRoll"),
                 turret_rot_rate: value("turretRotRate"),
+                remote_control: value("remoteControl") != 0.0,
+                view_pitch_offset: value("viewPitchOffset"),
+                view_influence: value("viewInfluence"),
+                tilt_from_accel: [
+                    value("tiltFromAccelerationPitch"),
+                    value("tiltFromAccelerationRoll"),
+                ],
+                tilt_from_decel: [
+                    value("tiltFromDecelerationPitch"),
+                    value("tiltFromDecelerationRoll"),
+                ],
+                tilt_from_velocity: [
+                    value("tiltFromVelocityPitch"),
+                    value("tiltFromVelocityRoll"),
+                ],
+                tilt_speed: [value("tiltSpeedPitch"), value("tiltSpeedRoll")],
+                turret_span_right: value("turretHorizSpanRight"),
+                steer_graph,
+                steer_points,
             },
         );
     }
@@ -562,4 +606,27 @@ pub(super) fn stamp_mw2_tracer(
         Some(index) => AssetEdge::bind_order(index, tracers.zone_of(index)),
         None => AssetEdge::Unresolved(AssetEdgeReason::CatalogMiss),
     };
+}
+
+/// A `GRAPH_FLOAT_FILE`'s points (`vehicle/*.graph`): its count, then x y.
+fn graph_points(text: &str) -> ([[f32; 2]; 8], u8) {
+    let mut lines = text.lines().map(str::trim).filter(|line| !line.is_empty());
+    let mut points = [[0.0; 2]; 8];
+    let mut count = 0;
+    if lines.next() != Some("GRAPH_FLOAT_FILE") {
+        return (points, 0);
+    }
+    let _ = lines.next();
+    for line in lines {
+        let mut values = line
+            .split_whitespace()
+            .filter_map(|v| v.parse::<f32>().ok());
+        if let (Some(x), Some(y)) = (values.next(), values.next())
+            && count < points.len()
+        {
+            points[count] = [x, y];
+            count += 1;
+        }
+    }
+    (points, count as u8)
 }

@@ -434,6 +434,7 @@ pub(crate) fn command_buttons(command: &str) -> u32 {
         "+smoke" => buttons::SMOKE,
         "+speed_throw" | "+toggleads_throw" | "mouse2" => buttons::ADS,
         "+gostand" | "space" => buttons::JUMP,
+        "+movedown" => buttons::CROUCH | buttons::PRONE,
         _ => 0,
     }
 }

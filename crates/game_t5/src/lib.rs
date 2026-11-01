@@ -79,6 +79,11 @@ const MULTIPLAYER_ENGINE_DVARS: &[(&str, &str)] = &[
     ("bg_gravity", "800"),
     // How far a player reaches to use an entity.
     ("player_useRadius", "128"),
+    // The share of damage a vehicle takes by side.
+    ("vehicle_damage_zone_front", "1"),
+    ("vehicle_damage_zone_side", "1.2"),
+    ("vehicle_damage_zone_rear", "2"),
+    ("vehicle_damage_zone_under", "2.25"),
     // A helicopter's fastest climb, mph.
     ("vehHelicopterMaxSpeedVertical", "65"),
     // A TV-guided missile's steering and boost.

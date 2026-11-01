@@ -969,7 +969,7 @@ impl fastfile_t5::AssetLinkSink for CommonWalkSink {
         data: &[u8],
         zlib_compressed: bool,
     ) -> fastfile_t5::Result<()> {
-        if name.starts_with("vehicles/")
+        if (name.starts_with("vehicles/") || name.starts_with("vehicle/"))
             && let Ok(text) = std::str::from_utf8(data.split(|b| *b == 0).next().unwrap_or(data))
         {
             self.weapons.capture_t5_vehicle_file(name, text);

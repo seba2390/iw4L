@@ -17,14 +17,6 @@ const TURN_SLOWDOWN: f32 = 90.0;
 /// Under this speed a helicopter counts as hovering at its goal.
 const HOVER_ARRIVAL_SPEED: f32 = 35.2;
 
-fn no_goal_unknown() -> &'static Unknown {
-    unknown!(
-        "t5.vehicle.heli_no_goal",
-        "a helicopter with no goal stays where it is",
-        "BlackOpsMP.exe's move for a helicopter without a goal (the player-controlled one's)"
-    )
-}
-
 fn length(v: [f32; 3]) -> f32 {
     (v[0] * v[0] + v[1] * v[1] + v[2] * v[2]).sqrt()
 }
@@ -672,7 +664,10 @@ pub(crate) fn frame(
     let mut notes = HeliNotes::default();
     heli.previous_yaw = heli.angles[1];
     let gap = if !heli.has_goal {
-        Some(no_goal_unknown())
+        if heli.piloted.pilot.is_some() || heli.piloted.yaw_rate != 0.0 || heli.speed != 0.0 {
+            piloted_move(heli, world, &mut notes);
+        }
+        None
     } else {
         if heli.hovering {
             hover(heli, world, &mut notes);
@@ -684,4 +679,439 @@ pub(crate) fn frame(
     };
     turret_frame(heli, world, &mut notes);
     (notes, gap)
+}
+
+const FRAME_S: f32 = 0.05;
+const STICK: f32 = 1.0 / 127.0;
+/// The hull a helicopter's own trace sweeps (`spawnhelicopter`).
+const HULL_MINS: [f32; 3] = [-50.0; 3];
+const HULL_MAXS: [f32; 3] = [50.0; 3];
+/// The share of its speed a helicopter keeps hitting a surface head on.
+const HEAD_ON: f32 = 0.95;
+const COLLISION_KEEP: f32 = 0.5;
+const YAW_DAMP: f32 = 12.0;
+const GRAPH_YAW_LIMIT: f32 = 80.0;
+const GRAPH_YAW_AXIS: f32 = 10.0;
+const LIFT_STEP: f32 = 50.0;
+const LIFT_MAX: f32 = 2000.0;
+
+fn blend_to(goal: f32, now: f32, rate: f32, dt: f32) -> f32 {
+    let step = (goal - now) * rate * dt;
+    let left = (goal - now).abs();
+    if 0.05 < left && step.abs() <= left {
+        now + step
+    } else {
+        goal
+    }
+}
+
+fn dvar_or(world: &dyn HeliWorld, name: &str, default: f32) -> f32 {
+    dvar_f32(world, name, default)
+}
+
+fn axes_of(angles: [f32; 3]) -> ([f32; 3], [f32; 3], [f32; 3]) {
+    let (sp, cp) = (angles[0].to_radians().sin(), angles[0].to_radians().cos());
+    let (sy, cy) = (angles[1].to_radians().sin(), angles[1].to_radians().cos());
+    let (sr, cr) = (angles[2].to_radians().sin(), angles[2].to_radians().cos());
+    (
+        [cp * cy, cp * sy, -sp],
+        [-sr * sp * cy + cr * sy, -sr * sp * sy - cr * cy, -sr * cp],
+        [cr * sp * cy + sr * sy, cr * sp * sy - sr * cy, cr * cp],
+    )
+}
+
+fn dot3(a: [f32; 3], b: [f32; 3]) -> f32 {
+    a[0] * b[0] + a[1] * b[1] + a[2] * b[2]
+}
+
+fn graph_value(motion: &game_api::heli::VehicleMotion, x: f32) -> f32 {
+    let points = &motion.steer_graph[..usize::from(motion.steer_points)];
+    let Some(first) = points.first() else {
+        return x;
+    };
+    if x <= first[0] {
+        return first[1];
+    }
+    for pair in points.windows(2) {
+        if x <= pair[1][0] {
+            let span = pair[1][0] - pair[0][0];
+            let t = if span > 0.0 {
+                (x - pair[0][0]) / span
+            } else {
+                0.0
+            };
+            return pair[0][1] + (pair[1][1] - pair[0][1]) * t;
+        }
+    }
+    points[points.len() - 1][1]
+}
+
+/// The player's flight (BlackOpsMP.exe's helicopter move with no goal): their
+/// sticks, or none with no one flying it, drive a wanted velocity along the
+/// helicopter's axes and a turn toward where they look.
+fn piloted_move(heli: &mut HeliMove, world: &mut dyn HeliWorld, notes: &mut HeliNotes) {
+    let motion = heli.piloted.motion;
+    let pilot = heli
+        .piloted
+        .pilot
+        .unwrap_or(game_api::heli::HeliPilot::default());
+    let mut sticks = [
+        f32::from(pilot.forward),
+        f32::from(pilot.right),
+        0.0_f32,
+        0.0_f32,
+    ];
+    let yaw = heli.previous_yaw;
+    if heli.piloted.pilot.is_some() {
+        // `vehHelicopterYawAltitudeControls` 2: the look stick turns it and
+        // the two keys climb and descend.
+        sticks[3] = f32::from(pilot.yaw_axis);
+        let rate = dvar_or(world, "vehHelicopterAlwaysFaceCameraRate", 2.0);
+        let delta = normalize_180(pilot.view[1] - yaw);
+        if motion.steer_points == 0 {
+            let wanted = (delta * rate - heli.piloted.yaw_rate * YAW_DAMP).clamp(-180.0, 180.0);
+            sticks[3] = wanted.clamp(-127.0, 127.0).trunc();
+        } else {
+            let share = (delta / motion.turret_span_right * rate).clamp(-1.0, 1.0);
+            let mut turn = graph_value(&motion, share.abs());
+            if delta < 0.0 {
+                turn = -turn;
+            }
+            let turn = (turn * 128.0).clamp(-GRAPH_YAW_LIMIT, GRAPH_YAW_LIMIT);
+            sticks[3] = (f32::from(pilot.yaw_axis) * GRAPH_YAW_AXIS / 128.0 + turn).trunc();
+        }
+    }
+    if heli.height_lock {
+        if pilot.climb {
+            heli.piloted.lift += LIFT_STEP;
+        } else if pilot.descend {
+            heli.piloted.lift -= LIFT_STEP;
+        }
+        heli.piloted.lift = heli.piloted.lift.clamp(0.0, LIFT_MAX);
+        sticks[2] = altitude_stick(heli, world);
+    }
+    let (accel, rotate) = piloted_accel(heli, &motion, sticks, pilot.view, pilot.time_ms, world);
+    heli.piloted.yaw_rate += rotate[1] * FRAME_S;
+    let decel = dvar_or(world, "vehHelicopterRotDecel", 1.3);
+    heli.piloted.yaw_rate -= decel * heli.piloted.yaw_rate * FRAME_S;
+    let new_yaw = (heli.piloted.yaw_rate * FRAME_S + yaw).rem_euclid(360.0);
+    heli.angles = [rotate[0], new_yaw, rotate[2]];
+    let (forward, right, up) = axes_of([0.0, new_yaw, 0.0]);
+    let push: [f32; 3] =
+        std::array::from_fn(|i| forward[i] * accel[0] + right[i] * accel[1] + up[i] * accel[2]);
+    for (v, p) in heli.velocity.iter_mut().zip(push) {
+        *v += p * FRAME_S;
+    }
+    if heli.velocity != [0.0; 3] {
+        let wanted: [f32; 3] = std::array::from_fn(|i| heli.origin[i] + heli.velocity[i] * FRAME_S);
+        slide_move(heli, world);
+        let moved: [f32; 3] = std::array::from_fn(|i| wanted[i] - heli.origin[i]);
+        let length = dot3(moved, moved).sqrt();
+        if 0.0 < length {
+            let dir = moved.map(|v| v / length);
+            notes.collision = Some(dir);
+            let speed = dot3(heli.velocity, heli.velocity).sqrt();
+            let v_dir = if speed > 0.0 {
+                heli.velocity.map(|v| v / speed)
+            } else {
+                [0.0; 3]
+            };
+            if HEAD_ON < dot3(dir, v_dir) {
+                heli.velocity = heli.velocity.map(|v| v * COLLISION_KEEP);
+            }
+        }
+    }
+    let lookahead = dvar_or(world, "vehHelicopterLookaheadTime", 1.0);
+    if lookahead != 0.0 && heli.velocity != [0.0; 3] {
+        let ahead: [f32; 3] =
+            std::array::from_fn(|i| heli.origin[i] + heli.velocity[i] * lookahead);
+        if let Some((fraction, normal)) = world.sweep(heli.origin, ahead, HULL_MINS, HULL_MAXS)
+            && fraction < 1.0
+        {
+            notes.predicted_collision = Some(normal);
+        }
+    }
+    let (fw, rg, upv) = axes_of([0.0, new_yaw, 0.0]);
+    heli.piloted.local_velocity = [
+        dot3(heli.velocity, fw),
+        dot3(heli.velocity, rg),
+        dot3(heli.velocity, upv),
+    ];
+    swing_with_yaw(heli);
+    heli.speed = length(heli.velocity);
+}
+
+fn altitude_stick(heli: &mut HeliMove, world: &mut dyn HeliWorld) -> f32 {
+    let at = [
+        heli.velocity[0] + heli.origin[0],
+        heli.velocity[1] + heli.origin[1],
+        0.0,
+    ];
+    let height = heli.origin[2] + HULL_MINS[2] + heli.velocity[2] - heli.piloted.lift;
+    let probe = [at[0], at[1], height];
+    if let Some(ground) = world
+        .height_lock_at(probe, 200.0)
+        .or_else(|| world.height_lock_at(probe, 3000.0))
+    {
+        heli.piloted.ground = ground;
+    }
+    let off = height - heli.piloted.ground;
+    let mut share = 1.0;
+    let distance = off.abs();
+    if distance < 50.0 {
+        share = if distance < 15.0 {
+            0.0
+        } else {
+            distance / 50.0
+        };
+    }
+    if off < 0.0 {
+        if heli.velocity[2] < -4.0 {
+            share = 1.0;
+        }
+        (share * 127.0).trunc()
+    } else {
+        if 4.0 < heli.velocity[2] {
+            share = 1.0;
+        }
+        (share * -127.0).trunc()
+    }
+}
+
+/// BlackOpsMP.exe's move for a piloted helicopter: the wanted velocity and how
+/// fast it gets there, its turn and its tilt.
+fn piloted_accel(
+    heli: &mut HeliMove,
+    motion: &game_api::heli::VehicleMotion,
+    sticks: [f32; 4],
+    view: [f32; 3],
+    time_ms: i32,
+    world: &mut dyn HeliWorld,
+) -> ([f32; 3], [f32; 3]) {
+    let mut input = sticks.map(|v| v * STICK);
+    if sticks[0] != 0.0 || sticks[1] != 0.0 {
+        let largest = sticks[0].abs().max(sticks[1].abs());
+        if largest != 0.0 {
+            let scale = largest / (sticks[0] * sticks[0] + sticks[1] * sticks[1]).sqrt();
+            input[0] *= scale;
+            input[1] *= scale;
+        }
+        if input[1].abs() < dvar_or(world, "vehHelicopterStrafeDeadzone", 0.3) {
+            input[1] = 0.0;
+        }
+        // `vehHelicopterScaleMovement`.
+        let (a, b) = (input[0].abs(), input[1].abs());
+        if a <= b {
+            input[0] *= 1.0 - (b - a);
+        } else {
+            input[1] *= 1.0 - (a - b);
+        }
+    }
+    let deadzone = dvar_or(world, "vehHelicopterRightStickDeadzone", 0.3);
+    if input[2].abs() < deadzone {
+        input[2] = 0.0;
+    }
+    let vert_speed = dvar_or(world, "vehHelicopterMaxSpeedVertical", 65.0) * MPH;
+    let vert_accel = dvar_or(world, "vehHelicopterMaxAccelVertical", 60.0) * MPH;
+    let (max_xy, accel_xy) = (motion.max_speed, motion.accel);
+    let rate = [
+        if max_xy == 0.0 {
+            1.0
+        } else {
+            accel_xy / max_xy
+        },
+        if max_xy == 0.0 {
+            1.0
+        } else {
+            accel_xy / max_xy
+        },
+        if vert_speed == 0.0 {
+            1.0
+        } else {
+            vert_accel / vert_speed
+        },
+    ];
+    let wanted = [max_xy * input[0], max_xy * input[1], input[2] * vert_speed];
+    let wanted_speed =
+        (wanted[0] * wanted[0] + wanted[1] * wanted[1] + wanted[2] * wanted[2]).sqrt();
+    let unit = if wanted_speed > 0.0 {
+        wanted.map(|v| v / wanted_speed)
+    } else {
+        [0.0; 3]
+    };
+    let local = heli.piloted.local_velocity;
+    let along = dot3(local, unit);
+    let across: [f32; 3] = std::array::from_fn(|i| local[i] - unit[i] * along);
+    let parallel: [f32; 3] = std::array::from_fn(|i| unit[i] * along);
+    let decel_fwd = dvar_or(world, "vehHelicopterDecelerationFwd", 0.5);
+    let decel_side = dvar_or(world, "vehHelicopterDecelerationSide", 1.0);
+    let decels = [decel_fwd, decel_side];
+    let mut accel = [0.0_f32; 3];
+    let mut across_push = [0.0_f32; 2];
+    let mut along_push = [0.0_f32; 2];
+    for i in 0..2 {
+        let slow = decels[i] * rate[i];
+        let settle = (blend_to(0.0, across[i], slow, FRAME_S) - across[i]) * 20.0;
+        across_push[i] = settle;
+        if wanted_speed <= along {
+            let over = (blend_to(wanted[i], parallel[i], slow, FRAME_S) - parallel[i]) * 20.0;
+            across_push[i] = settle + over;
+        } else {
+            along_push[i] =
+                (blend_to(wanted[i], parallel[i], rate[i], FRAME_S) - parallel[i]) * 20.0;
+        }
+        let total = (along_push[i] + across_push[i]).clamp(-accel_xy, accel_xy);
+        accel[i] = total;
+        across_push[i] = across_push[i].clamp(-accel_xy, accel_xy);
+        along_push[i] = along_push[i].clamp(-accel_xy, accel_xy);
+    }
+    accel[2] = ((blend_to(wanted[2], local[2], rate[2], FRAME_S) - local[2]) * 20.0)
+        .clamp(-vert_accel, vert_accel);
+    let rot_rate = motion.rot_rate;
+    let yaw_on_stick = dvar_or(world, "vehHelicopterYawOnLeftStick", 5.0);
+    let wanted_yaw_rate =
+        (rot_rate * input[3] - yaw_on_stick * input[1] * input[0]).clamp(-rot_rate, rot_rate);
+    let yaw_accel_rate = if rot_rate == 0.0 {
+        0.0
+    } else {
+        motion.rot_accel / rot_rate
+    };
+    let yaw_push = (blend_to(
+        wanted_yaw_rate,
+        heli.piloted.yaw_rate,
+        yaw_accel_rate,
+        FRAME_S,
+    ) - heli.piloted.yaw_rate)
+        * 20.0;
+    let yaw_push = yaw_push.clamp(-accel_xy, accel_xy);
+    let (max_x, accel_x) = (
+        if max_xy <= 0.0 {
+            motion.max_speed
+        } else {
+            max_xy
+        },
+        if accel_xy <= 0.0 {
+            motion.accel
+        } else {
+            accel_xy
+        },
+    );
+    let axes = dvar_or(world, "vehHelicopterTiltFromControllerAxes", 0.0);
+    let from_view = dvar_or(world, "vehHelicopterTiltFromViewangles", 3.0);
+    let mut tilt_pitch = along_push[0] / accel_x * motion.tilt_from_accel[0]
+        + across_push[0] / accel_x * motion.tilt_from_decel[0]
+        + wanted[0] / max_x * axes
+        + local[0] / max_x * motion.tilt_from_velocity[0];
+    tilt_pitch = tilt_pitch.clamp(-1.0, 1.0);
+    let view_share = normalize_180(view[0] - motion.view_pitch_offset) * from_view / 90.0;
+    tilt_pitch = (view_share - tilt_pitch) * 0.5 + tilt_pitch;
+    let mut tilt_roll = along_push[1] / accel_x * motion.tilt_from_accel[1]
+        + across_push[1] / accel_x * motion.tilt_from_decel[1]
+        + wanted[1] / max_x * axes
+        + local[1] / max_x * motion.tilt_from_velocity[1];
+    if 0.0 < local[0] && 0.0 < heli.piloted.yaw_rate.abs() {
+        let forward_share = local[0] / max_x;
+        let at_max = dvar_or(world, "vehHelicopterTiltFromFwdAndYaw_VelAtMaxTilt", 1.0);
+        let scale = if forward_share < at_max {
+            forward_share / at_max
+        } else {
+            1.0
+        };
+        tilt_roll += -1.0 / rot_rate
+            * heli.piloted.yaw_rate
+            * dvar_or(world, "vehHelicopterTiltFromFwdAndYaw", 0.0)
+            * scale;
+    }
+    tilt_roll = tilt_roll.clamp(-1.0, 1.0);
+    let momentum = 1.0 / dvar_or(world, "vehHelicopterTiltMomentum", 0.4);
+    let (fw, rg, _) = axes_of([0.0, heli.previous_yaw, 0.0]);
+    let goal = [
+        fw[0] * tilt_pitch + rg[0] * tilt_roll,
+        fw[1] * tilt_pitch + rg[1] * tilt_roll,
+    ];
+    let speeds = motion.tilt_speed;
+    for i in 0..2 {
+        let before = heli.piloted.tilt_rate[i];
+        let now = (before * -momentum + speeds[i] * momentum * (goal[i] - heli.piloted.tilt[i]))
+            * FRAME_S
+            + before;
+        heli.piloted.tilt_rate[i] = now;
+        heli.piloted.tilt[i] += (now + before) * 0.5 * FRAME_S;
+    }
+    let tilt = heli.piloted.tilt;
+    let local_tilt = [
+        tilt[0] * fw[0] + tilt[1] * fw[1],
+        tilt[0] * rg[0] + tilt[1] * rg[1],
+    ];
+    let mut pitch = motion.max_body_pitch * local_tilt[0];
+    let mut roll = motion.max_body_roll * local_tilt[1];
+    let hover = dvar_or(world, "vehHelicopterHoverSpeedThreshold", 400.0);
+    let flat = local[0] * local[0] + local[1] * local[1];
+    if flat < hover * hover {
+        let share = (hover - flat.sqrt()) / hover;
+        let jitter = jitter_step(&mut heli.piloted.jitter, time_ms, world);
+        pitch += jitter[0] * share;
+        roll += jitter[2] * share;
+    }
+    (accel, [pitch, yaw_push, roll])
+}
+
+/// `setjitterparams`' shake: a new goal each random period, stepped to and
+/// smoothed by `vehHelicopterJitterJerkyness`.
+fn jitter_step(
+    jitter: &mut game_api::heli::HeliJitter,
+    now: i32,
+    world: &mut dyn HeliWorld,
+) -> [f32; 3] {
+    if jitter.min_ms == 0 && jitter.max_ms == 0 {
+        return jitter.smoothed;
+    }
+    if jitter.next_ms < now {
+        if (jitter.min_ms as f32) < FRAME_S {
+            jitter.min_ms = 50;
+        }
+        let period = world
+            .random_range(jitter.min_ms as f32, jitter.max_ms as f32)
+            .trunc() as i32;
+        jitter.next_ms = now + period;
+        let mut goal = jitter.goal;
+        for (i, slot) in goal.iter_mut().enumerate() {
+            let amp = jitter.amplitude[i];
+            if amp != 0.0 {
+                *slot = world.random_range(-amp, amp);
+            }
+        }
+        let frames = 50.0 / period.max(1) as f32;
+        jitter.step = std::array::from_fn(|i| (goal[i] - jitter.goal[i]) * frames);
+        jitter.goal = goal;
+    }
+    let jerk = dvar_or(world, "vehHelicopterJitterJerkyness", 0.3);
+    for i in 0..3 {
+        jitter.smoothed[i] = blend_to(jitter.goal[i], jitter.smoothed[i], jerk, FRAME_S);
+    }
+    jitter.smoothed
+}
+
+/// The helicopter's move through the world: up to four slides along what it
+/// meets.
+fn slide_move(heli: &mut HeliMove, world: &mut dyn HeliWorld) {
+    let mut time_left = FRAME_S;
+    for _ in 0..4 {
+        let end: [f32; 3] = std::array::from_fn(|i| heli.origin[i] + heli.velocity[i] * time_left);
+        let Some((fraction, normal)) = world.sweep(heli.origin, end, HULL_MINS, HULL_MAXS) else {
+            heli.velocity[2] = 0.0;
+            return;
+        };
+        if 0.0 < fraction {
+            heli.origin =
+                std::array::from_fn(|i| heli.origin[i] + (end[i] - heli.origin[i]) * fraction);
+        }
+        if fraction >= 1.0 {
+            return;
+        }
+        time_left -= fraction * time_left;
+        let into = dot3(heli.velocity, normal);
+        let bounce = if into < 0.0 { 1.001 } else { 0.999 };
+        heli.velocity = std::array::from_fn(|i| heli.velocity[i] - normal[i] * into * bounce);
+    }
 }

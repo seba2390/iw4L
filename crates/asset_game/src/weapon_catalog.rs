@@ -389,6 +389,17 @@ pub struct VehicleMotion {
     pub max_body_pitch: f32,
     pub max_body_roll: f32,
     pub turret_rot_rate: f32,
+    pub remote_control: bool,
+    pub view_pitch_offset: f32,
+    pub view_influence: f32,
+    pub tilt_from_accel: [f32; 2],
+    pub tilt_from_decel: [f32; 2],
+    pub tilt_from_velocity: [f32; 2],
+    pub tilt_speed: [f32; 2],
+    pub turret_span_right: f32,
+    /// The `steerGraph` raw file's points; `steer_points` of them count.
+    pub steer_graph: [[f32; 2]; 8],
+    pub steer_points: u8,
 }
 
 #[derive(Clone, Copy, Debug, Default, PartialEq)]
@@ -1325,6 +1336,8 @@ pub struct WeaponCatalog {
     vehicle_compass: HashMap<String, ([String; 2], [i32; 2])>,
     vehicle_accel: HashMap<String, f32>,
     vehicle_motion: HashMap<String, VehicleMotion>,
+    vehicle_graphs: HashMap<String, ([[f32; 2]; 8], u8)>,
+    vehicle_steer_paths: Vec<(String, String)>,
 }
 
 fn fpv_model_edge(

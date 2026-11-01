@@ -182,11 +182,17 @@ pub(crate) fn register(registry: &mut NativeRegistry) {
         let weapon = crate::script_player::weapon_named(&FrameWorld::from_world(world), &name)?;
         let (start, end) = (vector(args, 1)?, vector(args, 2)?);
         let owner = match args.get(3) {
-            Some(value) => world
-                .resource::<RoundScript>()
-                .player_client_of(value)
-                .map(ClientId)
-                .ok_or("MagicBullet owner is not a player")?,
+            Some(value) => {
+                let runtime = world.resource::<RoundScript>();
+                runtime
+                    .player_client_of(value)
+                    .or_else(|| match value {
+                        Value::Object(id) => runtime.vehicles.get(id).and_then(|heli| heli.owner),
+                        _ => None,
+                    })
+                    .map(ClientId)
+                    .ok_or("MagicBullet owner is not a player")?
+            }
             None => return Err("MagicBullet needs an owning player".into()),
         };
         launch(world, owner, weapon, start, end)

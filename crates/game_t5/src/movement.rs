@@ -943,6 +943,7 @@ impl PlayerMovement for T5Movement {
                 70
             },
             weapons_disabled: ps.weap_flags & movement_t5::state::weap_flags::WEAPONS_DISABLED != 0,
+            remote_control: ps.e_flags2 & movement_t5::state::e_flags2::MOUNTED != 0,
         })
     }
 
@@ -958,6 +959,13 @@ impl PlayerMovement for T5Movement {
         if flag == ScriptFlag::WeaponsDisabled && on {
             movement_t5::end_dive_for_disabled_weapons(&mut ps);
         }
+        if flag == ScriptFlag::RemoteVehicle {
+            if on {
+                ps.e_flags |= movement_t5::state::e_flags::VEHICLE_VIEW;
+            } else {
+                ps.e_flags &= !movement_t5::state::e_flags::VEHICLE_VIEW;
+            }
+        }
         let (word, bit) = match flag {
             ScriptFlag::NoMelee => (&mut ps.pm_flags, pm_flags::NO_MELEE),
             ScriptFlag::NoWeaponCycling => (&mut ps.weap_flags, weap_flags::CYCLING_DISABLED),
@@ -967,6 +975,7 @@ impl PlayerMovement for T5Movement {
                 &mut ps.e_flags2,
                 movement_t5::state::e_flags2::MOUNTED | movement_t5::state::e_flags2::ADS_RESET,
             ),
+            ScriptFlag::RemoteVehicle => (&mut ps.e_flags2, movement_t5::state::e_flags2::MOUNTED),
         };
         let was = *word & bit != 0;
         if on {

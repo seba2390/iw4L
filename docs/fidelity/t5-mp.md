@@ -285,12 +285,22 @@ Each open section names the issue that works it.
       `getvehoccupants`, `getoccupantseat` and the other vehicle builtins
       are refused or missing; the client's wheel queries
       (`getwheelsurface`, `iswheelcolliding`, …) are missing.
-- [ ] **G** `t5.vehicle.heli_no_goal`: a helicopter with no goal stays where
-      it is; BlackOpsMP.exe runs its player-controlled move there, not ported
-      (Chopper Gunner's `_helicopter_player.gsc`, #661). `setvehgoalpos`'s
-      third argument, the map's vehicle path (`t5.vehicle.heli_path`), errors;
-      nothing in the multiplayer scripts passes it. `setheliheightlock` and
-      `isinsideheliheightlock` are still refused (#661).
+- [ ] **G** `setvehgoalpos`'s third argument, the map's vehicle path
+      (`t5.vehicle.heli_path`), errors; nothing in the multiplayer scripts
+      passes it. `attachpath` and `startpath` are refused, so the Chopper
+      Gunner's flight and its gunner seats do not run (#661).
+- [ ] **G** A pilot's controls: Black Ops' `+vehiclemoveup` and
+      `+vehiclemovedown` buttons have no binds in the runtime, so `+gostand`
+      climbs and `+movedown` descends; `+attack` fires where its
+      `+vehicleattack` would. A gamepad's right stick and the free look,
+      invert and top-down camera dvars are not read. The camera rides
+      `tag_player` by the runtime's linked view: it does not take the client's
+      head sway, recoil or view lerp (`CG_VehicleView`), and the player's body
+      stays where it stood.
+- [ ] **G** A piloted helicopter's slide along what it hits keeps one surface a
+      step where BlackOpsMP.exe's keeps every surface met in the frame and
+      slides along their crease; the shots a pilot's gun aims along meet the
+      world only, not entities.
 - [ ] **G** A helicopter's turret aims and fires by BlackOpsMP.exe's rules, but
       its gun does not pose on the model: `fireweapon` takes the gun's world
       angles as body plus turret angles and swings the muzzle about
@@ -301,15 +311,14 @@ Each open section names the issue that works it.
       sent, `t5.vehicle.heli_weapon_type` covers its bomb, gas and grenade
       weapons, and `setdamagestage` only keeps the stage in a script field
       (the client's damage effects are not drawn).
-- [ ] **G** A helicopter's frame leaves out the vehicle think's pieces around
-      the flight: `veh_collision` from its trace against the world and solid
-      entities, its touch of other entities (`touch`), avoiding other
-      helicopters (flag 0x400), and the state it packs for clients (engine and
-      rotor throttle in the entity state). Rotor spin and exhaust are not
-      verified: the Care Package's helicopter draws, but its blades were not
-      seen turning. `setdamagestage` and shooting one down
-      (`heli_damage_monitor`, the runtime's vehicle damage callback) are not
-      verified against BlackOpsMP.exe.
+- [ ] **G** A helicopter flying to a goal has no `veh_collision` from its trace
+      against the world and solid entities, its touch of other entities
+      (`touch`), avoiding other helicopters (flag 0x400), and the state it packs
+      for clients (engine and rotor throttle in the entity state). Rotor spin and
+      exhaust are not verified: the Care Package's helicopter draws, but its
+      blades were not seen turning. `finishvehicleradiusdamage` was not seen in
+      a run, and the entity's script `health` field stands for BlackOpsMP.exe's
+      entity health.
 - [ ] **V** A flying vehicle has no compass icon yet (`compassIcon` in its
       vehicle file is not read).
 - [ ] **G** The use search takes a script-made usable entity (a crate) at its
@@ -472,6 +481,24 @@ Each open section names the issue that works it.
       compensation of Black Ops' movement and weapons are unmeasured.
 
 ## Closed
+
+- [x] **G** The Gunship (`helicopter_player_firstperson_mp`): `usevehicle` seats
+      the player with their body left behind (`EF2_REMOTE_CONTROL`, the vehicle
+      view flag), and `enter_vehicle` and `exit_vehicle` go both ways. A
+      helicopter with no goal runs BlackOpsMP.exe's player move: the vehicle
+      file's speed and tilt, `vehHelicopter*` dvar defaults, the `steerGraph`
+      raw file, turning to the pilot's view, the height lock's altitude
+      (`setheliheightlock`, `isinsideheliheightlock`), the jitter
+      (`setjitterparams`), `veh_collision` and `veh_predictedcollision`; `turret_fire`
+      goes to it while its seat 0 player holds attack with the gun's fire time
+      run out and the gun aims where they look. `setviewclamp`, `resetviewclamp`,
+      `returnplayercontrol`, `getoccupantseat`, `getseatoccupant`,
+      `getvehoccupants`, `getvehicleoccupied`, `isremotecontrolling`,
+      `throwbuttonpressed`, and `magicbullet` with a vehicle's owner standing for
+      the vehicle are in place. A helicopter can be shot down:
+      `isvehicleimmunetodamage`, `finishvehicledamage` with the
+      `vehicle_damage_zone_*` shares, and `heli_damage_monitor` sends it down its
+      crash path (#661).
 
 - [x] **G** `dropitem`, `itemweaponsetammo` and picking a dropped weapon up ran
       the runtime's own item rules, and `_weapons.gsc`'s `watchPickup` faulted
