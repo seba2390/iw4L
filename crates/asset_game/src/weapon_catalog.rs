@@ -388,6 +388,7 @@ pub struct VehicleMotion {
     pub rot_accel: f32,
     pub max_body_pitch: f32,
     pub max_body_roll: f32,
+    pub turret_rot_rate: f32,
 }
 
 #[derive(Clone, Copy, Debug, Default, PartialEq)]

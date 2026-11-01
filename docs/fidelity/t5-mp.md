@@ -281,9 +281,18 @@ Each open section names the issue that works it.
       it is; BlackOpsMP.exe runs its player-controlled move there, not ported
       (Chopper Gunner's `_helicopter_player.gsc`, #661). `setvehgoalpos`'s
       third argument, the map's vehicle path (`t5.vehicle.heli_path`), errors;
-      nothing in the multiplayer scripts passes it. `setheliheightlock`,
-      `isinsideheliheightlock`, the heli turret methods and `fireweapon` are
-      still refused or missing (#661).
+      nothing in the multiplayer scripts passes it. `setheliheightlock` and
+      `isinsideheliheightlock` are still refused (#661).
+- [ ] **G** A helicopter's turret aims and fires by BlackOpsMP.exe's rules, but
+      its gun does not pose on the model: `fireweapon` takes the gun's world
+      angles as body plus turret angles and swings the muzzle about
+      `tag_barrel`, where Black Ops reads the turned tags, so the gun model
+      does not point at what it shoots. `heliturretdogtrace` is missing,
+      `stopfireweapon` does nothing (only the bomb weapon's flag is cleared in
+      BlackOpsMP.exe), the client's vehicle fire event (flash, sound) is not
+      sent, `t5.vehicle.heli_weapon_type` covers its bomb, gas and grenade
+      weapons, and `setdamagestage` only keeps the stage in a script field
+      (the client's damage effects are not drawn).
 - [ ] **G** A helicopter's frame leaves out the vehicle think's pieces around
       the flight: `veh_collision` from its trace against the world and solid
       entities, its touch of other entities (`touch`), avoiding other
@@ -561,6 +570,13 @@ Each open section names the issue that works it.
       `compassSatellitePingFadeTime`), draws the sweep line, and hides the
       enemies under an enemy counter-spy plane (`setEnemyGlobalScrambler`)
       with the map's static over it (#657).
+
+- [x] **G** Attack Helicopter (`helicopter_comlink_mp`): called in on its
+      selector, flies from the map's edge, hovers, turns its turret toward
+      players (`setturrettargetent`, `turret_on_target`) and shoots them with
+      `cobra_20mm_comlink_mp`, credited to its owner; `setvehweapon`,
+      `fireweapon`, `missile_settarget` and `heliturretsighttrace` are Black
+      Ops' (#661).
 
 - [x] **G** Care Package (`supply_drop_mp`): the marker's throw empties the
       weapon and the client cycles back (`weapon_change` ends the marker's

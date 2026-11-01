@@ -49,6 +49,20 @@ pub struct HeliMove {
     pub hover_speed: f32,
     pub hover_accel: f32,
     pub hover_offset: [f32; 3],
+    /// What its turret aims at; none with the turret off.
+    pub turret_aim: Option<HeliAim>,
+    /// The turret's pitch and yaw off the body, and how fast it turns.
+    pub turret_angles: [f32; 2],
+    pub turret_rate: f32,
+    /// How far its turning has settled, for `turret_rotate_stopped`.
+    pub turret_settling: u8,
+}
+
+/// What a helicopter's turret aims at.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub enum HeliAim {
+    Point([f32; 3]),
+    Entity { entity: i32, offset: [f32; 3] },
 }
 
 /// What a vehicle file says of how the vehicle flies; speeds in inches a
@@ -61,6 +75,7 @@ pub struct VehicleMotion {
     pub rot_accel: f32,
     pub max_body_pitch: f32,
     pub max_body_roll: f32,
+    pub turret_rot_rate: f32,
 }
 
 /// What a frame of flight says to the scripts.
@@ -69,6 +84,24 @@ pub struct HeliNotes {
     pub goal: bool,
     pub near_goal: bool,
     pub goal_yaw: bool,
+    pub turret_rotate_stopped: bool,
+    pub turret_on_target: bool,
+    pub turret_not_on_target: bool,
+    pub turret_on_vistarget: bool,
+    pub turret_no_vis: bool,
+}
+
+/// A helicopter's shot (`fireweapon`): its gun, what it may home on.
+#[derive(Clone, Copy, Debug)]
+pub struct HeliShot {
+    pub entity: i32,
+    pub weapon: u32,
+    /// The barrel tag's place and axis (forward, left, up) on the model.
+    pub origin: [f32; 3],
+    pub axis: [[f32; 3]; 3],
+    /// The tag the gun turns about, when the model has one.
+    pub pivot: Option<[f32; 3]>,
+    pub target: Option<i32>,
 }
 
 /// What a helicopter's frame reads from the match.
@@ -78,4 +111,9 @@ pub trait HeliWorld {
     fn random_range(&mut self, low: f32, high: f32) -> f32;
     /// Where the entity it looks at stands (`setlookatent`).
     fn look_at(&mut self) -> Option<[f32; 3]>;
+    /// Where its barrel is, and the entity's place.
+    fn barrel(&mut self) -> Option<[f32; 3]>;
+    fn entity_origin(&mut self, entity: i32) -> Option<[f32; 3]>;
+    /// Nothing solid between the two, the target itself left out.
+    fn sight_clear(&mut self, from: [f32; 3], to: [f32; 3], target: i32) -> bool;
 }

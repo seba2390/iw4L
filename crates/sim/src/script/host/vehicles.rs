@@ -53,7 +53,7 @@ pub(crate) struct Heli {
     max_roll: f32,
     pub(crate) owner: Option<u32>,
     pub(crate) compass: Option<([String; 2], [i32; 2])>,
-    weapon: Option<u32>,
+    pub(crate) weapon: Option<u32>,
     turret: Option<TurretAim>,
     on_target: bool,
     gunner: Option<u32>,

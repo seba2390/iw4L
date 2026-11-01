@@ -1590,6 +1590,18 @@ pub(crate) fn think_game_missile(world: &mut FrameWorld, tick: Tick, entnum: i32
     true
 }
 
+/// What a game missile homes on (`missile_settarget`).
+pub(crate) fn set_missile_target(world: &mut FrameWorld, entnum: i32, target: Option<i32>) {
+    let Some(movement) = crate::game_move::rules(world) else {
+        return;
+    };
+    if let Some(mut missiles) = world.ecs().get_resource_mut::<GameMissiles>()
+        && let Some(missile) = missiles.0.get_mut(&entnum)
+    {
+        movement.set_missile_target(missile, target);
+    }
+}
+
 /// A missile exploding now (`detonate`) by the game's movement rules; false
 /// when the game does not explode this one that way.
 pub(crate) fn detonate_moved_missile(world: &mut FrameWorld, tick: Tick, entnum: i32) -> bool {

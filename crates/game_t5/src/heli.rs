@@ -4,7 +4,9 @@
 //! toward where it goes (or what it is told to look at) and tilts with its
 //! acceleration.
 
-use game_api::heli::{HeliMove, HeliNotes, HeliWorld};
+use fastfile_t5::weapon_def::WeaponDefView;
+use game_api::fire::FireWorld;
+use game_api::heli::{HeliAim, HeliMove, HeliNotes, HeliShot, HeliWorld};
 use game_api::{Unknown, unknown};
 
 const FRAME: f32 = 0.05;
@@ -494,6 +496,173 @@ fn hover(heli: &mut HeliMove, world: &mut dyn HeliWorld, notes: &mut HeliNotes) 
     }
 }
 
+fn approach_angle(target: f32, current: f32, speed: f32) -> f32 {
+    let mut target = target;
+    while target - current > 180.0 {
+        target -= 360.0;
+    }
+    while target - current < -180.0 {
+        target += 360.0;
+    }
+    let mut step = speed * FRAME;
+    if target - current <= 0.0 {
+        step = -step;
+    }
+    let delta = (target - current).abs();
+    if 0.001 < delta && step.abs() <= delta {
+        target = step + current;
+    }
+    normalize_180(target)
+}
+
+/// The world angles of the turret's aim off a body turned `body` degrees.
+fn turret_world_angles(heli: &HeliMove) -> [f32; 3] {
+    [
+        heli.turret_angles[0] + heli.angles[0],
+        heli.turret_angles[1] + heli.angles[1],
+        heli.angles[2],
+    ]
+}
+
+/// The turret's frame: it turns toward what it aims at, keeping off the body's
+/// turn, and says when it has stopped and whether it is on target.
+fn turret_frame(heli: &mut HeliMove, world: &mut dyn HeliWorld, notes: &mut HeliNotes) {
+    let Some(aim) = heli.turret_aim else {
+        heli.turret_settling = match heli.turret_settling {
+            2 => 1,
+            _ => 0,
+        };
+        return;
+    };
+    let (point, target) = match aim {
+        HeliAim::Point(point) => (point, None),
+        HeliAim::Entity { entity, offset } => {
+            let Some(at) = world.entity_origin(entity) else {
+                return;
+            };
+            (std::array::from_fn(|i| at[i] + offset[i]), Some(entity))
+        }
+    };
+    let Some(barrel) = world.barrel() else {
+        return;
+    };
+    let to = std::array::from_fn(|i| point[i] - barrel[i]);
+    let pitch = movement_t5::math::vectopitch(to);
+    let wanted = [
+        normalize_180(pitch - heli.angles[0]),
+        normalize_180(yaw_of(to) - heli.angles[1]),
+    ];
+    // The body's turn this frame takes the gun's yaw with it.
+    let current = [
+        heli.turret_angles[0],
+        heli.turret_angles[1] - heli.angles[1] + heli.previous_yaw,
+    ];
+    let off = [
+        normalize_180(wanted[0] - current[0]).abs(),
+        normalize_180(wanted[1] - current[1]).abs(),
+    ];
+    heli.turret_angles = [
+        approach_angle(wanted[0], current[0], heli.turret_rate),
+        approach_angle(wanted[1], current[1], heli.turret_rate),
+    ];
+    if 2.0 <= off[0] || 2.0 <= off[1] {
+        heli.turret_settling = 2;
+    } else if heli.turret_settling == 2 {
+        heli.turret_settling = 1;
+    } else if heli.turret_settling == 1 {
+        notes.turret_rotate_stopped = true;
+        heli.turret_settling = 0;
+    }
+    if 1.0 <= off[0] || 1.0 <= off[1] {
+        notes.turret_not_on_target = true;
+        notes.turret_no_vis = true;
+        return;
+    }
+    notes.turret_on_target = true;
+    match target {
+        Some(entity) if world.sight_clear(barrel, point, entity) => {
+            notes.turret_on_vistarget = true;
+        }
+        _ => notes.turret_no_vis = true,
+    }
+}
+
+/// `fireweapon`: a bullet along the turret or a projectile along its barrel
+/// tag, from the helicopter itself; it hears `weapon_fired`.
+pub(crate) fn fire(
+    heli: &HeliMove,
+    shot: &HeliShot,
+    world: &mut dyn FireWorld,
+) -> (Option<i32>, Vec<&'static Unknown>) {
+    let mut gaps = Vec::new();
+    let Some((def_bytes, variant_bytes)) = world
+        .weapon(shot.weapon)
+        .map(|w| (w.def.clone(), w.variant.clone()))
+    else {
+        return (None, vec![crate::movement::weapon_unknown()]);
+    };
+    let Some(def) = WeaponDefView::new(&def_bytes, &variant_bytes) else {
+        return (None, vec![crate::movement::weapon_unknown()]);
+    };
+    let (forward, right, up) = if heli.turret_aim.is_some() {
+        movement_t5::math::angle_vectors(turret_world_angles(heli))
+    } else {
+        (shot.axis[0], shot.axis[1].map(|v| -v), shot.axis[2])
+    };
+    // The model's tags are not turned with the gun here: the muzzle swings
+    // about the gun's pivot by the gun's own turn.
+    let muzzle = match shot.pivot {
+        Some(pivot) if heli.turret_aim.is_some() => {
+            let arm = length(std::array::from_fn(|i| shot.origin[i] - pivot[i]));
+            std::array::from_fn(|i| pivot[i] + forward[i] * arm)
+        }
+        _ => shot.origin,
+    };
+    let parms = crate::fire::WeaponParms {
+        forward,
+        right,
+        up,
+        muzzle,
+    };
+    let mut missile = None;
+    match def.weapon_type() {
+        0 => {
+            let time = world.level_time();
+            crate::fire::Bullets {
+                attacker: shot.entity,
+                weapon_entity: shot.entity,
+                hand: 0,
+                zombies: false,
+                deep_penetration: false,
+                gaps: &mut gaps,
+            }
+            .fire(&def, shot.weapon, def.ai_spread(), &parms, time, world);
+        }
+        2 => {
+            let dir = crate::missile::spread_dir(def.ads_spread(), forward, right, up, world);
+            missile = crate::missile::spawn_rocket_mp(
+                shot.entity,
+                shot.entity,
+                shot.weapon,
+                &def,
+                muzzle,
+                dir,
+                None,
+                shot.target,
+                world,
+                &mut gaps,
+            );
+        }
+        _ => gaps.push(unknown!(
+            "t5.vehicle.heli_weapon_type",
+            "a helicopter's bomb, gas or grenade weapon does not fire",
+            "BlackOpsMP.exe's fireweapon for the other weapon types"
+        )),
+    }
+    world.notify(shot.entity, "weapon_fired", &[]);
+    (missile, gaps)
+}
+
 /// A frame of flight. Its gap when BlackOpsMP.exe's move for this state is not
 /// ported.
 pub(crate) fn frame(
@@ -502,14 +671,17 @@ pub(crate) fn frame(
 ) -> (HeliNotes, Option<&'static Unknown>) {
     let mut notes = HeliNotes::default();
     heli.previous_yaw = heli.angles[1];
-    if !heli.has_goal {
-        return (notes, Some(no_goal_unknown()));
-    }
-    if heli.hovering {
-        hover(heli, world, &mut notes);
+    let gap = if !heli.has_goal {
+        Some(no_goal_unknown())
     } else {
-        let goal = heli.goal;
-        fly_to(heli, goal, false, world, &mut notes);
-    }
-    (notes, None)
+        if heli.hovering {
+            hover(heli, world, &mut notes);
+        } else {
+            let goal = heli.goal;
+            fly_to(heli, goal, false, world, &mut notes);
+        }
+        None
+    };
+    turret_frame(heli, world, &mut notes);
+    (notes, gap)
 }
