@@ -761,7 +761,7 @@ fn mp_visibility_bit(
         21 => view.in_killcam,
         // The location selector is open (with a selector material).
         22 | 30 => view.selecting_location,
-        25 => other_flags() & POPUP_HIDING_FLAGS != 0,
+        25 => view.following || other_flags() & POPUP_HIDING_FLAGS != 0,
         27 => {
             let mut player = *view.player;
             crate::movement::unpack(&mut player).0.e_flags & e_flags::VEHICLE_VIEW != 0

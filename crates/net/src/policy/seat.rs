@@ -101,8 +101,10 @@ pub fn sample_killcam_seat(
             .1;
         let mut player_state = target;
         player_state.pm_type = playerstate_iw4::PM_TYPE_SPECTATOR;
-        player_state.other_flags &= !(playerstate_iw4::other_flags::PLAYER
-            | playerstate_iw4::other_flags::DEAD_KILLCAM_TPV);
+        // The viewer sees from the followed player's eyes, so its body is
+        // the one not drawn.
+        player_state.other_flags &= !playerstate_iw4::other_flags::DEAD_KILLCAM_TPV;
+        player_state.other_flags |= playerstate_iw4::other_flags::PLAYER;
         player_state.kill_cam_entity = playerstate_iw4::ENTITYNUM_NONE;
         player_state.kill_cam_look_at_entity = playerstate_iw4::ENTITYNUM_NONE;
         player_state.kill_cam_client_num = session.focus_client.0 as i32;
@@ -261,6 +263,7 @@ fn seat_snapshot(
     if session.killcamoffset_ms == 0 {
         let mut out = live.clone();
         let sample = apply_seat_to_snapshot(archive, &mut out, viewer, session, now_ms);
+        follow_hud(&mut out, viewer, session.focus_client);
         return (out, sample);
     }
     let lookup = archive.lookup(session.archivetime_ms);
@@ -289,6 +292,18 @@ fn seat_snapshot(
         sample.as_ref().map(|s| s.rebase_ms).unwrap_or(0),
     );
     (out, sample)
+}
+
+/// A live follower's HUD counts the followed player's ammo.
+fn follow_hud(out: &mut Snapshot, viewer: ClientId, focus: ClientId) {
+    let Some(followed) = out.meta.for_client(focus).cloned() else {
+        return;
+    };
+    if let Some((_, meta)) = out.meta.clients.iter_mut().find(|(id, _)| *id == viewer) {
+        meta.ammo_clip = followed.ammo_clip;
+        meta.ammo_stock = followed.ammo_stock;
+        meta.ammo_by_weapon = followed.ammo_by_weapon;
+    }
 }
 
 fn overlay_archived_world(

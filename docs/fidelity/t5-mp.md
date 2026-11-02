@@ -80,16 +80,10 @@ Each open section names the issue that works it.
 - [ ] **G** `sendranks`, `setplayerteamrank` are not implemented;
       `ghost`, `boundswouldtelefrag`, `testspawnpoint`, `killserver`,
       `ban`, `endparty`, `endlobby`, `sethostmigrationstatus` are refused.
-- [ ] **G** Spectating (`_spectating.gsc`) is not verified in a run: a
-      dead player following a living teammate, and a player on the
-      spectator team. The killcam and the final and round end killcams
-      run (Closed).
-- [ ] **G** `CanJoinTeam(team)`, which Black Ops' patched
-      `_globallogic_ui.gsc` asks before `menuAllies`, `menuAxis` and
-      `menuSpectator` switch a player's team (`PATCH_MP_CANNOT_JOIN_TEAM`
-      when it refuses), is in no builtin table of the studied
-      `BlackOpsMP.exe`, so its rule is not known; it has no native, and
-      those menus refuse every switch (#665).
+- [ ] **V** `t5.hud.spectator_label`: `hud_spectator`'s `SPECTATING` and the
+      followed player's name do not show while following, though its bits
+      are answered and `player("name")` is the followed player's (#651).
+      A spectator's free look (`+use`, spectate type free) is not verified.
 
 - [ ] **G** The builtins the multiplayer server binds beyond the shared T5
       catalog (`mp_catalog.rs`, 187 functions and methods read from
@@ -653,6 +647,14 @@ Each open section names the issue that works it.
 
 ## Closed
 
+- [x] **G** Spectating (#667): a dead player follows a living teammate, and a
+      player on the spectator team (`g_allow_spectator` on) cycles through
+      the players with attack. The viewer sees the followed player's live
+      view, its viewmodel and its ammo, its body not drawn and without a
+      body of its own at that spot, with no killcam overlay.
+      `CanJoinTeam` is a script function of `_globallogic_ui.gsc`, not a
+      builtin, and no native is missing: its refusals are its own rules
+      (`g_allow_spectator`, `g_allow_teamchange`, team balance).
 - [x] **G** Wager matches (#655): One in the Chamber, Gun Game, Sticks and
       Stones and Sharpshooter run on `_wager.gsc` and their own scripts to
       the end of a match on `mp_nuked`, with their HUDs (`oic_hud`,
