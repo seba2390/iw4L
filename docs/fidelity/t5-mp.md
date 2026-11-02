@@ -175,15 +175,24 @@ Each open section names the issue that works it.
       is not quantised to Black Ops' byte directions.
 - [ ] **G** `t5.mp.perk_effects`: the perks Black Ops' multiplayer
       code tests that have no effect here yet (setting one logs the gap):
-      `_twogrenades` (a second grenade picked up);
-      `_grenadepulldeath`, `_pin_back`, `_loudenemies`,
-      `_noname`, `_quieter` (footsteps the AI hears, and no AI hears here);
-      its client's `_reconnaissance`, `_showenemyequipment`,
-      `_bulletflinch` (it scales Black Ops' own damage view kick by
-      `perk_damageKickReduction`, and the client here runs another kick),
-      `_gas_mask` (it holds off the client's gas overlay, which waits on
-      Nova gas). Lightweight's `specialty_movefaster` is tested only by
-      vehicle code (#660). The scripts' own perk rules apply (#650).
+      `_showenemyequipment` (Hacker: the client draws an enemy's
+      equipment with its weapon's second world model) and `_twogrenades`
+      (Warlord Pro: a resting retrievable weapon, the tomahawk, draws
+      with its third world model once `cg_retrieveHintTime`, or
+      `cg_retrieveHintTimeStuck` when stuck in an entity, has passed and
+      the player could pick it up, holding at most one rather than none;
+      that model swap is not ported for anyone); `_pin_back` (Flak Jacket
+      Pro: a thrown-back grenade keeps at least
+      `perk_grenadeTossBackTimer`, 2500 ms, of fuse; no throwback is
+      ported); `_quieter` (Ninja: the server's footsteps raise no AI sound
+      event, and no AI hears here); `_gas_mask` (Tactical Mask: it holds
+      off the client's poison overlay, which is not ported). No perk row
+      of Black Ops' stats table and no script gives `_grenadepulldeath`
+      (a grenade of `perk_grenadeDeath` dropped when a downed player
+      dies) or `_reconnaissance` (compass marks), so a match never sets
+      them; their tests are not ported. Lightweight's
+      `specialty_movefaster` is tested only by vehicle code (#660). The
+      scripts' own perk rules apply (#650).
 - [ ] **G** Create-a-class: a player's custom classes live in Black Ops'
       stats (`getdstat("cacLoadouts", "customclassN", slot)` in a hosted
       match, `onlinegame` 1). The listen host's own profile keeps Black
@@ -606,6 +615,18 @@ Each open section names the issue that works it.
       compensation of Black Ops' movement and weapons are unmeasured.
 
 ## Closed
+
+- [x] **G** Perk tests (#734): Hardened Pro (`specialty_bulletflinch`)
+      did not soften a hit's view kick, Ninja Pro
+      (`specialty_loudenemies`) did not silence the mantle and dive
+      sounds, and the Ghost Pro name rule read Modern Warfare 2's perk
+      words, which a Black Ops player never sets, so an enemy with
+      `specialty_noname` still showed a name. Black Ops' client multiplies
+      a hit's kick by `perk_damageKickReduction` (0.2) before holding it
+      to its range, for the view and the red flash; it plays no mantle,
+      dive launch or dive landing sound for a player with
+      `specialty_loudenemies` (the landing's `dtp_land` notify stays);
+      the name and kick rules read Black Ops' own perk words.
 
 - [x] **V** Names over players (#651): multiplayer drew Modern Warfare
       2's names, every visible teammate's and the aimed enemy's, with
