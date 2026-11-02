@@ -55,9 +55,8 @@ pub struct GameCodeHud {
 pub struct NameRules {
     /// Only the player under the crosshair, friend or enemy.
     pub crosshair_target_only: bool,
-    /// An enemy whose perks (the player state's two perk words) keep its
-    /// name hidden.
-    pub enemy_hidden: fn([u32; 2]) -> bool,
+    /// An enemy whose perks keep its name hidden.
+    pub enemy_hidden: fn(&MovePlayer) -> bool,
 }
 
 /// A game's kill feed: the obituary lines its client prints to a game
@@ -516,6 +515,9 @@ pub struct LowAmmoWarning {
 #[derive(Clone, Copy, Debug)]
 pub struct DamageFlash {
     pub kick_scale: f32,
+    /// What the hurt player's perks multiply the kick by before it is held
+    /// to its range.
+    pub kick_perk_scale: fn(&MovePlayer) -> f32,
     pub kick_min: f32,
     pub kick_max: f32,
     pub kick_random: f32,

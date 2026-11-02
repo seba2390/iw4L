@@ -301,15 +301,16 @@ fn update_overhead_names(
         }
         let enemy = local_meta.client_state_team == 0
             || local_meta.client_state_team != meta.client_state_team;
-        let hidden = |perks: [u32; 2]| match rules {
-            Some(rules) => (rules.enemy_hidden)(perks),
-            None => perks[1] & playerstate_iw4::PERK1_SPYGAME != 0,
-        };
         if enemy
-            && snapshot
-                .players
-                .iter()
-                .any(|(id, ps)| *id == client && hidden(ps.perks))
+            && snapshot.players.iter().any(|(id, ps)| {
+                *id == client
+                    && match rules {
+                        Some(rules) => {
+                            (rules.enemy_hidden)(&ps.move_player(client.0 as i32, false))
+                        }
+                        None => ps.perks[1] & playerstate_iw4::PERK1_SPYGAME != 0,
+                    }
+            })
         {
             continue;
         }

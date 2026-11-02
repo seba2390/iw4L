@@ -1630,6 +1630,35 @@ fn run_frame(
                         ],
                     ),
                     _ if client_num != 0 => continue,
+                    // Black Ops multiplayer's client leaves out a mantle's
+                    // and a dive's code sounds for a player with
+                    // `specialty_loudenemies` (Ninja Pro); the dive still
+                    // tells the scripts it landed.
+                    game_api::movement::JumpLand::Mantle
+                    | game_api::movement::JumpLand::DiveStart
+                        if super::host::natives::t5_perks::has_perk(
+                            world,
+                            0,
+                            "specialty_loudenemies",
+                        ) =>
+                    {
+                        continue;
+                    }
+                    game_api::movement::JumpLand::DiveLand(_)
+                        if super::host::natives::t5_perks::has_perk(
+                            world,
+                            0,
+                            "specialty_loudenemies",
+                        ) =>
+                    {
+                        super::notify_entity(
+                            world,
+                            player_obj,
+                            "dtp_land",
+                            &[super::NotifyValue::Int(0)],
+                        );
+                        continue;
+                    }
                     game_api::movement::JumpLand::Mantle => {
                         play_local_code_sound(world, "chr_launch_exert_plr".to_owned());
                         continue;
