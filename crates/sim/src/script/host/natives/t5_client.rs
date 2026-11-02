@@ -937,6 +937,18 @@ fn register_models(registry: &mut NativeRegistry) {
             "movedone",
         )
     });
+    // `ent rotateTo(angles, time, [accel], [decel])`: each axis the short way.
+    registry.register(Method, "rotateto", |world, receiver, args| {
+        let id = super::engine::entity_id(world, receiver)?;
+        let angles = vector(args, 0)?;
+        let times = move_times(args)?;
+        let from = entity_vector(world, id, "angles");
+        let to = std::array::from_fn(|axis| {
+            let turns = (angles[axis] - from[axis]) / 360.0;
+            from[axis] + (turns - turns.round()) * 360.0
+        });
+        move_entity(world, receiver, "angles", from, to, times, "rotatedone")
+    });
     // `ent rotatePitch|Yaw|Roll(delta, time, [accel], [decel])`: from the
     // entity's angles now.
     registry.register(Method, "rotatepitch", |world, receiver, args| {

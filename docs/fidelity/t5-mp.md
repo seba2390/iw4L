@@ -41,8 +41,15 @@ Each open section names the issue that works it.
 - [ ] **V** On Firing Range a jeep stands above the sandbags it should rest
       on (seen from the pre-match spectator view); not yet traced to the
       model, its destructible script or the map's entity data (#669).
-- [ ] **G** Interactive objects, elevators, rotating objects, shutters and
-      minefields are not verified moving or hurting in a run (#669).
+- [ ] **G** Rotating objects (`clientscripts/mp/_rotating_object.csc`, on
+      Launch, Crisis, Grid, Firing Range, Summit, Radiation and WMD) run
+      without a fault on WMD, but they were not seen turning. Elevators
+      (`_elevator.gsc`, placed by structs) were not looked for on any map;
+      no base map has a `shutter_*`, `wire`, `explodable_barrel` or
+      `flammable_crate` entity by targetname (#669).
+- [ ] **V** Black Ops multiplayer's client `UseAnimTree` refuses only players
+      and actors; IW4L refuses every server entity, the rule read for the
+      zombies client (#669).
 - [ ] **V** A destructible's debris models (`destructible spawn-model debris
       unavailable`, the Nuketown mannequins' limbs) are not spawned, and a
       client script's `UseAnimTree` / `SetAnim` on a server entity faults, so
@@ -654,6 +661,8 @@ Each open section names the issue that works it.
 
 ## Closed
 
+- [x] **G** Minefields and barrels (#669): on Jungle a player standing in a
+      `minefield` trigger dies, and a `dest_glo_barrel_explosive` explodes.
 - [x] **G** Destructibles (#669): a map entity with a `destructibledef` is
       the client's only when its definition says so, as the executable's
       server and client spawners read it; the others are server entities
