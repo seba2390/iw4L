@@ -148,9 +148,17 @@ Each open section names the issue that works it.
       weapon's stock and clip; Black Ops sums the clips of every held weapon
       that shares the weapon's ammo cap instead, which is not applied.
 - [ ] **G** Lethal, tactical and equipment items (`_weaponobjects.gsc`):
-      Semtex, tomahawk, concussion, Willy Pete, Nova gas, decoy, C4,
-      tactical insertion, camera spike, jammer, motion sensor;
-      `makegrenadedud` is refused. A flash grenade's own explosion event
+      concussion, Willy Pete, Nova gas, decoy, tactical insertion, camera
+      spike, jammer, motion sensor; `makegrenadedud` is refused.
+      `t5.mp.grenade_stick`: a sticking grenade that strikes a dead
+      player (Black Ops links it to the player's body) or a vehicle
+      (linked to the part struck, its blast then hurting the vehicle
+      directly) does neither here. `t5.mp.grenade_rest`: Black Ops lets no
+      grenade but one sticking to the ground keeping its yaw rest on
+      another missile; the match does not describe missiles to the
+      grenade, so a strike on an entity it does not know logs this gap.
+      A crossbow bolt's grenade does not tell the scripts
+      `stuck_to_player`. A flash grenade's own explosion event
       (Black Ops sends flash grenades a client event of their own) is the
       plain explosion's here, and `t5.mp.flash_vehicle`: Black Ops' flash
       also reaches the RC-XD's driver through the car (#660), which it
@@ -577,6 +585,19 @@ Each open section names the issue that works it.
       compensation of Black Ops' movement and weapons are unmeasured.
 
 ## Closed
+
+- [x] **G** Sticking grenades (#649): a grenade whose `stickiness`
+      sticks to everything (Semtex, C4) or to bodies only (the tomahawk)
+      stops in the player or actor it strikes and rides the tag of the
+      hit location struck (head, neck, spine, elbows, wrists, knees,
+      ankles; the body itself for none; an actor's right knee when the
+      tag is missing), telling the scripts `grenade_stuck`, `stationary`
+      and, on a player, `stuck_to_player`. A tomahawk sits turned to the
+      yaw of its throw and set back from the tag (5 units at the head and
+      neck, 2 at the limbs, 7.5 elsewhere). A grenade without a timed
+      fuse does not stick to its thrower's teammates. Only a grenade that
+      sticks to everything rests on a player, and one at rest on a
+      script mover rides it.
 
 - [x] **G** Flash grenades (#649): a flash grenade's blast tells each
       player who takes damage within its `explosionRadius` (searched in a

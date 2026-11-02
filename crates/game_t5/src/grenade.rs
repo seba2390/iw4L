@@ -19,9 +19,15 @@ use crate::missile::{
 
 const MOD_GRENADE_SPLASH: usize = 4;
 const MOD_PROJECTILE_SPLASH: usize = 6;
-/// `stickiness`: stick to the ground, and to the ground keeping the yaw.
+/// `stickiness`: stick to everything, to the ground, to the ground keeping
+/// the yaw, and to bodies only.
+const STICK_ALL: i32 = 1;
 const STICK_GROUND: i32 = 3;
 const STICK_GROUND_KEEP_YAW: i32 = 4;
+const STICK_BODIES: i32 = 5;
+/// `rotateType` of a grenade turning about one axis (a tomahawk): stuck in
+/// a body it is set along its throw.
+const ROTATE_ONE_AXIS: i32 = 1;
 /// Radians to degrees, as Black Ops' landing angles scale them.
 const RAD2DEG: f32 = 57.2957764;
 /// A grenade rests on what faces up more than this.
@@ -91,8 +97,24 @@ pub(crate) const SURFACE_NAMES: [&str; 31] = [
 fn grenade_unknown() -> &'static Unknown {
     unknown!(
         "t5.weapons.grenade",
-        "a thrown grenade that sticks to entities, a smoke, flash, gas or molotov grenade, a grenade landing on another missile or a mover, or one exploding in water, does not do what Black Ops does with it",
-        "Black Ops' thrown grenades sticking to entities, explosion tags, smoke, flash, gas and molotov effects, grenades riding movers and water explosions"
+        "a smoke, gas or molotov grenade, or one exploding in water, does not do what Black Ops does with it",
+        "Black Ops' explosion tags, smoke, gas and molotov effects and water explosions"
+    )
+}
+
+fn stick_unknown() -> &'static Unknown {
+    unknown!(
+        "t5.mp.grenade_stick",
+        "a sticking grenade struck a dead player or something that is neither a body nor a script mover (a vehicle), which Black Ops links to the body or the vehicle's part struck",
+        "Black Ops' sticking grenades on dead players' bodies and vehicles"
+    )
+}
+
+fn rest_unknown() -> &'static Unknown {
+    unknown!(
+        "t5.mp.grenade_rest",
+        "a grenade struck an entity the match does not describe (another missile?), on which Black Ops lets only a grenade that sticks to the ground keeping its yaw rest",
+        "Black Ops' rule that grenades do not rest on other missiles"
     )
 }
 
@@ -167,7 +189,6 @@ pub(crate) fn fire_grenade(
     up: [f32; 3],
     muzzle: [f32; 3],
     world: &mut dyn FireWorld,
-    gaps: &mut Vec<&'static Unknown>,
 ) {
     let speed = def.projectile_speed() as f32;
     let relative_up = def.projectile_speed_relative_up() as f32;
@@ -206,7 +227,7 @@ pub(crate) fn fire_grenade(
         ]
     });
     spawn_grenade(
-        owner, weapon, def, muzzle, vel, carried, true, false, None, None, fuse, world, gaps,
+        owner, weapon, def, muzzle, vel, carried, true, false, None, None, fuse, world,
     );
 }
 
@@ -254,7 +275,6 @@ pub(crate) fn launch_grenade(
         None,
         def.fuse_time(),
         world,
-        gaps,
     );
 }
 
@@ -309,7 +329,6 @@ pub(crate) fn leave_grenade(
         link,
         fuse,
         world,
-        gaps,
     );
 }
 
@@ -334,7 +353,19 @@ fn link_to(
             tag = LinkTag::KneeRight;
         }
     }
-    let (origin, axis) = link_pose(world, stuck.on, tag)?;
+    link_at(world, stuck.on, tag, point, angles)
+}
+
+/// Where a grenade at `point` (turned by `angles`) sits in the frame of
+/// `tag` on `entity`.
+fn link_at(
+    world: &mut dyn FireWorld,
+    entity: i32,
+    tag: LinkTag,
+    point: [f32; 3],
+    angles: [f32; 3],
+) -> Option<Link> {
+    let (origin, axis) = link_pose(world, entity, tag)?;
     let d = [
         point[0] - origin[0],
         point[1] - origin[1],
@@ -366,6 +397,7 @@ fn link_pose(
             Some((entity.origin, [forward, right.map(|v| -v), up]))
         }
         LinkTag::KneeRight => world.tag_pose(entity, "j_knee_ri"),
+        LinkTag::Hit(location) => world.tag_pose(entity, hit_tag(i32::from(location))?),
         LinkTag::Bone(bone) => {
             let name = world.bone_tag(entity, bone)?;
             world.tag_pose(entity, &name)
@@ -417,6 +449,173 @@ pub(crate) fn follow_link(
     true
 }
 
+/// The tag a grenade sticks to on a body, by the hit location struck.
+fn hit_tag(location: i32) -> Option<&'static str> {
+    Some(match location {
+        1 | 2 => "j_head",
+        3 => "j_neck",
+        4 => "j_spineupper",
+        5 => "j_spinelower",
+        6 => "j_elbow_ri",
+        7 => "j_elbow_le",
+        8 | 10 => "j_wrist_ri",
+        9 | 11 => "j_wrist_le",
+        12 => "j_knee_ri",
+        13 => "j_knee_le",
+        14 | 16 => "j_ankle_ri",
+        15 | 17 => "j_ankle_le",
+        _ => return None,
+    })
+}
+
+/// How far a tomahawk stuck in a body sits back from the tag: the head and
+/// neck, the limbs, and the rest.
+fn tomahawk_depth(location: i32) -> f32 {
+    match location {
+        1..=3 => 5.0,
+        6..=17 => 2.0,
+        _ => 7.5,
+    }
+}
+
+/// A grenade that sticks to bodies struck a player or an actor (flying at
+/// `vel` before it struck): it stops and links to the tag of the hit
+/// location struck (the body itself for none; an actor's right knee when
+/// the tag cannot be linked), a tomahawk turned along its throw and set
+/// back from the tag. One without a timed fuse does not stick to its
+/// thrower's teammates. True when it stuck; a stuck player hears
+/// `stuck_to_player` from it.
+#[allow(clippy::too_many_arguments)]
+fn stick(
+    missile: &mut GameMissile,
+    def: &WeaponDefView<'_>,
+    state: &mut State,
+    trace: &BulletTrace,
+    vel: [f32; 3],
+    world: &mut dyn FireWorld,
+    gaps: &mut Vec<&'static Unknown>,
+) -> bool {
+    let struck = hit_id(trace);
+    let Some(body) = world.entity(struck) else {
+        return false;
+    };
+    match body.kind {
+        FireEntityKind::Player | FireEntityKind::Actor => {}
+        FireEntityKind::Other => {
+            if !body.script_model && body.model_bounds.is_none() && !body.corpse {
+                gaps.push(stick_unknown());
+            }
+            return false;
+        }
+    }
+    let team = world.entity(missile.owner).and_then(|owner| owner.team);
+    if body.team.is_some_and(|t| t != FireTeam::Neutral)
+        && body.team == team
+        && !def.timed_detonation()
+    {
+        return false;
+    }
+    if body.kind == FireEntityKind::Player && !body.takes_damage {
+        // Black Ops links to a dead player's body instead.
+        gaps.push(stick_unknown());
+    }
+    let location = trace.hit_location;
+    let level = world.level_time();
+    let mut angles = evaluate(&missile.angles, level);
+    let mut link = None;
+    if let Some(tag) = hit_tag(location) {
+        set_along_throw(missile, def, struck, tag, location, vel, &mut angles, world);
+        link = link_at(
+            world,
+            struck,
+            LinkTag::Hit(location as u8),
+            missile.origin,
+            angles,
+        );
+    }
+    if link.is_none() && body.kind == FireEntityKind::Actor && hit_tag(location).is_some() {
+        set_along_throw(
+            missile,
+            def,
+            struck,
+            "j_knee_ri",
+            12,
+            vel,
+            &mut angles,
+            world,
+        );
+        link = link_at(world, struck, LinkTag::KneeRight, missile.origin, angles);
+    }
+    let Some((tag, offset, turn)) =
+        link.or_else(|| link_at(world, struck, LinkTag::Origin, missile.origin, angles))
+    else {
+        return false;
+    };
+    missile.position = GameTrajectory {
+        kind: TrajectoryKind::Stationary,
+        time: 0,
+        duration: 0,
+        base: missile.origin,
+        delta: [0.0; 3],
+    };
+    missile.angles = GameTrajectory {
+        kind: TrajectoryKind::Stationary,
+        time: 0,
+        duration: 0,
+        base: angles,
+        delta: [0.0; 3],
+    };
+    state.ground = struck;
+    state.rest_normal = trace.normal;
+    state.link = tag;
+    state.link_offset = offset;
+    state.link_angles = turn;
+    eprintln!(
+        "TEMPSTICK grenade {} on {} tag {:?} loc {} at {:?}",
+        missile.entity, struck, tag, location, missile.origin
+    );
+    if body.kind == FireEntityKind::Player {
+        world.notify(
+            missile.entity,
+            "stuck_to_player",
+            &[NotifyArg::Entity(struck)],
+        );
+    }
+    true
+}
+
+/// A tomahawk stuck at `tag` on a body: turned to the yaw of its throw
+/// and, for a hit location struck, set back from the tag along it.
+#[allow(clippy::too_many_arguments)]
+fn set_along_throw(
+    missile: &mut GameMissile,
+    def: &WeaponDefView<'_>,
+    struck: i32,
+    tag: &str,
+    location: i32,
+    vel: [f32; 3],
+    angles: &mut [f32; 3],
+    world: &mut dyn FireWorld,
+) {
+    if def.rotate_type() != ROTATE_ONE_AXIS {
+        return;
+    }
+    let Some((at, _)) = world.tag_pose(struck, tag) else {
+        return;
+    };
+    let flat = [vel[0], vel[1], 0.0];
+    let len = length(flat);
+    let dir = if len > 0.0 {
+        flat.map(|v| v / len)
+    } else {
+        flat
+    };
+    *angles = [0.0, vectoangles(dir)[1], 0.0];
+    if location != 0 {
+        missile.origin = mad(at, dir, -tomahawk_depth(location));
+    }
+}
+
 /// A grenade put in the match: falling from `start` at `vel` (in whole
 /// units, then `carried` on top), spinning when its weapon rotates, its fuse
 /// lit, and the thrower told.
@@ -434,11 +633,7 @@ fn spawn_grenade(
     link: Option<Link>,
     fuse: i32,
     world: &mut dyn FireWorld,
-    gaps: &mut Vec<&'static Unknown>,
 ) -> Option<i32> {
-    if stuck.is_none() && sticks_to_entities(def) {
-        gaps.push(grenade_unknown());
-    }
     let level = world.level_time();
     let angles = vectoangles(vel);
     let delta = [
@@ -607,19 +802,39 @@ pub(crate) fn bounce(
     world: &mut dyn FireWorld,
     gaps: &mut Vec<&'static Unknown>,
 ) {
+    let vel = missile.position.delta;
+    eprintln!(
+        "TEMPBOUNCE stick {} struck {} loc {}",
+        def.stickiness(),
+        hit_id(trace),
+        trace.hit_location
+    );
     if !bounce_off(missile, def, state, trace, world, gaps) || trace.start_solid {
         return;
     }
-    if matches!(def.stickiness(), 1 | 5) {
-        gaps.push(grenade_unknown());
+    let target = hit_id(trace);
+    if matches!(def.stickiness(), STICK_ALL | STICK_BODIES)
+        && stick(missile, def, state, trace, vel, world, gaps)
+    {
+        world.notify(
+            target,
+            "grenade_stuck",
+            &[NotifyArg::Entity(missile.entity)],
+        );
+        world.notify(
+            missile.entity,
+            "stationary",
+            &[NotifyArg::Vector(end), NotifyArg::Vector(trace.normal)],
+        );
+    } else {
+        world.notify(
+            missile.entity,
+            "grenade_bounce",
+            &[NotifyArg::Vector(end), NotifyArg::Vector(trace.normal)],
+        );
     }
-    world.notify(
-        missile.entity,
-        "grenade_bounce",
-        &[NotifyArg::Vector(end), NotifyArg::Vector(trace.normal)],
-    );
     // A body struck without a surface of its own sounds as flesh.
-    let struck = world.entity(hit_id(trace));
+    let struck = world.entity(target);
     if state.surface == 0 && struck.is_some_and(sentient) {
         state.surface = SURF_FLESH;
     }
@@ -649,10 +864,17 @@ fn bounce_off(
     let k = if rolls { -strike } else { strike * -2.0 };
     let mut delta = [n[0] * k + vel[0], k * n[1] + vel[1], k * n[2] + vel[2]];
     let struck = hit_id(trace);
-    if sticks_to_entities(def) {
-        gaps.push(grenade_unknown());
+    let struck_entity = world.entity(struck);
+    // Only a grenade that sticks to everything rests on a player.
+    let can_rest = matches!(def.stickiness(), 0 | STICK_ALL)
+        || struck_entity.is_none_or(|e| e.kind != FireEntityKind::Player);
+    if def.stickiness() != STICK_GROUND_KEEP_YAW && struck_entity.is_none() && struck >= 0 {
+        // Black Ops lets no grenade but one sticking to the ground keeping
+        // its yaw rest on another missile; what the match does not know
+        // as an entity here may be one.
+        gaps.push(rest_unknown());
     }
-    if matches!(def.stickiness(), 1 | 2) || n[2] > REST_SLOPE {
+    if can_rest && (matches!(def.stickiness(), STICK_ALL | 2) || n[2] > REST_SLOPE) {
         state.ground = struck;
     }
     let rolling = surface_bounce(
@@ -670,10 +892,11 @@ fn bounce_off(
         roll(missile, state, def, n, &mut delta, speed, dir, world);
     }
     missile.position.delta = delta;
-    if matches!(def.stickiness(), 1 | 2)
-        || n[2] > REST_SLOPE
-            && (matches!(def.stickiness(), 3 | 4)
-                || length(delta) < dvar(world, "grenadeRestThreshold", 20.0))
+    if can_rest
+        && (matches!(def.stickiness(), STICK_ALL | 2)
+            || n[2] > REST_SLOPE
+                && (matches!(def.stickiness(), 3 | 4)
+                    || length(delta) < dvar(world, "grenadeRestThreshold", 20.0)))
     {
         // At rest where it struck.
         missile.position = GameTrajectory {
@@ -697,6 +920,20 @@ fn bounce_off(
         state.rest_normal = n;
         if !def.timed_detonation() {
             state.explode_at = 0;
+        }
+        // At rest on a script mover it rides along.
+        if state.ground == struck
+            && struck_entity.is_some_and(|e| {
+                e.kind == FireEntityKind::Other
+                    && !e.corpse
+                    && (e.script_model || e.model_bounds.is_some())
+            })
+            && let Some((tag, offset, turn)) =
+                link_at(world, struck, LinkTag::Origin, missile.origin, angles)
+        {
+            state.link = tag;
+            state.link_offset = offset;
+            state.link_angles = turn;
         }
         world.notify(missile.entity, "stationary", &[]);
         return true;
@@ -1198,12 +1435,6 @@ fn slope_pitch(yaw: f32, n: [f32; 3]) -> f32 {
     (along.atan() * f64::from(RAD2DEG)) as f32
 }
 
-/// The grenade sticks to what it strikes, entities among them (stickiness
-/// 1, 2 and 5), which the runtime does not run.
-fn sticks_to_entities(def: &WeaponDefView<'_>) -> bool {
-    matches!(def.stickiness(), 1 | 2 | 5)
-}
-
 /// A grenade let go where its thrower stands (the thrower held it too
 /// long): 40 units up from its origin, still, on the fuse it has left.
 pub(crate) fn drop_grenade(
@@ -1213,10 +1444,9 @@ pub(crate) fn drop_grenade(
     origin: [f32; 3],
     fuse: i32,
     world: &mut dyn FireWorld,
-    gaps: &mut Vec<&'static Unknown>,
 ) {
     let start = [origin[0], origin[1], origin[2] + 40.0];
     spawn_grenade(
-        owner, weapon, def, start, [0.0; 3], [0.0; 3], false, false, None, None, fuse, world, gaps,
+        owner, weapon, def, start, [0.0; 3], [0.0; 3], false, false, None, None, fuse, world,
     );
 }
