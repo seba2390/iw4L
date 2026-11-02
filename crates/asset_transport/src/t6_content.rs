@@ -190,6 +190,25 @@ pub fn capture_folders() -> Vec<std::path::PathBuf> {
         .collect()
 }
 
+/// Whether the downloaded patch a mode needs is on this machine: a captured
+/// patch zone (`ffotd_*<suffix>*.ff`) or that module on its own under
+/// `<capture folder>/scripts<suffix>/`.
+pub fn capture_present(suffix: &str, module: &str) -> bool {
+    !captured_patch_files(suffix).is_empty() || has_captured_script(suffix, module)
+}
+
+fn has_captured_script(suffix: &str, module: &str) -> bool {
+    use std::io::Read;
+
+    capture_folders().iter().any(|folder| {
+        let mut magic = [0; 8];
+        std::fs::File::open(folder.join(format!("scripts{suffix}")).join(module))
+            .and_then(|mut file| file.read_exact(&mut magic))
+            .is_ok()
+            && magic == *b"\x80GSC\r\n\0\x06"
+    })
+}
+
 /// The captured downloaded patch zones (`ffotd_*<suffix>*.ff`) in the
 /// capture folders, by file name.
 pub fn captured_patch_files(suffix: &str) -> Vec<std::path::PathBuf> {

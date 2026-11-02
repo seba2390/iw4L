@@ -37,14 +37,20 @@ says each minute how fast the machine kept up (a Nuketown rounds run averages
 about 2x to 3x).
 
 Every map needs `maps/mp/gametypes_zm/_globallogic`, which Black Ops 2 downloads
-at launch and keeps only in memory. Without a capture of that patch zone
-(`ffotd_*_zm*.ff`) in `~/.config/iw4l/captured/` or `<artifacts>/captured/` the
-game's scripts are refused (`t6.scripts.ffotd`). The capture tool is not in the
-repository, so a machine without a capture cannot start these maps yet: the
-library's Zombies page then greys out every Black Ops 2 map that needs it
-(Origins, on IW4L's rules, does not) and names the file and the folders it is
-read from. Copying a capture you made from your own game into one of those
-folders makes the maps startable at the next visit to the page.
+at launch and keeps only in memory. IW4L reads it from a capture of that patch
+zone (`ffotd_*_zm*.ff`), or the module alone under `scripts_zm/`, in
+`~/.config/iw4l/captured/` or `<artifacts>/captured/`; multiplayer reads
+`ffotd_*_mp*.ff` and `scripts_mp/` the same way. Without one the game's scripts
+are refused (`t6.scripts.ffotd`): the library's Zombies page greys out every
+Black Ops 2 map that needs it (Origins, on IW4L's rules, does not) and names the
+file and the folders. Copying a capture you already made from your own game into
+one of those folders makes the maps startable at the next visit to the page.
+
+IW4L ships no capture tool and does not ask you to make a capture. The patch
+appears only while the original game runs signed in online, on Steam, under
+Valve Anti-Cheat, so a capture means reading that process's memory. Nobody can
+show that this cannot get a Steam account flagged, and any such risk is yours.
+Captures stay on your own machine: never share one.
 
 ## Maps
 
