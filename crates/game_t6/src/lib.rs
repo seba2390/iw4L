@@ -493,6 +493,7 @@ const OWN_ZOMBIES_MODE: ModeRules = ModeRules {
     spawn_classnames: None,
     limits_from_config: false,
     report_builtin_gaps: true,
+    waits_for_lobby: true,
     binds_objectives: false,
     host_rules: false,
     ..ZCLASSIC_MODE
