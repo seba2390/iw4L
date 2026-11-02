@@ -130,7 +130,7 @@ pub(crate) fn register(registry: &mut NativeRegistry) {
                 .get(at)
                 .cloned()
                 .flatten()
-                .unwrap_or_default();
+                .unwrap_or_else(|| "no material".to_owned());
             report(
                 world,
                 false,
@@ -188,7 +188,7 @@ pub(crate) fn register(registry: &mut NativeRegistry) {
         if enabled {
             let material = filters(world).overlays[overlay as usize]
                 .clone()
-                .unwrap_or_default();
+                .unwrap_or_else(|| "no material".to_owned());
             report(
                 world,
                 true,
