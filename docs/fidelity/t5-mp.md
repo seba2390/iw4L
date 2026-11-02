@@ -469,8 +469,17 @@ Each open section names the issue that works it.
       tables (`mp_client_catalog.rs`, 48 builtins from `BlackOpsMP.exe`)
       and run on `mp_nuked`. Not implemented yet, each faulting the thread
       that calls it: `map_material`, `set_filter_pass_*`, `set_overlay_*`
-      (the scope and guided-missile filters, #645); `animateui` (menu item
-      animations, #651); the vehicle queries (#660).
+      (the scope and guided-missile filters, #645); the vehicle queries
+      (#660).
+- [ ] **V** `t5.csc.animate_ui`: `AnimateUI(localClientNum, menu, item,
+      state, ms)` checks its parameters as `BlackOpsMP.exe` does, but does
+      not move anything: Black Ops starts each named item (`*` for all)
+      from where it stands towards the named animation state over the
+      time (scaled by its UI animation speed), and its menu draw blends
+      the item's rect and colours between them; the menus here keep only
+      each item's state as loaded. `_explode.csc`'s screen dirt and
+      `_cameraspike.csc`'s HUD moves call it; each menu, item and state
+      asked for logs the id once (#651).
 - [ ] **V** `t5.csc.extra_camera`: the camera spike's extra camera
       builtins (`SetExtraCamEntity`, `…Active`, `…Static`, `…Origin`,
       `…Angles`) check their parameters as `BlackOpsMP.exe` does, but its
