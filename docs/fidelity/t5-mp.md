@@ -470,8 +470,15 @@ Each open section names the issue that works it.
       and run on `mp_nuked`. Not implemented yet, each faulting the thread
       that calls it: `map_material`, `set_filter_pass_*`, `set_overlay_*`
       (the scope and guided-missile filters, #645); `animateui` (menu item
-      animations, #651); the extra
-      camera builtins (camera spike, #649); the vehicle queries (#660).
+      animations, #651); the vehicle queries (#660).
+- [ ] **V** `t5.csc.extra_camera`: the camera spike's extra camera
+      builtins (`SetExtraCamEntity`, `…Active`, `…Static`, `…Origin`,
+      `…Angles`) check their parameters as `BlackOpsMP.exe` does, but its
+      view (drawn from the camera spike while active, with static while
+      `static` is set), the sound listener moving to it while the spike is
+      toggled, and `IsCameraSpikeToggled` (the player's flag that the
+      server's `SetCameraSpikeActive` sets) are not ported; turning the
+      camera on logs the id (#649).
 - [ ] **V** `t5.csc.saved_dvars`: `setsaveddvar` keeps the client's dvar,
       but nothing reads the ones the multiplayer scripts set (wind,
       `r_outdoorfeather`); Black Ops' refusal of a dvar that does not exist
