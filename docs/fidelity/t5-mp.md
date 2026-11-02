@@ -425,10 +425,8 @@ Each open section names the issue that works it.
       one out over the blend, so the restart pops. `move_walk`'s per-frame
       restart is ported as read; no script line sets `a.movement` to walk.
 - [ ] **G** The dog's compass icon (`compassping_dog`, with #651) is not done.
-      A flash grenade does not flash a dog: the executable starts its
-      `dog_flashed` script from its own flash code, which is not read.
       `setflashbangimmunity` (no multiplayer script calls it) is not
-      registered.
+      registered, so no actor is immune to `setFlashBanged`.
 - [ ] **G** `heliturretdogtrace`: the handler first retries what blocked the
       trace last time, a cache this does not keep; any block answers 1, which
       the scripts only compare with 0.
@@ -598,6 +596,17 @@ Each open section names the issue that works it.
       compensation of Black Ops' movement and weapons are unmeasured.
 
 ## Closed
+
+- [x] **G** Flashed dogs (#758, #649): Willy Pete's cloud, Nova gas and
+      a flash or concussion's light damage make `_dogs.gsc`'s
+      `flash_dogs` call `setFlashBanged(true, 500)` on the dogs it
+      reaches, but nothing ran the dog's `flashed` animscript and
+      `getFlashBangedStrength` was missing. Now `setFlashBanged` keeps the
+      stronger strength (off clears both), `getFlashBangedStrength`
+      answers it, and the dog's think, right before its attack and
+      movement choice, starts `maps/mp/animscripts/dog_flashed` (movemode
+      stop, both animation deltas, facing kept) while it is flashbanged
+      and not locked in a melee with its enemy.
 
 - [x] **V** The motion sensor (#649): `SetLocalRadarEnabled` and
       `SetLocalRadarPosition` were not implemented, so

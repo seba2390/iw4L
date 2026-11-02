@@ -1202,6 +1202,15 @@ struct ActorFields {
     flashbanged: (bool, f32),
 }
 
+/// Whether the actor is flashbanged (`setflashbanged`), which its AI
+/// answers by running its flashed animscript.
+pub(crate) fn flashbanged(world: &World, id: u64) -> bool {
+    world
+        .get_resource::<ActorState>()
+        .and_then(|state| state.0.get(&id))
+        .is_some_and(|fields| fields.flashbanged.0)
+}
+
 /// Black Ops' objective states, by number.
 const OBJECTIVE_STATES: [&str; 6] = ["empty", "active", "invisible", "done", "current", "failed"];
 
@@ -1533,9 +1542,20 @@ fn register_actor(registry: &mut NativeRegistry) {
         } else {
             1.0
         };
+        // Turning it on keeps the stronger strength; turning it off clears
+        // both.
         let on = super::super::args::int(args, 0)? != 0;
-        actor_fields(world, id).flashbanged = (on, strength);
+        let fields = actor_fields(world, id);
+        fields.flashbanged = if on {
+            (true, fields.flashbanged.1.max(strength))
+        } else {
+            (false, 0.0)
+        };
         Ok(Value::Undefined)
+    });
+    registry.register(Method, "getflashbangedstrength", |world, receiver, _| {
+        let id = actor(world, receiver)?;
+        Ok(Value::Float(actor_fields(world, id).flashbanged.1))
     });
     registry.register(Method, "setdeathcontents", |world, receiver, args| {
         if args.len() != 1 {
