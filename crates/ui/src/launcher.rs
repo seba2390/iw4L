@@ -109,7 +109,7 @@ impl Menu {
     }
 
     fn back(&mut self) {
-        if self.page == Page::Host && self.editing_lobby {
+        if matches!(self.page, Page::Host | Page::Zombies) && self.editing_lobby {
             self.editing_lobby = false;
             self.navigate(Page::Lobby);
             return;
@@ -566,6 +566,7 @@ fn activate(
                     dvars.set("ui_mapname", map.clone());
                 }
             } else if page == Page::Zombies
+                && !menu.editing_lobby
                 && let Some(mode) = menu.selected.and_then(Game::zombies)
             {
                 dvars.set("ui_gametype", mode.gametype);
@@ -578,9 +579,6 @@ fn activate(
         }
         Action::ZombieMap(map, start) => {
             let changing_lobby = menu.editing_lobby;
-            if changing_lobby {
-                command(exec, format!("ui_select_map {map}"));
-            }
             let Some((namespace, mode)) = map
                 .split_once(':')
                 .and_then(|(prefix, _)| asset_core::AssetNamespace::from_prefix(prefix))
@@ -590,6 +588,19 @@ fn activate(
             else {
                 return;
             };
+            if changing_lobby {
+                command(
+                    exec,
+                    match start {
+                        Some((gametype, location)) => {
+                            format!("ui_lobby_map {map} {gametype} {location}")
+                        }
+                        None => format!("ui_lobby_map {map} {}", mode.gametype),
+                    },
+                );
+                menu.navigate(Page::Lobby);
+                return;
+            }
             dvars.set("ui_mapname", map);
             dvars.set(
                 "ui_gametype",
@@ -946,7 +957,8 @@ fn input(
     let mut available = available;
     available.sort_by_key(|(order, _)| *order);
     let console_open = hud_input.as_ref().is_some_and(|input| input.console_open);
-    let t6_zombies = menu.selected == Some(Game::BlackOps2) && menu.page == Page::Zombies;
+    let t6_zombies =
+        menu.selected == Some(Game::BlackOps2) && menu.page == Page::Zombies && !menu.editing_lobby;
     if !console_open && !t6_zombies && capture.command.is_none() && !capture.consumed_input {
         if menu.page == Page::Password && dvars.get("ui_password_pending") != Some("1") {
             let mut password = dvars.get("ui_password_input").unwrap_or("").to_owned();
@@ -1195,6 +1207,7 @@ fn rebuild(
     };
     t6_front_end.0 = (menu.selected == Some(Game::BlackOps2)
         && menu.page == Page::Zombies
+        && !menu.editing_lobby
         && !backdrop.pending
         && backdrop.native.is_some())
     .then(|| Game::BlackOps2.namespace())
