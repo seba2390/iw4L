@@ -148,8 +148,12 @@ Each open section names the issue that works it.
       weapon's stock and clip; Black Ops sums the clips of every held weapon
       that shares the weapon's ammo cap instead, which is not applied.
 - [ ] **G** Lethal, tactical and equipment items (`_weaponobjects.gsc`):
-      concussion, Willy Pete, Nova gas, decoy, tactical insertion, camera
-      spike, jammer, motion sensor; `makegrenadedud` is refused.
+      the decoy (`FakeFire`, `Launch` refused), the camera spike
+      (`ActionSlotOneButtonPressed`, `SetCameraSpikeActive`, the extra
+      camera), jammer and motion sensor; concussion and the tactical
+      insertion are not verified in a run; a smoke or gas grenade's own
+      lingering smoke entity (Black Ops keeps its explosion entity 61 s)
+      is `t5.weapons.grenade`; `makegrenadedud` is refused.
       `t5.mp.grenade_stick`: a sticking grenade that strikes a dead
       player (Black Ops links it to the player's body) or a vehicle
       (linked to the part struck, its blast then hurting the vehicle
@@ -163,6 +167,12 @@ Each open section names the issue that works it.
       plain explosion's here, and `t5.mp.flash_vehicle`: Black Ops' flash
       also reaches the RC-XD's driver through the car (#660), which it
       does not here.
+- [ ] **V** `t5.mp.timed_fx`: `SpawnTimedFX` (Willy Pete's smoke, Nova
+      gas's clouds) plays the named weapon's explosion effect once, where
+      and when it is spawned. Black Ops keeps an entity for the given time
+      (10 s by default), so a client that comes to see it later still
+      starts the effect; here a late viewer sees nothing. The direction
+      is not quantised to Black Ops' byte directions.
 - [ ] **G** `t5.mp.perk_effects`: the perks Black Ops' multiplayer
       code tests that have no effect here yet (setting one logs the gap):
       `_twogrenades` (a second grenade picked up);
@@ -585,6 +595,15 @@ Each open section names the issue that works it.
       compensation of Black Ops' movement and weapons are unmeasured.
 
 ## Closed
+
+- [x] **G** Smoke, gas and the tactical insertion's tests (#649):
+      `SpawnTimedFX(weapon, origin, [dir], [seconds])` plays the weapon's
+      `projExplosionEffect` at the origin snapped to whole units, facing
+      the direction (up by default), so Willy Pete's smoke and Nova gas's
+      clouds show. `TestSpawnPoint(origin)` answers whether a player box
+      (−15 −15 0 to 15 15 70) at the point starts clear of mask
+      0x810011. `ent IsTouchingVolume(origin, mins, maxs)` tests the box,
+      grown in height to at least its width, against the entity.
 
 - [x] **G** Sticking grenades (#649): a grenade whose `stickiness`
       sticks to everything (Semtex, C4) or to bodies only (the tomahawk)

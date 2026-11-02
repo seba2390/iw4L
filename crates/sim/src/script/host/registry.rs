@@ -193,6 +193,7 @@ impl NativeRegistry {
     pub fn with_black_ops_multiplayer(mut self) -> Self {
         natives::t5_actionslot::register(&mut self);
         natives::t5_classes::register(&mut self);
+        natives::t5_equipment::register(&mut self);
         natives::t5_guided::register(&mut self);
         natives::t5_items::register(&mut self);
         natives::t5_location::register(&mut self);
