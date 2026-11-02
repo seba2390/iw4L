@@ -772,6 +772,7 @@ pub fn apply_prepared_match(
         // keeps only those keys.
         let client_level = client_scripts.as_ref().map(|_| sim::script::LevelData {
             entities: script_level.entities.clone(),
+            destructible_defs: script_level.destructible_defs.clone(),
             keys: script_level
                 .client_keys
                 .clone()
@@ -1564,6 +1565,7 @@ fn preflight_match_install(
         entities: sim::script::parse_entity_string(sources.0.entities().unwrap_or("")),
         keys,
         entity_fields: None,
+        destructible_defs: Default::default(),
         layouts: sources.0.layouts().clone(),
         barriers: sources.0.barriers().clone(),
         weapons: sources.0.weapons().clone(),
@@ -1815,6 +1817,16 @@ fn preflight_match_install(
             .map(|(key, ty)| (key, key_type(ty)))
             .collect();
     }
+    script_level.destructible_defs = prepared
+        .world
+        .script_model_instances
+        .iter()
+        .filter_map(|instance| instance.metadata.t5_destructible.as_ref())
+        .map(|definition| {
+            let health = definition.pieces.first().map_or(0, |piece| piece.health);
+            (definition.name.clone(), (definition.client_only, health))
+        })
+        .collect();
     if !program.entity_fields.is_empty() {
         script_level.entity_fields = Some(
             program

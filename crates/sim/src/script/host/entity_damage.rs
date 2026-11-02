@@ -357,8 +357,35 @@ pub(crate) fn destructible_callback(
     else {
         return;
     };
-    let name = format!("iw4l_maps/destructibles::{entry}");
     let now = super::players::now_ms(world);
+    // Black Ops multiplayer's own `CodeCallback_DestructibleEvent`, where the
+    // map's scripts have it: `broken` with the notify and the attacker,
+    // `breakafter` with the piece, the time and the damage.
+    let own = match (entry, args.as_slice()) {
+        ("break_after", [piece, _, time, amount, _]) => {
+            let (piece, time, amount) = (piece.clone(), time.clone(), amount.clone());
+            Some(vec![Value::string("breakafter"), piece, time, amount])
+        }
+        ("broken", [notify, attacker]) => Some(vec![
+            Value::string("broken"),
+            notify.clone(),
+            attacker.clone(),
+        ]),
+        _ => None,
+    };
+    if let Some(own) = own
+        && crate::script::runtime::run_now(
+            world,
+            "maps/mp/_destructible::codecallback_destructibleevent",
+            Value::Object(object),
+            own,
+            now,
+        )
+        .is_ok()
+    {
+        return;
+    }
+    let name = format!("iw4l_maps/destructibles::{entry}");
     if let Err(fault) =
         crate::script::runtime::run_now(world, &name, Value::Object(object), args, now)
     {

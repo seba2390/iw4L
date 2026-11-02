@@ -475,7 +475,8 @@ impl FireWorld for MatchFireWorld<'_, '_> {
             script_model: target.script_model,
             corpse: target.corpse,
             blast_handler: target.destructible,
-            takes_damage: target.takes_damage,
+            // A destructible's pieces take any damage, whatever its own flag.
+            takes_damage: target.takes_damage || target.destructible,
             health: target.health,
             max_health: target.health,
             team: team_of(target.team),

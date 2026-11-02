@@ -922,6 +922,7 @@ pub(crate) fn install(
         &level.entities,
         level.client_keys.as_ref().unwrap_or(&level.keys),
         level.entity_fields.as_ref(),
+        &level.destructible_defs,
     )?;
     let multiplayer = runs_multiplayer_scripts(server);
     let local = {
