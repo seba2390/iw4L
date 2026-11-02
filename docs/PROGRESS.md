@@ -275,7 +275,8 @@ Each milestone names its issues; open rules are in
   - [x] Black Ops' `_bot.gsc` adds its bots (`addtestclient`) and picks their team, class and loadout; IW4L's host bots move and shoot them. Black Ops' own bot behaviour is #709.
 - [ ] Private matches with friends: an unlisted lobby, join by invite, teams, game settings, back to the lobby after a match (#663, #665).
 - [ ] Two-machine play with prediction and lag compensation (#666).
-- [ ] Killcam, final killcam and spectating (#667).
+- [x] Killcam, final killcam and spectating (#667).
+  - [x] On `mp_nuked`: a killcam, a final killcam and an S&D round end replay the killer's view; a dead S&D player follows a living teammate, and a player on the spectator team cycles through the players, each with the followed player's view, viewmodel and ammo. The `SPECTATING` label is `t5.hud.spectator_label` (#651).
 - [ ] Black Ops' multiplayer HUD, front end and sound (#651, #664, #668).
 - [ ] Every base map plays, with its destructibles and interactives (#669, #670).
   - [x] Each of the 14 base maps plays a Team Deathmatch to its end with Black Ops' bots, its scripts faulting only on `testspawnpoint` when a bot carries a tactical insertion (#670).

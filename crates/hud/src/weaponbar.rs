@@ -1060,6 +1060,17 @@ pub(crate) fn update_weaponbar(
             team_scores: snap.meta.objectives.scores,
             rank_scores,
             own_stats: meta.map_or([0; 3], |m| [m.score, m.kills, m.deaths]),
+            view_name: {
+                let client = if ps.is_live_follow() {
+                    sim::ClientId(ps.kill_cam_client_num as u32)
+                } else {
+                    local.0
+                };
+                snap.meta.for_client(client).map_or_else(String::new, |m| {
+                    let end = m.name.iter().position(|b| *b == 0).unwrap_or(m.name.len());
+                    String::from_utf8_lossy(&m.name[..end]).into_owned()
+                })
+            },
             players_alive,
             server_time_ms: snap.tick.0.saturating_mul(sim::MATCH_TICK_MS) as i32,
             time_left_ms: snap

@@ -81,6 +81,8 @@ fn multiplayer(gametype: &str) -> bool {
 /// Engine dvars a multiplayer match reads without setting, at the defaults
 /// `BlackOpsMP.exe` registers them with.
 const MULTIPLAYER_ENGINE_DVARS: &[(&str, &str)] = &[
+    // The team menu offers the spectator team (registered on).
+    ("g_allow_spectator", "1"),
     ("zombiemode", "0"),
     // The multiplayer executable: menus show their multiplayer rows.
     ("ui_multiplayer", "1"),

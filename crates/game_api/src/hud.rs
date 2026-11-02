@@ -335,6 +335,8 @@ pub struct VisibilityView<'a> {
     /// The scoreboard is up.
     pub scoreboard: bool,
     pub in_killcam: bool,
+    /// A spectator following a player live.
+    pub following: bool,
     /// The visibility bits the scripts set: the player's UI flags (0–3)
     /// and the match flags (4–16).
     pub ui_flags: u32,

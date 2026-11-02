@@ -339,12 +339,14 @@ pub enum ViewSubject {
     Seat {
         viewer: u32,
         focus: Option<u32>,
+        /// A spectator following a player live, not a killcam's replay.
+        follow: bool,
     },
 }
 
 impl ViewSubject {
     pub fn in_killcam(self) -> bool {
-        matches!(self, Self::Seat { .. })
+        matches!(self, Self::Seat { follow: false, .. })
     }
 }
 
