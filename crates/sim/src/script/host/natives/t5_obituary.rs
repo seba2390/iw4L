@@ -3,10 +3,10 @@
 
 use super::super::args::string;
 use crate::frame::FrameWorld;
-use crate::script::Namespace::Function;
+use crate::script::Namespace::{Function, Method};
 use crate::script::{NativeRegistry, RoundScript, Value};
 use crate::world::ClientId;
-use bevy_ecs::prelude::World;
+use bevy_ecs::prelude::{Resource, World};
 
 /// Black Ops' means of death, in its order.
 const MEANS: [&str; 21] = [
@@ -52,7 +52,23 @@ fn client(world: &World, value: &Value) -> Result<Option<ClientId>, String> {
         .map(ClientId))
 }
 
+/// `t5.mp.wager_popup` has been logged.
+#[derive(Resource, Default)]
+struct WagerPopupLogged;
+
 pub(crate) fn register(registry: &mut NativeRegistry) {
+    // The client plays a wager popup from a server command, through the
+    // HUD's popup menu; neither is ported.
+    registry.register(Method, "displaywagerpopup", |world, receiver, args| {
+        if !world.contains_resource::<WagerPopupLogged>() {
+            world.insert_resource(WagerPopupLogged);
+            diag::warn!(
+                Sim,
+                "t5.mp.wager_popup: a wager popup does not reach the client"
+            );
+        }
+        super::player::present(world, receiver, "displaywagerpopup", args)
+    });
     registry.register(Function, "obituary", |world, _, args| {
         let victim = client(world, args.first().unwrap_or(&Value::Undefined))?;
         let attacker = args

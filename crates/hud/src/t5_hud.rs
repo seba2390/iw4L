@@ -30,6 +30,10 @@ const CG_PLAYER_WEAPON_AMMO_CLIP: i32 = 120;
 const CG_PLAYER_WEAPON_AMMO_CLIP_DUAL_WIELD: i32 = 121;
 const CG_PLAYER_WEAPON_AMMO_STOCK: i32 = 122;
 const CG_PLAYER_WEAPON_LOW_AMMO_WARNING: i32 = 123;
+const CG_WAGER_LIFE_ALIVE: i32 = 126;
+const CG_WAGER_LIFE_DEAD: i32 = 127;
+const CG_WAGER_BULLETS: i32 = 128;
+const CG_WAGER_LAST_BULLET: i32 = 129;
 const CG_PLAYER_ACTIONSLOT_1: i32 = 166;
 const CG_PLAYER_ACTIONSLOT_4: i32 = 169;
 /// The second `vehiclehud` owner draw and `amitalking`: neither of Black
@@ -66,6 +70,12 @@ pub(crate) struct T5HudState<'a> {
     pub team: i32,
     pub team_scores: [i32; 3],
     pub rank_scores: Vec<i32>,
+    /// The local player's score, kills and deaths.
+    pub own_stats: [i32; 3],
+    /// Each client's team and whether it is alive.
+    pub players_alive: Vec<(i32, bool)>,
+    /// The server's time in the snapshot, in milliseconds.
+    pub server_time_ms: i32,
     /// Milliseconds left on the match clock.
     pub time_left_ms: i32,
     /// The game's code-drawn HUD, which answers its visibility bits.
@@ -562,8 +572,55 @@ impl ExprHost for T5HudHost<'_, '_> {
     fn team_field(&self, field: &str) -> Result<Operand, ExprError> {
         team_field(self.state, self.state.team, field)
     }
-    fn player_field(&self, _field: &str) -> Result<Operand, ExprError> {
-        Err(ExprError::Host("player field"))
+    fn player_field(&self, field: &str) -> Result<Operand, ExprError> {
+        let [score, kills, deaths] = self.state.own_stats;
+        match field {
+            "score" => Ok(Operand::Int(score)),
+            "kills" => Ok(Operand::Int(kills)),
+            "deaths" => Ok(Operand::Int(deaths)),
+            // The first of the players on the local player's score.
+            "place" => {
+                let ahead = self.state.rank_scores.iter().filter(|s| **s > score);
+                Ok(Operand::Int(ahead.count() as i32 + 1))
+            }
+            _ => Err(ExprError::Host("player field")),
+        }
+    }
+    fn localize_string(&self, args: &[Operand]) -> Result<String, ExprError> {
+        let Some(Operand::Str(key)) = args.first() else {
+            return Err(ExprError::Host("locstring template"));
+        };
+        let template = self
+            .localize
+            .and_then(|l| l.text(key.trim_start_matches('@')))
+            .ok_or(ExprError::Host("locstring localization"))?;
+        let values: Vec<String> = args[1..]
+            .iter()
+            .map(|arg| match arg {
+                Operand::Int(v) => v.to_string(),
+                Operand::Float(v) => format!("{v}"),
+                Operand::Str(s) => s.clone(),
+            })
+            .collect();
+        Ok(crate::menus::expand_locstring(template, &values))
+    }
+    fn num_lives(&self) -> Result<i32, ExprError> {
+        let [_, _, deaths] = self.state.own_stats;
+        Ok((self.dvar_int("scr_numLives")? - deaths).max(-1))
+    }
+    fn players_alive(&self, team: &str) -> Result<i32, ExprError> {
+        let wanted = match team {
+            "TEAM_ALLIES" => Some(TEAM_ALLIES),
+            "TEAM_AXIS" => Some(TEAM_AXIS),
+            _ => None,
+        };
+        let alive = self.state.players_alive.iter().filter(|(team, alive)| {
+            *alive && *team != TEAM_SPECTATOR && wanted.is_none_or(|wanted| wanted == *team)
+        });
+        Ok(alive.count() as i32)
+    }
+    fn server_time(&self) -> Result<i32, ExprError> {
+        Ok(self.state.server_time_ms)
     }
     fn other_team_field(&self, field: &str) -> Result<Operand, ExprError> {
         let other = match self.state.team {
@@ -712,6 +769,32 @@ pub(crate) fn ammo_widths(
 fn background_key(raw: &str) -> Option<(asset_core::AssetNamespace, String)> {
     let key = asset_core::AssetKey::parse(raw).ok()?;
     (key.kind == asset_core::AssetKind::Material).then_some((key.namespace, key.name))
+}
+
+/// How far left of the last one the next bullet of One in the Chamber's
+/// ammo counter draws.
+const WAGER_BULLET_STEP: f32 = 16.0;
+
+/// One of the wager HUD's pictures in the owner draw's rectangle, moved to
+/// `x`.
+fn paint_wager_pic(args: &OwnerDrawArgs<'_>, material: &str, x: f32, frame: &mut ChromeFrame) {
+    let namespace = args
+        .assets
+        .catalog
+        .and_then(|c| c.namespace)
+        .unwrap_or(crate::images::HUD_CHROME_NAMESPACE);
+    let rect = args.rect;
+    push_pic_at(
+        args,
+        namespace,
+        material.to_owned(),
+        x,
+        rect.y,
+        rect.w,
+        rect.h,
+        args.color,
+        frame,
+    );
 }
 
 /// A material stretched over `(x, y, w, h)` in the owner draw's alignment;
@@ -1274,6 +1357,27 @@ fn paint_owner(
         CG_PLAYER_WEAPON_AMMO_CLIP
         | CG_PLAYER_WEAPON_AMMO_CLIP_DUAL_WIELD
         | CG_PLAYER_WEAPON_AMMO_STOCK => paint_ammo(state, ammo, &args, frame),
+        CG_WAGER_LIFE_ALIVE | CG_WAGER_LIFE_DEAD => {
+            let material = if args.item.owner_draw == CG_WAGER_LIFE_ALIVE {
+                "life_counter_alive"
+            } else {
+                "life_counter_dead"
+            };
+            paint_wager_pic(&args, material, args.rect.x, frame);
+            OwnerDrawPaint::Painted
+        }
+        CG_WAGER_BULLETS | CG_WAGER_LAST_BULLET => {
+            let clip = ammo.and_then(|ammo| ammo.clip).unwrap_or(0);
+            let last = args.item.owner_draw == CG_WAGER_LAST_BULLET;
+            let mut x = args.rect.x;
+            for bullet in 0..clip {
+                if (bullet == clip - 1) == last {
+                    paint_wager_pic(&args, "ammo_counter_single", x, frame);
+                }
+                x -= WAGER_BULLET_STEP;
+            }
+            OwnerDrawPaint::Painted
+        }
         CG_PLAYER_WEAPON_NAME => match state.weapon_name.as_deref() {
             Some(name) if !state.hide_ammo => paint_weapon_name(state, name, &args, frame),
             _ => OwnerDrawPaint::Painted,

@@ -65,6 +65,7 @@ use crate::expr_cache::MenuExprCache;
 use crate::gpu_list::{HudTessPass, TessJob};
 use crate::images::HudImages;
 use crate::playercard::UiLocalVars;
+pub(crate) use host::expand_locstring;
 use host::{MenuHost, MenuWorld};
 const WINDOW_DECORATION: i32 = 0x0010_0000;
 pub(super) const DVAR_FOCUS: i32 = 0x10;
