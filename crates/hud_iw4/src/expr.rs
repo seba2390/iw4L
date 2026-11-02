@@ -237,6 +237,16 @@ pub trait ExprHost {
     fn time_left(&self) -> Result<i32, ExprError>;
     fn score_at_rank(&self, rank: i32) -> Result<i32, ExprError>;
     fn gametype_name(&self) -> Result<Operand, ExprError>;
+    fn num_lives(&self) -> Result<i32, ExprError> {
+        Err(ExprError::Host("getnumlives"))
+    }
+    fn players_alive(&self, team: &str) -> Result<i32, ExprError> {
+        let _ = team;
+        Err(ExprError::Host("playersalive"))
+    }
+    fn server_time(&self) -> Result<i32, ExprError> {
+        Err(ExprError::Host("gettime"))
+    }
 
     fn splash_text(&self, slot: i32) -> Result<Operand, ExprError> {
         let _ = slot;
@@ -546,6 +556,15 @@ impl<H: ExprHost> GameQueries for Queries<'_, H> {
     }
     fn score_at_rank(&self, rank: i32) -> Result<i32, ExprError> {
         self.0.score_at_rank(rank)
+    }
+    fn num_lives(&self) -> Result<i32, ExprError> {
+        self.0.num_lives()
+    }
+    fn players_alive(&self, team: &str) -> Result<i32, ExprError> {
+        self.0.players_alive(team)
+    }
+    fn server_time(&self) -> Result<i32, ExprError> {
+        self.0.server_time()
     }
     fn gametype_name(&self) -> Result<Operand, ExprError> {
         self.0.gametype_name()

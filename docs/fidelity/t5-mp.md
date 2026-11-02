@@ -53,9 +53,10 @@ Each open section names the issue that works it.
       the Flag (`ctf`), Search and Destroy (`sd`), Sabotage (`sab`) and
       Demolition (`dem`, the lobby's `dd`) run Black Ops' own startup — the
       gametype's `main`, the map's `main`, then `_callbacksetup`'s
-      `CodeCallback_StartGameType` (#644, #653, #654). The wager gametypes
-      have no script program and are refused at load (`gsc: refused …
-      stage=program unknown=t5.scripts.mp_gametypes`) (#655).
+      `CodeCallback_StartGameType` (#644, #653, #654), as do the wager
+      gametypes (`oic`, `gun`, `hlnd`, `shrp`, #655). `twar` and `sur` have
+      no script program and are refused at load (`gsc: refused …
+      stage=program unknown=t5.scripts.mp_gametypes`).
 - [ ] **G** `t5.mp.second_chance` (`ModeRules::downed`): going down
       (Second Chance) does not drop a deployed weapon or reset the weapon
       state as Black Ops' damage does, and the 500 ms timer it starts is
@@ -117,9 +118,13 @@ Each open section names the issue that works it.
 - [ ] **G** Free-for-all (`dm`) and Team Deathmatch (`tdm`).
 - [ ] **G** Demolition's second target, overtime and the side switch are
       not verified (#654).
-- [ ] **G** Wager matches: One in the Chamber (`oic`), Gun Game (`gun`),
-      Sticks and Stones (`hlnd`), Sharpshooter (`shrp`);
-      `getwagergametypelist` is refused.
+- [ ] **V** `t5.mp.wager_popup`: `displaywagerpopup` (the wager
+      promotions, demotions, bankruptcies and `queueWagerPopup`'s other
+      messages) does not reach the client, which plays them through a
+      server command and the HUD's popup menu (#651). The wager matches'
+      CoD Points, side bets and after action report need
+      `xblive_wagermatch`, which only the wager lobby sets: a private
+      match plays without them, as the scripts' `level.wagerMatch` says.
 - [ ] **I** `twar` and `sur` ship in `common_mp` but are not offered by
       Black Ops' private match; they stay refused.
 
@@ -540,8 +545,10 @@ Each open section names the issue that works it.
       while the screen flashes or a UI menu is open are not applied.
       Hit markers, score popups, medals and the end-of-match scoreboard
       are not drawn as Black Ops draws them; `gametypename`, `isintermission`,
-      `spectatingclient`, `isinguidedmissile`, `isdemoplaying` and the
-      wager functions are not answered, so the items they gate do not draw.
+      `spectatingclient`, `isinguidedmissile` and `isdemoplaying` are not
+      answered, so the items they gate do not draw. `player()` answers
+      `score`, `kills`, `deaths` and `place`; its other fields are not
+      answered.
 - [ ] **V** The compass (`compass_old`) draws its map, the player's
       arrow, the enemies the radar shows (170), the teammates (158), the
       spy plane's sweep line (332) and the counter-spy plane's static
@@ -646,6 +653,15 @@ Each open section names the issue that works it.
 
 ## Closed
 
+- [x] **G** Wager matches (#655): One in the Chamber, Gun Game, Sticks and
+      Stones and Sharpshooter run on `_wager.gsc` and their own scripts to
+      the end of a match on `mp_nuked`, with their HUDs (`oic_hud`,
+      `gungame_hud`, `hlnd_hud`, `shrp_hud`, `life_counter`,
+      `ammo_counter`): the place medal, score, weapon tier, players alive,
+      weapon cycle countdown, lives and bullets, from Black Ops' `player()`
+      fields, `getnumlives`, `playersalive`, `gettime`, `locstring` and
+      owner draws 126 to 129. `getwagergametypelist` answers the
+      executable's table.
 - [x] **G** Killcam and final killcam (#667): `_killcam.gsc` runs on the
       shared killcam's script seats, but Black Ops' scripts force a
       spectator's target with `spectatorclient` (Modern Warfare 2's with

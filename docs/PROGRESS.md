@@ -255,7 +255,8 @@ Each milestone names its issues; open rules are in
 - [x] Every other gametype is verified in a match (#653, #654).
   - [x] Domination, Headquarters and Capture the Flag (#653): on `mp_nuked` a flag capture, a captured enemy flag and a held HQ score on Black Ops' own scripts.
   - [x] Search and Destroy, Sabotage and Demolition (#654): on `mp_nuked` bombs are picked up and planted, a detonation wins an S&D round and the next round starts.
-- [ ] Wager matches (#655).
+- [x] Wager matches (#655).
+  - [x] On `mp_nuked` with Black Ops' bots, One in the Chamber ends on its last player standing, Gun Game on its score limit and on its time limit, Sticks and Stones and Sharpshooter on their time limits, on their own scripts, HUDs and end screens. A private match plays them without CoD Points; their popups are `t5.mp.wager_popup` (#651).
 - [ ] Create-a-class, perks and Pro perks with private-match unlocks (#650, #729, #734).
   - [x] A custom class spawns with the profile's Black Ops stats (a fresh profile gets Black Ops' default classes), and the perks its movement, weapons and damage test apply, Second Chance among them (#650).
   - [x] Black Ops' `equipClass`, `equipClassItem`, `equipClassAttachment` and `copyclass` edit a custom class with its unlock, attachment and body rules, and the next spawn uses it (#729).

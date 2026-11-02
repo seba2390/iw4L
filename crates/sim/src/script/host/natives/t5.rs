@@ -1753,8 +1753,15 @@ fn register_refused(registry: &mut NativeRegistry) {
         "incrementactivecontractprogress", "incrementactivecontracttime",
         "isactivecontractcomplete", "resetactivecontractprogress"
         => "contracts are online-only; none are active");
-    refused!(Function: "getgvrule", "getwagergametypelist", "pregamestartgame"
-        => "game variants, wagers and the pregame lobby are not simulated");
+    refused!(Function: "getgvrule", "pregamestartgame"
+        => "game variants and the pregame lobby are not simulated");
+    registry.register(Function, "getwagergametypelist", |world, _, _| {
+        let names = ["oic", "hlnd", "gun", "shrp"];
+        new_array(
+            world,
+            names.iter().map(|name| Value::string(*name)).collect(),
+        )
+    });
 
     refused!(Function: "getmaxvehicles"
         => "T5 vehicle limits are not configured");

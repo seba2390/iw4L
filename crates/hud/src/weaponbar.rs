@@ -811,6 +811,12 @@ pub(crate) fn update_weaponbar(
         scores.sort_by_key(|&(idx, _)| idx);
         let mut rank_scores: Vec<i32> = snap.meta.clients.iter().map(|(_, c)| c.score).collect();
         rank_scores.sort_unstable_by(|a, b| b.cmp(a));
+        let players_alive: Vec<(i32, bool)> = snap
+            .meta
+            .clients
+            .iter()
+            .map(|(_, c)| (c.client_state_team, c.dead_since_tick.is_none()))
+            .collect();
         let dvars = snap.meta.script_dvars(local.0);
         let deadquote_start_ms =
             client_input
@@ -1053,6 +1059,9 @@ pub(crate) fn update_weaponbar(
             team: meta.map_or(crate::t5_hud::TEAM_FREE, |m| m.client_state_team),
             team_scores: snap.meta.objectives.scores,
             rank_scores,
+            own_stats: meta.map_or([0; 3], |m| [m.score, m.kills, m.deaths]),
+            players_alive,
+            server_time_ms: snap.tick.0.saturating_mul(sim::MATCH_TICK_MS) as i32,
             time_left_ms: snap
                 .meta
                 .objectives
