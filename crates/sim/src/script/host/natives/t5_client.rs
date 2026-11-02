@@ -195,15 +195,15 @@ pub(crate) fn register(registry: &mut NativeRegistry) {
             return Err("HasDObj: Must be passed the local client number".into());
         }
         local_index(args)?;
-        let (id, is_player) = {
-            let (id, ent) = entity(world, receiver)?;
-            (id, ent.kind == EntityKind::Player)
-        };
+        // Black Ops answers whether the client keeps a DObj for the entity,
+        // which it builds from the entity's model (a player's from the
+        // model its spawn gives it).
+        let (id, _) = entity(world, receiver)?;
         let has_model = matches!(
             super::super::players::entity_field(world, id, "model"),
             Value::String(s) if !s.is_empty()
         );
-        Ok(Value::Int((is_player || has_model).into()))
+        Ok(Value::Int(has_model.into()))
     });
     registry.register(Method, "clientflag", |world, receiver, args| {
         let id = super::engine::entity_id(world, receiver)?;
