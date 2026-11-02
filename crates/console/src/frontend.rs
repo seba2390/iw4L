@@ -485,7 +485,13 @@ pub(crate) fn route(
                     }
                     let (mut map, mut mode) = selected_game(&dvars, &maps)?;
                     let selecting_map = command.name != "ui_select_mode";
+                    let mut start_location = None;
                     if command.name == "ui_lobby_map" {
+                        if command.args.len() > 3 {
+                            return Err(
+                                "usage: ui_lobby_map <map> [zombies mode] [location]".into()
+                            );
+                        }
                         let selected = command.args.first().ok_or("Missing map")?;
                         if !maps.maps().any(|map| map == selected)
                             || selected.split_once(':').map(|(namespace, _)| namespace)
@@ -494,6 +500,33 @@ pub(crate) fn route(
                             return Err("Map is unavailable for this game".into());
                         }
                         map = selected.clone();
+                        if let Some(gametype) = command.args.get(1) {
+                            let (namespace, zone) = map
+                                .split_once(':')
+                                .and_then(|(prefix, zone)| {
+                                    asset_core::AssetNamespace::from_prefix(prefix)
+                                        .map(|namespace| (namespace, zone))
+                                })
+                                .ok_or("Unknown map game")?;
+                            let library = session::games::modes(namespace)
+                                .zombies()
+                                .ok_or("This game has no Zombies mode")?;
+                            let location = command.args.get(2).map_or("", String::as_str);
+                            if !(gametype == library.gametype
+                                && location.is_empty()
+                                && library.maps.iter().any(|(map, _)| *map == zone)
+                                || library.starts.iter().any(|start| {
+                                    start.zone == zone
+                                        && start.gametype == gametype
+                                        && start.location == location
+                                }))
+                            {
+                                return Err("Zombies start is unavailable for this map".into());
+                            }
+                            mode = sim::HostGameModeSelection::from_token(gametype)
+                                .ok_or("Unsupported game mode")?;
+                            start_location = Some(location.to_owned());
+                        }
                     } else if selecting_map {
                         let row = command
                             .args
@@ -527,6 +560,9 @@ pub(crate) fn route(
                     }
                     dvars.set("ui_mapname", map);
                     dvars.set("ui_gametype", mode.token());
+                    if let Some(location) = start_location {
+                        dvars.set("ui_zm_mapstartlocation", location);
+                    }
                     menus.write(UiMenuRequest::Close(
                         if selecting_map {
                             "game_map_select"
