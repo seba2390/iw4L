@@ -53,6 +53,16 @@ pub(crate) struct ItemRule {
     pub grab: fn(&mut World, u32, i32),
 }
 
+/// How a game's scripts drive a spectator's killcam seat.
+#[derive(Clone, Copy)]
+pub(crate) struct SeatRule {
+    /// The player field that forces whom a spectator follows.
+    pub spectator_field: &'static str,
+    /// Whether the scripts are showing a final (or round end) killcam,
+    /// which living players watch too.
+    pub final_killcam: fn(&World) -> bool,
+}
+
 #[derive(Resource, Clone)]
 pub struct NativeRegistry(
     BTreeMap<(Namespace, String), Native>,
@@ -64,6 +74,7 @@ pub struct NativeRegistry(
     Option<ClientSync>,
     Option<ClientSync>,
     Option<ItemRule>,
+    Option<SeatRule>,
 );
 impl Default for NativeRegistry {
     /// The engine services alone: no game's own natives.
@@ -80,6 +91,7 @@ impl NativeRegistry {
             Vec::new(),
             None,
             Vec::new(),
+            None,
             None,
             None,
             None,
@@ -108,6 +120,7 @@ impl NativeRegistry {
             Vec::new(),
             None,
             Vec::new(),
+            None,
             None,
             None,
             None,
@@ -209,6 +222,12 @@ impl NativeRegistry {
         natives::t5_stats::register(&mut self);
         natives::t5_sprint::register(&mut self);
         natives::t5_targets::register(&mut self);
+        // Black Ops forces a spectator's target with `spectatorclient` and
+        // shows its final and round end killcams by match flags.
+        self.on_seat(SeatRule {
+            spectator_field: "spectatorclient",
+            final_killcam: natives::t5_radar::killcam_flagged,
+        });
         self
     }
 }
@@ -222,6 +241,7 @@ impl NativeRegistry {
             Vec::new(),
             None,
             Vec::new(),
+            None,
             None,
             None,
             None,
@@ -243,6 +263,7 @@ impl NativeRegistry {
             None,
             None,
             None,
+            None,
         );
         natives::t6::client::register(&mut registry);
         registry
@@ -255,6 +276,7 @@ impl NativeRegistry {
             Vec::new(),
             None,
             Vec::new(),
+            None,
             None,
             None,
             None,
@@ -314,6 +336,15 @@ impl NativeRegistry {
 
     pub(crate) fn item_rule(&self) -> Option<ItemRule> {
         self.8
+    }
+
+    /// The game's own rule for its scripts' killcam seats.
+    pub(crate) fn on_seat(&mut self, rule: SeatRule) {
+        self.9 = Some(rule);
+    }
+
+    pub(crate) fn seat_rule(&self) -> Option<SeatRule> {
+        self.9
     }
 
     /// The client game a client registry's scripts run in.
