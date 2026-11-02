@@ -1437,8 +1437,11 @@ fn register_motion(registry: &mut NativeRegistry) {
                     vector_field(world, parent, "origin"),
                 );
                 let child_axis = math_iw4::angles_to_axis(vector_field(world, id, "angles"));
+                let at_tag = tag.as_deref().map_or(ZERO, |tag| {
+                    super::super::presence::tag_offset(world, parent, tag).unwrap_or(ZERO)
+                });
                 (
-                    std::array::from_fn(|i| dot(delta, parent_axis[i])),
+                    std::array::from_fn(|i| dot(delta, parent_axis[i]) - at_tag[i]),
                     math_iw4::axis_to_angles(math_iw4::matrix_multiply(
                         child_axis,
                         transpose(parent_axis),
