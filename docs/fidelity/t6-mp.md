@@ -31,13 +31,14 @@ Each open section names the issue that works it.
 
 - [ ] **G** `t6.scripts.mp_ffotd` (`GameScripts::program`): with
       `maps/mp/gametypes/_globallogic` in the map's scripts (a captured
-      `ffotd_*_mp*.ff`, or the module dumped from memory into
-      `<capture folder>/scripts_mp/`), Free for All and Team Deathmatch run
-      Black Ops 2's own program; its imports left unresolved refuse the match.
-      Without the module IW4L's rules host the match. **Everything under this
-      heading has only run on a recompiled copy of the module**, from a
-      decompiled source outside the repository, kept out of it, used until
-      the real patch is captured (#676). None of it ticks a milestone.
+      `ffotd_*_mp*.ff`, or the module alone in `<capture folder>/scripts_mp/`),
+      Free for All and Team Deathmatch run Black Ops 2's own program; its
+      imports left unresolved refuse the match. Without the module IW4L's rules
+      host the match (#682). The captured `ffotd_tu17_mp_147` carries that one
+      module; on it Cargo links 168 modules and every import resolves. Both
+      gametypes have played to their score limit, intermission and the lobby
+      on it with no script error. The other 18 maps have only run on the
+      recompiled copy (#704).
 - [ ] **I** `t6.scripts.mp_startup`: the gametype's `main`, the map's `main`,
       the factions' `_teamset_*::main`, then `_callbacksetup`'s start. The place
       of the factions is what their scripts need (they read
@@ -96,16 +97,6 @@ Each open section names the issue that works it.
 
 ## Waiting on the maintainer
 
-- [ ] **G** `maps/mp/gametypes/_globallogic.gsc` is in no zone of the
-      install: every other multiplayer gametype module is in `patch_mp`, but
-      this one comes with the patch zone the game downloads at launch
-      (`ffotd_*_mp`), as the zombies one does (`t6.scripts.ffotd`). It has to
-      be captured from the owner's own running `t6mp.exe` (#676); a captured
-      `ffotd_*_mp*.ff` is read after `patch_mp`. Linked without it (logged
-      as `own multiplayer scripts:` on every multiplayer map), Black Ops 2's
-      multiplayer server program on Cargo is 135 modules and 3742 functions,
-      all translated, naming 806 builtins that Black Ops 2's server lists;
-      its only 55 unresolved imports call into the missing module.
 - [ ] **G** Revolution, Uprising and Apocalypse maps are not in the owner's
       install; the 14 base maps, Nuketown 2025 (`dlc0_load_mp`) and
       Vengeance's Detour, Cove, Rush and Uplink (`dlc3_load_mp`) can be
@@ -130,7 +121,8 @@ Each open section names the issue that works it.
       particular to the multiplayer scripts.
 - [ ] **G** The 19 installed maps have each run 25 to 35 s of a Team
       Deathmatch with bots, with no script error, on the recompiled copy of the
-      module. Only Cargo has been played to the end of a match (#704).
+      module, not yet on the captured patch. Only Cargo has been played to the
+      end of a match (#704).
 - [ ] **G** Destructibles (`_destructible.gsc`), interactive objects and the
       maps' moving parts (Express's train, Cargo's crane) have not run;
       `setdamagestage` is not implemented (#703).
@@ -296,8 +288,9 @@ Each open section names the issue that works it.
       `UIExpression.GetDefaultClassSlot` (`t6.ui.mp_default_classes`: the
       default classes are compiled into `t6mp.exe`'s
       `bg_unlockable_items_mp`, which is not read). The zombies front end's
-      launch-patch module has a multiplayer twin in the uncaptured
-      multiplayer launch patch, which is not run (`t6.ui.mp_ffotd`). Nothing
+      launch-patch module has a multiplayer twin in the multiplayer launch
+      patch (`ui_mp/t6/ffotdmp.lua`, beside `mp/ffotd_settings.cfg`), which is
+      not run (`t6.ui.mp_ffotd`). Nothing
       in the library opens it yet (#698).
 - [ ] **I** `t6.ui.live` (the online service IW4L stands for): signed in to
       Demonware with multiplayer privileges, the stats fetched
@@ -338,5 +331,9 @@ Each open section names the issue that works it.
 
 ## Closed
 
+- [x] **G** The multiplayer launch patch is captured: `ffotd_tu17_mp_147`, from
+      the owner's own running `t6mp.exe`, carries
+      `maps/mp/gametypes/_globallogic`, whose 55 imports were the last
+      unresolved ones (#676).
 - [x] **G** Hosted lobbies are unlisted and joined by invite code, and the
       host can kick (#663, shared by every game).

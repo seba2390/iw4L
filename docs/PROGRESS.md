@@ -442,7 +442,8 @@ that counts here. Each milestone names its issues; open rules are in
 - [ ] Free for All and Team Deathmatch run on Black Ops II's own gametype scripts to the end of a match (#682).
   - [x] With that same copy: bots and the player fight on Cargo through the scripts' damage and kill callbacks, respawn, and both gametypes reach their score limit, go to intermission and leave for the lobby.
   - [x] With that same copy: all 19 installed maps run a short Team Deathmatch with bots and no script error (#704).
-  - [ ] On the captured launch patch itself (#676).
+  - [x] On the captured launch patch itself: on Cargo both gametypes reach their score limit, intermission and the lobby with no script error (#676).
+  - [ ] The other 18 maps on the captured patch (#704), and IW4L's rules retired (#682).
 - [ ] Every other gametype is verified in a match (#683, #684, #686).
   - [ ] Domination, Kill Confirmed, Hardpoint, Headquarters, Capture the Flag and One Flag (#683).
   - [ ] Search and Destroy and Demolition (#684).
