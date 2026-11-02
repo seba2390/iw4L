@@ -244,9 +244,9 @@ Each milestone names its issues; open rules are in
 
 - [x] The install's multiplayer zones and scripts are read, and multiplayer maps load, render and collide (#643).
   - [x] Each of the 14 base maps loads the multiplayer zone set and installs Black Ops' Team Deathmatch scripts with no script error; the scripts run the pre-match countdown.
-- [ ] A match starts on Black Ops' own multiplayer scripts and client scripts (#644, #645).
+- [x] A match starts on Black Ops' own multiplayer scripts and client scripts (#644, #645).
   - [x] Free-for-all and Team Deathmatch install Black Ops' own startup; on Nuketown the scripts spawn the player with the picked class's weapons (#644).
-  - [ ] The multiplayer client scripts (`clientscripts/mp`) run (#645).
+  - [x] The multiplayer client scripts (`clientscripts/mp`) run (#645).
 - [x] Players move by Black Ops' multiplayer movement rules (#647).
 - [ ] Weapons, attachments, lethals, tacticals and equipment work by Black Ops' rules (#648, #649).
   - [x] Weapons fire, reload, aim and take attachments by Black Ops' rules (#648).

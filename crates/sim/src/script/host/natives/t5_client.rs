@@ -1771,6 +1771,10 @@ pub(crate) fn extra_camera(world: &mut World) -> Option<game_api::ExtraCamera> {
 /// Black Ops' extra camera: one client entity whose view the renderer draws
 /// for the materials that show it. Each native takes its arguments in the
 /// game's order: the count, then the local client.
+/// The `AnimateUI` moves already reported as not ported.
+#[derive(bevy_ecs::prelude::Resource, Default)]
+struct AnimateUiAsked(std::collections::BTreeSet<(String, String, String)>);
+
 fn register_extra_camera(registry: &mut NativeRegistry) {
     use Namespace::{Function, Method};
     registry.register(Method, "isextracam", |world, receiver, args| {
@@ -1812,6 +1816,29 @@ fn register_extra_camera(registry: &mut NativeRegistry) {
     });
     registry.register(Function, "extracamconfig", |_, _, _| {
         Err("extracamconfig is deprecated".into())
+    });
+    // `AnimateUI(localClientNum, menu, item, state, ms)`: Black Ops moves
+    // the menu's named items (`*` for all) from where they stand to the
+    // named animation state over the time given. The menus here keep only
+    // each item's state as loaded, so the move is not ported: each menu,
+    // item and state asked for logs `t5.csc.animate_ui` once.
+    registry.register(Function, "animateui", |world, _, args| {
+        if args.len() != 5 {
+            return Err("Incorrect number of parameters passed to AnimateUI()\nUSAGE: AnimateUI( <localClientNum>, <menuName>, <itemName>, <newState>, <milliseconds> )\n".into());
+        }
+        local_index(args)?;
+        let menu = string(args, 1)?;
+        let item = string(args, 2)?;
+        let state = string(args, 3)?;
+        int(args, 4)?;
+        let mut asked = world.get_resource_or_insert_with(AnimateUiAsked::default);
+        if asked.0.insert((menu.clone(), item.clone(), state.clone())) {
+            diag::warn!(
+                Sim,
+                "t5.csc.animate_ui: AnimateUI({menu}, {item}, {state}) does not move the menu's items"
+            );
+        }
+        Ok(Value::Undefined)
     });
     // Black Ops multiplayer's extra camera (the camera spike's view): its
     // client keeps the entity, the active and static flags, and an origin
