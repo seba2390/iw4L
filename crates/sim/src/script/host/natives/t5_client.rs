@@ -1813,6 +1813,59 @@ fn register_extra_camera(registry: &mut NativeRegistry) {
     registry.register(Function, "extracamconfig", |_, _, _| {
         Err("extracamconfig is deprecated".into())
     });
+    // Black Ops multiplayer's extra camera (the camera spike's view): its
+    // client keeps the entity, the active and static flags, and an origin
+    // and angles, checking only the parameter count and the local client
+    // (`active` and `static` only with fewer than two local clients). The
+    // view it draws from them is not ported: turning it on logs
+    // `t5.csc.extra_camera`.
+    registry.register(Function, "setextracamentity", |world, _, args| {
+        if args.len() != 2 {
+            return Err("Incorrect number of parameters passed to SetExtraCamEntity()\nUSAGE: SetExtraCam( <localClientNum>, <entity> )\n".into());
+        }
+        local_index(args)?;
+        if !matches!(args[1], Value::Undefined) {
+            entity(world, &args[1])?;
+        }
+        Ok(Value::Undefined)
+    });
+    registry.register(Function, "setextracamactive", |_, _, args| {
+        if args.len() != 2 {
+            return Err("Incorrect number of parameters passed to SetExtraCamActive()\nUSAGE: SetExtraCam( <localClientNum>, <active> )\n".into());
+        }
+        local_index(args)?;
+        if int(args, 1)? != 0 {
+            diag::warn!(
+                Sim,
+                "t5.csc.extra_camera: the client scripts turned on Black Ops' extra camera (the camera spike's view), which is not drawn"
+            );
+        }
+        Ok(Value::Undefined)
+    });
+    registry.register(Function, "setextracamstatic", |_, _, args| {
+        if args.len() != 2 {
+            return Err("Incorrect number of parameters passed to SetExtraCamStatic()\nUSAGE: SetExtraCamStatic( <localClientNum>, <active> )\n".into());
+        }
+        local_index(args)?;
+        int(args, 1)?;
+        Ok(Value::Undefined)
+    });
+    registry.register(Function, "setextracamorigin", |_, _, args| {
+        if args.len() != 2 {
+            return Err("Incorrect number of parameters passed to SetExtraCamOrigin()\nUSAGE: SetExtraCamOrigin( <localClientNum>, <origin> )\n".into());
+        }
+        local_index(args)?;
+        vector(args, 1)?;
+        Ok(Value::Undefined)
+    });
+    registry.register(Function, "setextracamangles", |_, _, args| {
+        if args.len() != 2 {
+            return Err("Incorrect number of parameters passed to SetExtraCamAngles()\nUSAGE: SetExtraCamAngles( <localClientNum>, <angles> )\n".into());
+        }
+        local_index(args)?;
+        vector(args, 1)?;
+        Ok(Value::Undefined)
+    });
     // The client's `HasCollectible(n)` reads the same dvar as the server's.
     registry.register(Function, "hascollectible", |world, _, args| {
         super::t5_zombie::has_collectible(world, args)
