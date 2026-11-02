@@ -42,9 +42,22 @@ pub struct GameCodeHud {
     pub killfeed: Option<&'static KillfeedRules>,
     /// The game's compass owner draws; `None` draws none.
     pub compass: Option<&'static CompassRules>,
+    /// Whose names the game shows over players; `None` keeps the
+    /// runtime's own rule.
+    pub names: Option<&'static NameRules>,
     /// The game's code-drawn pieces the runtime does not draw, reported
     /// while the HUD shows.
     pub undrawn: &'static [&'static Unknown],
+}
+
+/// Whose names a game's HUD shows over players.
+#[derive(Debug)]
+pub struct NameRules {
+    /// Only the player under the crosshair, friend or enemy.
+    pub crosshair_target_only: bool,
+    /// An enemy whose perks (the player state's two perk words) keep its
+    /// name hidden.
+    pub enemy_hidden: fn([u32; 2]) -> bool,
 }
 
 /// A game's kill feed: the obituary lines its client prints to a game

@@ -177,7 +177,7 @@ fn update_overhead_names(
     catalog: Option<Res<MenuCatalog>>,
     cameras: Query<(&Camera, &GlobalTransform), With<Camera3d>>,
     prediction: Option<Res<net::ClientPredictionState>>,
-    view: Res<frame::ViewSubject>,
+    (view, mode): (Res<frame::ViewSubject>, Option<Res<game_api::ModeRules>>),
     effects: Res<frame::ScreenEffectsView>,
     mut pass: ResMut<HudTessPass>,
     mut memory: Local<NameMemory>,
@@ -278,6 +278,7 @@ fn update_overhead_names(
     };
     let eye = transform.translation();
     let forward = *transform.forward();
+    let rules = crate::game_code_hud::game_hud(mode.as_deref()).and_then(|hud| hud.names);
     let mut candidates = Vec::new();
     for (identity, runtime) in &players {
         if !runtime.in_next_snap()
@@ -300,11 +301,15 @@ fn update_overhead_names(
         }
         let enemy = local_meta.client_state_team == 0
             || local_meta.client_state_team != meta.client_state_team;
+        let hidden = |perks: [u32; 2]| match rules {
+            Some(rules) => (rules.enemy_hidden)(perks),
+            None => perks[1] & playerstate_iw4::PERK1_SPYGAME != 0,
+        };
         if enemy
             && snapshot
                 .players
                 .iter()
-                .any(|(id, ps)| *id == client && ps.perks[1] & playerstate_iw4::PERK1_SPYGAME != 0)
+                .any(|(id, ps)| *id == client && hidden(ps.perks))
         {
             continue;
         }
@@ -370,7 +375,8 @@ fn update_overhead_names(
     let mut list = Draw2dList::default();
     for (ent, team, name, anchor, pixel, visible, _, (rank, prestige, client)) in candidates {
         let friendly = local_meta.client_state_team != 0 && local_meta.client_state_team == team;
-        let active = visible && (friendly || aimed == Some(ent));
+        let target_only = rules.is_some_and(|rules| rules.crosshair_target_only);
+        let active = visible && ((friendly && !target_only) || aimed == Some(ent));
         if active {
             let seen = memory.seen.entry(ent).or_insert((now, now, friendly));
             if seen.2 != friendly {

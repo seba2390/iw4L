@@ -6,8 +6,8 @@
 
 use game_api::hud::{
     CodeScoreboard, CommandHint, Crosshair, CrosshairPicture, CrosshairView, CrosshairWeapon,
-    DamageFlash, DamageIcons, GameCodeHud, OverlayPicture, OwnerHint, OwnerHintView, ScoreAlign,
-    ScoreColumn, ScoreValue, SightOverlay, VisibilityView,
+    DamageFlash, DamageIcons, GameCodeHud, NameRules, OverlayPicture, OwnerHint, OwnerHintView,
+    ScoreAlign, ScoreColumn, ScoreValue, SightOverlay, VisibilityView,
 };
 use game_api::{Unknown, unknown};
 use movement_t5::state::e_flags;
@@ -19,10 +19,11 @@ pub(crate) static CODE_HUD: GameCodeHud = ZOMBIES_CODE_HUD;
 pub(crate) static MP_CODE_HUD: GameCodeHud = GameCodeHud {
     killfeed: Some(&crate::killfeed::KILLFEED),
     compass: Some(&crate::compass::COMPASS),
+    names: Some(&NAMES),
     undrawn: &[
         unknown!(
             "t5.hud.code_hud",
-            "Black Ops' other code-drawn HUD pieces are not drawn: friendly names, the players-in-view scan, chat lines and the night vision overlay",
+            "Black Ops' other code-drawn HUD pieces are not drawn as Black Ops draws them: the crosshair's target is found by the runtime's aim test rather than Black Ops' trace (no enemy crosshair range, no vehicle drivers or dogs), the name keeps the runtime's size, colour and team indicator rather than Black Ops' dvars, the crosshair does not turn red on an enemy, and the players-in-view scan, chat lines and the night vision overlay are not drawn",
             "those pieces of its 2D draw (executable)"
         ),
         unknown!(
@@ -40,6 +41,17 @@ pub(crate) static MP_CODE_HUD: GameCodeHud = GameCodeHud {
     visibility_bit: Some(mp_visibility_bit),
     ..ZOMBIES_CODE_HUD
 };
+
+/// Black Ops multiplayer shows one name: the crosshair's target's, a
+/// teammate's or an enemy's; an enemy with `specialty_noname` (Ghost Pro)
+/// shows none.
+static NAMES: NameRules = NameRules {
+    crosshair_target_only: true,
+    enemy_hidden: |perks| perks[1] & 1 << (PERK_NONAME - 32) != 0,
+};
+
+/// `specialty_noname`'s index in Black Ops' perk table.
+const PERK_NONAME: u32 = 34;
 
 const ZOMBIES_CODE_HUD: GameCodeHud = GameCodeHud {
     blood: false,
@@ -71,6 +83,7 @@ const ZOMBIES_CODE_HUD: GameCodeHud = GameCodeHud {
     visibility_bit: Some(visibility_bit),
     killfeed: None,
     compass: None,
+    names: None,
     undrawn: &[unknown!(
         "t5.hud.code_hud",
         "Black Ops' other code-drawn HUD pieces are not drawn: friendly names, the players-in-view scan, chat lines and the night vision overlay",

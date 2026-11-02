@@ -474,6 +474,16 @@ Each open section names the issue that works it.
 
 ## HUD and menus (#651, #664)
 
+- [ ] **V** `t5.hud.code_hud` (multiplayer): the crosshair's target, whose
+      name alone shows, is the runtime's aim test (the nearest visible
+      player along the view) rather than Black Ops' 8192-unit trace with
+      its body mask: an enemy past the weapon's `enemyCrosshairRange`
+      still shows, and a vehicle's driver or a dog never does. The name
+      keeps the runtime's size, colour and rank icon rather than Black
+      Ops' name dvars and `team_indicator`; the crosshair does not take
+      `cg_crosshairEnemyColor` on an enemy. The players-in-view scan, chat
+      lines and the night vision overlay are not drawn.
+
 - [ ] **V** The multiplayer HUD lists load as `CG_LoadHudMenus` does
       (`ui_mp/hud_hardcore`, `hud_spectator`, `hud`, `hud_<g_gametype>`,
       `hud_popups`, `hud_demo`, from `common_mp`), and their expressions
@@ -596,6 +606,15 @@ Each open section names the issue that works it.
       compensation of Black Ops' movement and weapons are unmeasured.
 
 ## Closed
+
+- [x] **V** Names over players (#651): multiplayer drew Modern Warfare
+      2's names, every visible teammate's and the aimed enemy's, with
+      Modern Warfare 2's perk bits (so a Ninja Pro enemy hid and a Ghost
+      Pro one did not). Black Ops' client draws one name, the crosshair's
+      target's, friend or enemy, faded in over `cg_enemyNameFadeIn` (250)
+      and out over `cg_enemyNameFadeOut` (250) for an enemy and held
+      `cg_friendlyNameFadeOut` (1500) for a teammate; an enemy with
+      `specialty_noname` (Ghost Pro) gets none.
 
 - [x] **G** Flashed dogs (#758, #649): Willy Pete's cloud, Nova gas and
       a flash or concussion's light damage make `_dogs.gsc`'s
