@@ -1048,10 +1048,12 @@ pub struct LibraryMode {
     pub capture: Option<LibraryCapture>,
 }
 
-/// A downloaded patch zone a library mode needs captured: the files
-/// `ffotd_*<suffix>*.ff`, needed by every map of the mode but the exempt.
+/// A downloaded patch a library mode needs captured: the patch zone
+/// `ffotd_*<suffix>*.ff` or the module only it carries, needed by every map of
+/// the mode but the exempt.
 pub struct LibraryCapture {
     pub suffix: &'static str,
+    pub module: &'static str,
     pub exempt: &'static [&'static str],
     /// What is missing, shown in the library.
     pub note: &'static str,
