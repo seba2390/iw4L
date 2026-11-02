@@ -2,6 +2,7 @@ use asset_game::{WeaponFpvFacts, WeaponKickFacts};
 use assets::PreparedWeapons;
 use bevy::prelude::*;
 use frame::{LifeStarted, ViewSubject};
+use game_api::movement::MovePlayer;
 use hud_iw4::{
     CG_FOV_MIN_DEFAULT, CG_FOV_SCALE_DEFAULT, FovInputs, WeaponAdsOverlayFacts, calc_fov_from_ads,
     horizontal_to_vertical_fov_deg, shellshock_perturb_axis, shellshock_view_kick,
@@ -416,6 +417,7 @@ pub fn sync_camera_from_presented(
         ps.damage_count,
         ps.viewangles,
         clock.time(),
+        &ps.move_player(local.0.0 as i32, false),
     );
     let bob_angles = match weapons.as_ref().and_then(|w| {
         w.snapshot_weapon(presented.weapon_epoch(), viewmodel)
@@ -651,10 +653,18 @@ fn stamp_damage_feedback(
     damage_count: i32,
     viewangles: [f32; 3],
     cg_time: i32,
+    player: &MovePlayer,
 ) {
     let mut stamped = false;
     if kick.have_damage_prev && damage_event != kick.last_damage_event && damage_count != 0 {
-        stamp_kick(kick, damage_yaw, damage_pitch, damage_count, viewangles);
+        stamp_kick(
+            kick,
+            damage_yaw,
+            damage_pitch,
+            damage_count,
+            viewangles,
+            player,
+        );
         kick.damage_time = cg_time.max(1);
         stamped = true;
     }
@@ -666,6 +676,7 @@ fn stamp_damage_feedback(
             VIEW_DAMAGE_UNDIRECTED,
             1,
             viewangles,
+            player,
         );
         kick.damage_time = cg_time.max(1);
     }
@@ -675,9 +686,16 @@ fn stamp_damage_feedback(
 
 /// A hit kicks the view by the game's own rule when it has one, else by
 /// Modern Warfare 2's.
-fn stamp_kick(kick: &mut SessionViewKick, yaw: u32, pitch: u32, damage: i32, viewangles: [f32; 3]) {
+fn stamp_kick(
+    kick: &mut SessionViewKick,
+    yaw: u32,
+    pitch: u32,
+    damage: i32,
+    viewangles: [f32; 3],
+    player: &MovePlayer,
+) {
     if let Some(rules) = kick.damage_rules {
-        game_damage_kick(kick, &rules, [yaw, pitch], damage, viewangles);
+        game_damage_kick(kick, &rules, [yaw, pitch], damage, viewangles, player);
         return;
     }
     let punch = damage_feedback_kick(yaw, pitch, damage, viewangles);
@@ -685,8 +703,8 @@ fn stamp_kick(kick: &mut SessionViewKick, yaw: u32, pitch: u32, damage: i32, vie
     kick.v_dmg_roll = punch.v_dmg_roll;
 }
 
-/// A hit's view kick by the game's rule: its damage times `kick_scale`, held
-/// to `kick_min..=kick_max`; straight up when it came from no direction;
+/// A hit's view kick by the game's rule: its damage times `kick_scale` and
+/// the player's perk scale, held to `kick_min..=kick_max`; straight up when it came from no direction;
 /// else the pitch by how far ahead it came from and the roll by how far to
 /// the left, each plus a random share up to `kick_random` of the other; a
 /// hit from yaw and pitch 0 keeps the last kick.
@@ -696,8 +714,9 @@ fn game_damage_kick(
     [yaw, pitch]: [u32; 2],
     damage: i32,
     viewangles: [f32; 3],
+    player: &MovePlayer,
 ) {
-    let amount = damage as f32 * rules.kick_scale;
+    let amount = damage as f32 * rules.kick_scale * (rules.kick_perk_scale)(player);
     let amount = if amount < rules.kick_min || rules.kick_max < amount {
         if amount < rules.kick_min {
             rules.kick_min
