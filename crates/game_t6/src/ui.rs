@@ -151,6 +151,19 @@ impl State {
 }
 
 impl Element {
+    pub fn set_shader_vector(
+        &mut self,
+        index: usize,
+        values: [f32; 4],
+    ) -> Result<(), script::FaultKind> {
+        *self
+            .destination()
+            .shader_vectors
+            .get_mut(index)
+            .ok_or(script::FaultKind::Argument(2))? = Some(values);
+        Ok(())
+    }
+
     fn destination(&mut self) -> &mut State {
         self.animation_target.as_mut().unwrap_or(&mut self.current)
     }

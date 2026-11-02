@@ -624,6 +624,7 @@ fn schema() -> Result<&'static fastfile_t6::schema::Schema, String> {
 
 const FONT_MAP_HASH: u32 = 0xd2ee_eeb8;
 const COLOR_MAP_HASH: u32 = 0xa0ab_1041;
+const GLOBE_MAP_HASH: u32 = 0x003d_3e13;
 const MATERIAL_TEXTURE_COUNT: usize = 84;
 const MATERIAL_TEXTURE_TABLE: usize = 96;
 const MATERIAL_TEXTURE_DEF: u32 = 16;
@@ -1629,7 +1630,7 @@ fn capture_icon(
         let def = table.at(index * MATERIAL_TEXTURE_DEF);
         if !matches!(
             load.blocks.u32_at(def).ok(),
-            Some(COLOR_MAP_HASH | FONT_MAP_HASH)
+            Some(COLOR_MAP_HASH | FONT_MAP_HASH | GLOBE_MAP_HASH)
         ) {
             continue;
         }

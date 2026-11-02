@@ -1117,6 +1117,14 @@ impl Scene {
                         .cloned()
                         .unwrap_or_else(String::new)
                 }
+                Content::Globe { material, rotation } => {
+                    *material = state
+                        .material
+                        .and_then(|id| self.bindings.assets.get(id as usize - 1))
+                        .cloned()
+                        .unwrap_or_else(String::new);
+                    *rotation = state.shader_vectors[2].unwrap_or([0.0; 4]);
+                }
                 Content::Text { font, .. } => {
                     *font = state
                         .font
@@ -1362,6 +1370,7 @@ impl Host {
             "setFont",
             "setAlignment",
             "setShaderVector",
+            "getShaderVector2",
             "setTextInC",
             "setRoot",
             "setPriority",
@@ -1523,7 +1532,7 @@ impl Host {
         }
         tables.raw_set(&globals, &key("string"), string)?;
         let table = tables.allocate()?;
-        for name in ["insert", "remove", "concat"] {
+        for name in ["insert", "remove", "concat", "getn"] {
             self.bind(tables, &table, name)?;
         }
         tables.raw_set(
@@ -2369,6 +2378,9 @@ impl Bindings for Host {
                     &[]
                 }))])
             }
+            "getn" => Ok(vec![Value::Number(
+                tables.length(args.first().ok_or(FaultKind::Argument(1))?)? as f32,
+            )]),
             "insert" => {
                 let table = args.first().ok_or(FaultKind::Argument(1))?;
                 let length = tables.length(table)?;
@@ -2583,8 +2595,12 @@ impl Bindings for Host {
                 match name.as_str() {
                     "setScale" => element.set_scale(value),
                     "setZoom" => {
-                        element.current.zoom = value;
-                        element.current.changes.zoom = true;
+                        let state = element
+                            .animation_target
+                            .as_mut()
+                            .unwrap_or(&mut element.current);
+                        state.zoom = value;
+                        state.changes.zoom = true;
                     }
                     "setSpacing" => {
                         element.current.spacing = value;
@@ -2929,6 +2945,16 @@ impl Bindings for Host {
                 }
                 Ok(Vec::new())
             }
+            "getShaderVector2" => {
+                let element = self
+                    .elements
+                    .element(args.first().ok_or(FaultKind::Argument(1))?)?;
+                Ok(element.current.shader_vectors[2]
+                    .unwrap_or([0.0; 4])
+                    .into_iter()
+                    .map(Value::Number)
+                    .collect())
+            }
             "setShaderVector" => {
                 let vector = number(args.get(1))? as usize;
                 let values = [
@@ -2940,17 +2966,7 @@ impl Bindings for Host {
                 let element = self
                     .elements
                     .element_mut(args.first().ok_or(FaultKind::Argument(1))?)?;
-                *element
-                    .current
-                    .shader_vectors
-                    .get_mut(vector)
-                    .ok_or(FaultKind::Argument(2))? = Some(values);
-                if let Some(target) = element.animation_target.as_mut() {
-                    *target
-                        .shader_vectors
-                        .get_mut(vector)
-                        .ok_or(FaultKind::Argument(2))? = Some(values);
-                }
+                element.set_shader_vector(vector, values)?;
                 Ok(Vec::new())
             }
             "setTextInC" => {
