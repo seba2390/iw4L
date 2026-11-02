@@ -601,8 +601,8 @@ Each open section names the issue that works it.
       `projExplosionEffect` at the origin snapped to whole units, facing
       the direction (up by default), so Willy Pete's smoke and Nova gas's
       clouds show. `TestSpawnPoint(origin)` answers whether a player box
-      (−15 −15 0 to 15 15 70) at the point starts clear of mask
-      0x810011. `ent IsTouchingVolume(origin, mins, maxs)` tests the box,
+      (−15 −15 0 to 15 15 70) at the point starts clear of what blocks a
+      player. `ent IsTouchingVolume(origin, mins, maxs)` tests the box,
       grown in height to at least its width, against the entity.
 
 - [x] **G** Sticking grenades (#649): a grenade whose `stickiness`
