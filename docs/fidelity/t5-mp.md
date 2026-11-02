@@ -41,9 +41,23 @@ Each open section names the issue that works it.
 - [ ] **V** On Firing Range a jeep stands above the sandbags it should rest
       on (seen from the pre-match spectator view); not yet traced to the
       model, its destructible script or the map's entity data (#669).
-- [ ] **G** Destructibles (`_destructible.gsc`: cars, barrels), interactive
-      objects, elevators, rotating objects, shutters and minefields have not
-      run; `setdamagestage` is not implemented.
+- [ ] **G** Rotating objects (`clientscripts/mp/_rotating_object.csc`, on
+      Launch, Crisis, Grid, Firing Range, Summit, Radiation and WMD) run
+      without a fault on WMD, but they were not seen turning. Elevators
+      (`_elevator.gsc`, placed by structs) were not looked for on any map;
+      no base map has a `shutter_*`, `wire`, `explodable_barrel` or
+      `flammable_crate` entity by targetname (#669).
+- [ ] **V** Black Ops multiplayer's client `UseAnimTree` refuses only players
+      and actors; IW4L refuses every server entity, the rule read for the
+      zombies client (#669).
+- [ ] **V** A destructible's debris models (`destructible spawn-model debris
+      unavailable`, the Nuketown mannequins' limbs) are not spawned, and a
+      client script's `UseAnimTree` / `SetAnim` on a server entity faults, so
+      a destroyed car does not play `veh_car_destroy`
+      (`clientscripts/mp/_destructible.csc`) (#669).
+- [ ] **V** `t5.csc.in_killcam`: `GetInKillcam` answers false, the client VM
+      knowing no killcam. `t5.csc.flag_away`: `SetFlagAsAway` does not reach
+      the compass's flag icons.
 
 ## Game mode and flow (#644, #646, #667)
 
@@ -53,9 +67,10 @@ Each open section names the issue that works it.
       the Flag (`ctf`), Search and Destroy (`sd`), Sabotage (`sab`) and
       Demolition (`dem`, the lobby's `dd`) run Black Ops' own startup — the
       gametype's `main`, the map's `main`, then `_callbacksetup`'s
-      `CodeCallback_StartGameType` (#644, #653, #654). The wager gametypes
-      have no script program and are refused at load (`gsc: refused …
-      stage=program unknown=t5.scripts.mp_gametypes`) (#655).
+      `CodeCallback_StartGameType` (#644, #653, #654), as do the wager
+      gametypes (`oic`, `gun`, `hlnd`, `shrp`, #655). `twar` and `sur` have
+      no script program and are refused at load (`gsc: refused …
+      stage=program unknown=t5.scripts.mp_gametypes`).
 - [ ] **G** `t5.mp.second_chance` (`ModeRules::downed`): going down
       (Second Chance) does not drop a deployed weapon or reset the weapon
       state as Black Ops' damage does, and the 500 ms timer it starts is
@@ -79,8 +94,10 @@ Each open section names the issue that works it.
 - [ ] **G** `sendranks`, `setplayerteamrank` are not implemented;
       `ghost`, `boundswouldtelefrag`, `testspawnpoint`, `killserver`,
       `ban`, `endparty`, `endlobby`, `sethostmigrationstatus` are refused.
-- [ ] **G** Killcam, final killcam and spectating (`_killcam.gsc`,
-      `_spectating.gsc`) have not run.
+- [ ] **V** `t5.hud.spectator_label`: `hud_spectator`'s `SPECTATING` and the
+      followed player's name do not show while following, though its bits
+      are answered and `player("name")` is the followed player's (#651).
+      A spectator's free look (`+use`, spectate type free) is not verified.
 
 - [ ] **G** The builtins the multiplayer server binds beyond the shared T5
       catalog (`mp_catalog.rs`, 187 functions and methods read from
@@ -109,22 +126,23 @@ Each open section names the issue that works it.
 - [ ] **G** Free-for-all (`dm`) and Team Deathmatch (`tdm`).
 - [ ] **G** Demolition's second target, overtime and the side switch are
       not verified (#654).
-- [ ] **G** Wager matches: One in the Chamber (`oic`), Gun Game (`gun`),
-      Sticks and Stones (`hlnd`), Sharpshooter (`shrp`);
-      `getwagergametypelist` is refused.
+- [ ] **V** `t5.mp.wager_popup`: `displaywagerpopup` (the wager
+      promotions, demotions, bankruptcies and `queueWagerPopup`'s other
+      messages) does not reach the client, which plays them through a
+      server command and the HUD's popup menu (#651). The wager matches'
+      CoD Points, side bets and after action report need
+      `xblive_wagermatch`, which only the wager lobby sets: a private
+      match plays without them, as the scripts' `level.wagerMatch` says.
 - [ ] **I** `twar` and `sur` ship in `common_mp` but are not offered by
       Black Ops' private match; they stay refused.
 
 ## Player, movement and weapons (#647, #648, #649, #650)
 
-- [ ] **G** The multiplayer player moves by `movement_t5` with
-      `zombiemode` 0 and `BlackOpsMP.exe`'s own registered defaults where
-      they differ from `BlackOps.exe` (`bg_fallDamageMaxHeight` 300,
-      `bg_prone_yawcap` 45, `player_breath_hold_lerp` 1,
-      `player_sliding_wishspeed` 4000). Dive to prone (hold the stance key
-      while sprinting), ladders and mantles on a multiplayer map are not
-      verified in a run yet (#461, #647); a dump shows only the shared
-      player state, not the dive's flags.
+- [ ] **I** The multiplayer movement raises its entity events by
+      `BlackOps.exe`'s numbers; `BlackOpsMP.exe` numbers them two higher
+      from the footsteps on (its mantle start raises 109, its dives 186
+      and 187). The runtime's server and client agree, and nothing else
+      reads the numbers.
 - [ ] **G** A weapon dropped by `dropitem` goes from the player's middle to
       `tag_weapon_right` on their model as it stands unanimated: the server
       keeps no animated pose of a player to read the tag from, and it takes the
@@ -148,24 +166,51 @@ Each open section names the issue that works it.
       weapon's stock and clip; Black Ops sums the clips of every held weapon
       that shares the weapon's ammo cap instead, which is not applied.
 - [ ] **G** Lethal, tactical and equipment items (`_weaponobjects.gsc`):
-      Semtex, tomahawk, concussion, Willy Pete, Nova gas, decoy, C4,
-      tactical insertion, camera spike, jammer, motion sensor;
-      `makegrenadedud` is refused. A flash grenade's own explosion event
+      the decoy (`FakeFire`, `Launch` refused), the camera spike
+      (`ActionSlotOneButtonPressed`, `SetCameraSpikeActive`, the extra
+      camera); concussion and the tactical insertion are not verified in
+      a run; a smoke or gas grenade's own lingering smoke entity (Black
+      Ops keeps its explosion entity 61 s) is `t5.weapons.grenade`;
+      `makegrenadedud` is refused.
+      `t5.mp.grenade_stick`: a sticking grenade that strikes a dead
+      player (Black Ops links it to the player's body) or a vehicle
+      (linked to the part struck, its blast then hurting the vehicle
+      directly) does neither here. `t5.mp.grenade_rest`: Black Ops lets no
+      grenade but one sticking to the ground keeping its yaw rest on
+      another missile; the match does not describe missiles to the
+      grenade, so a strike on an entity it does not know logs this gap.
+      A crossbow bolt's grenade does not tell the scripts
+      `stuck_to_player`. A flash grenade's own explosion event
       (Black Ops sends flash grenades a client event of their own) is the
       plain explosion's here, and `t5.mp.flash_vehicle`: Black Ops' flash
       also reaches the RC-XD's driver through the car (#660), which it
       does not here.
+- [ ] **V** `t5.mp.timed_fx`: `SpawnTimedFX` (Willy Pete's smoke, Nova
+      gas's clouds) plays the named weapon's explosion effect once, where
+      and when it is spawned. Black Ops keeps an entity for the given time
+      (10 s by default), so a client that comes to see it later still
+      starts the effect; here a late viewer sees nothing. The direction
+      is not quantised to Black Ops' byte directions.
 - [ ] **G** `t5.mp.perk_effects`: the perks Black Ops' multiplayer
       code tests that have no effect here yet (setting one logs the gap):
-      `_twogrenades` (a second grenade picked up);
-      `_grenadepulldeath`, `_pin_back`, `_loudenemies`,
-      `_noname`, `_quieter` (footsteps the AI hears, and no AI hears here);
-      its client's `_reconnaissance`, `_showenemyequipment`,
-      `_bulletflinch` (it scales Black Ops' own damage view kick by
-      `perk_damageKickReduction`, and the client here runs another kick),
-      `_gas_mask` (it holds off the client's gas overlay, which waits on
-      Nova gas). Lightweight's `specialty_movefaster` is tested only by
-      vehicle code (#660). The scripts' own perk rules apply (#650).
+      `_showenemyequipment` (Hacker: the client draws an enemy's
+      equipment with its weapon's second world model) and `_twogrenades`
+      (Warlord Pro: a resting retrievable weapon, the tomahawk, draws
+      with its third world model once `cg_retrieveHintTime`, or
+      `cg_retrieveHintTimeStuck` when stuck in an entity, has passed and
+      the player could pick it up, holding at most one rather than none;
+      that model swap is not ported for anyone); `_pin_back` (Flak Jacket
+      Pro: a thrown-back grenade keeps at least
+      `perk_grenadeTossBackTimer`, 2500 ms, of fuse; no throwback is
+      ported); `_quieter` (Ninja: the server's footsteps raise no AI sound
+      event, and no AI hears here); `_gas_mask` (Tactical Mask: it holds
+      off the client's poison overlay, which is not ported). No perk row
+      of Black Ops' stats table and no script gives `_grenadepulldeath`
+      (a grenade of `perk_grenadeDeath` dropped when a downed player
+      dies) or `_reconnaissance` (compass marks), so a match never sets
+      them; their tests are not ported. Lightweight's
+      `specialty_movefaster` is tested only by vehicle code (#660). The
+      scripts' own perk rules apply (#650).
 - [ ] **G** Create-a-class: a player's custom classes live in Black Ops'
       stats (`getdstat("cacLoadouts", "customclassN", slot)` in a hosted
       match, `onlinegame` 1). The listen host's own profile keeps Black
@@ -249,6 +294,10 @@ Each open section names the issue that works it.
       `compassSoundPingFadeTime`); Black Ops pings them from the client's
       weapon-fire events for teammates, and for enemies while a spy plane
       or satellite is up or a client flag is clear (not identified).
+- [ ] **V** The motion sensor's ring pings the enemies it passes, but an
+      enemy firing inside the ring is not pinged by it as Black Ops'
+      client fire ping does, and the dogs and other actors on Black Ops'
+      actor list are not swept (the runtime's compass keeps no actors).
 - [ ] **V** `t5.hud.compass_jammers`: the local player's Jammers
       (`compass_scrambler_large`, owner draw 325) are kept from
       `addFriendlyScrambler` but not drawn; the nearest enemy Jammer
@@ -403,10 +452,8 @@ Each open section names the issue that works it.
       one out over the blend, so the restart pops. `move_walk`'s per-frame
       restart is ported as read; no script line sets `a.movement` to walk.
 - [ ] **G** The dog's compass icon (`compassping_dog`, with #651) is not done.
-      A flash grenade does not flash a dog: the executable starts its
-      `dog_flashed` script from its own flash code, which is not read.
       `setflashbangimmunity` (no multiplayer script calls it) is not
-      registered.
+      registered, so no actor is immune to `setFlashBanged`.
 - [ ] **G** `heliturretdogtrace`: the handler first retries what blocked the
       trace last time, a cache this does not keep; any block answers 1, which
       the scripts only compare with 0.
@@ -439,11 +486,35 @@ Each open section names the issue that works it.
       catalog plus the multiplayer client's own function and entity method
       tables (`mp_client_catalog.rs`, 48 builtins from `BlackOpsMP.exe`)
       and run on `mp_nuked`. Not implemented yet, each faulting the thread
-      that calls it: `map_material`, `set_filter_pass_*`, `set_overlay_*`
-      (the scope and guided-missile filters, #645); `animateui` (menu item
-      animations, #651); `setlocalradarenabled`, `setlocalradarposition`
-      (the motion sensor, #649); the extra
-      camera builtins (camera spike, #649); the vehicle queries (#660).
+      that calls it: the vehicle queries (#660).
+- [ ] **V** `t5.csc.animate_ui`: `AnimateUI(localClientNum, menu, item,
+      state, ms)` checks its parameters as `BlackOpsMP.exe` does, but does
+      not move anything: Black Ops starts each named item (`*` for all)
+      from where it stands towards the named animation state over the
+      time (scaled by its UI animation speed), and its menu draw blends
+      the item's rect and colours between them; the menus here keep only
+      each item's state as loaded. `_explode.csc`'s screen dirt and
+      `_cameraspike.csc`'s HUD moves call it; each menu, item and state
+      asked for logs the id once (#651).
+- [ ] **V** `t5.csc.extra_camera`: the camera spike's extra camera
+      builtins (`SetExtraCamEntity`, `…Active`, `…Static`, `…Origin`,
+      `…Angles`) check their parameters as `BlackOpsMP.exe` does, but its
+      view (drawn from the camera spike while active, with static while
+      `static` is set), the sound listener moving to it while the spike is
+      toggled, and `IsCameraSpikeToggled` (the player's flag that the
+      server's `SetCameraSpikeActive` sets) are not ported; turning the
+      camera on logs the id (#649).
+- [ ] **V** `t5.csc.filters`: the client keeps what the filter and overlay
+      builtins check (`map_material`'s 64 slots; three filters of 16
+      passes, three overlays, with Black Ops' ranges and usage errors), but
+      neither Black Ops' filter passes (its renderer) nor its overlay draw
+      (its 2D pass, by sort index) is ported; a pass or overlay a script
+      enables logs the id. No multiplayer script enables one: the only
+      one, `_tacticalmask.csc`, waits on `HasTacticalMaskOverlay`, which
+      `BlackOpsMP.exe` answers false for every player. Not drawn either:
+      the engine's own uses of mapped slots 0–3 (`generic_filter_scope`
+      over a scope's lens, `generic_filter_infrared` in infrared sights,
+      `tow_filter_overlay` while a Valkyrie rocket is steered).
 - [ ] **V** `t5.csc.saved_dvars`: `setsaveddvar` keeps the client's dvar,
       but nothing reads the ones the multiplayer scripts set (wind,
       `r_outdoorfeather`); Black Ops' refusal of a dvar that does not exist
@@ -454,6 +525,16 @@ Each open section names the issue that works it.
       from it, which is not identified yet.
 
 ## HUD and menus (#651, #664)
+
+- [ ] **V** `t5.hud.code_hud` (multiplayer): the crosshair's target, whose
+      name alone shows, is the runtime's aim test (the nearest visible
+      player along the view) rather than Black Ops' 8192-unit trace with
+      its body mask: an enemy past the weapon's `enemyCrosshairRange`
+      still shows, and a vehicle's driver or a dog never does. The name
+      keeps the runtime's size, colour and rank icon rather than Black
+      Ops' name dvars and `team_indicator`; the crosshair does not take
+      `cg_crosshairEnemyColor` on an enemy. The players-in-view scan, chat
+      lines and the night vision overlay are not drawn.
 
 - [ ] **V** The multiplayer HUD lists load as `CG_LoadHudMenus` does
       (`ui_mp/hud_hardcore`, `hud_spectator`, `hud`, `hud_<g_gametype>`,
@@ -472,8 +553,10 @@ Each open section names the issue that works it.
       while the screen flashes or a UI menu is open are not applied.
       Hit markers, score popups, medals and the end-of-match scoreboard
       are not drawn as Black Ops draws them; `gametypename`, `isintermission`,
-      `spectatingclient`, `isinguidedmissile`, `isdemoplaying` and the
-      wager functions are not answered, so the items they gate do not draw.
+      `spectatingclient`, `isinguidedmissile` and `isdemoplaying` are not
+      answered, so the items they gate do not draw. `player()` answers
+      `score`, `kills`, `deaths` and `place`; its other fields are not
+      answered.
 - [ ] **V** The compass (`compass_old`) draws its map, the player's
       arrow, the enemies the radar shows (170), the teammates (158), the
       spy plane's sweep line (332) and the counter-spy plane's static
@@ -577,6 +660,136 @@ Each open section names the issue that works it.
       compensation of Black Ops' movement and weapons are unmeasured.
 
 ## Closed
+
+- [x] **G** Minefields and barrels (#669): on Jungle a player standing in a
+      `minefield` trigger dies, and a `dest_glo_barrel_explosive` explodes.
+- [x] **G** Destructibles (#669): a map entity with a `destructibledef` is
+      the client's only when its definition says so, as the executable's
+      server and client spawners read it; the others are server entities
+      with their base piece's health, so `_destructible.gsc` sees them,
+      bullets and blasts reach their pieces, and their events run its own
+      `CodeCallback_DestructibleEvent`.
+- [x] **G** Spectating (#667): a dead player follows a living teammate, and a
+      player on the spectator team (`g_allow_spectator` on) cycles through
+      the players with attack. The viewer sees the followed player's live
+      view, its viewmodel and its ammo, its body not drawn and without a
+      body of its own at that spot, with no killcam overlay.
+      `CanJoinTeam` is a script function of `_globallogic_ui.gsc`, not a
+      builtin, and no native is missing: its refusals are its own rules
+      (`g_allow_spectator`, `g_allow_teamchange`, team balance).
+- [x] **G** Wager matches (#655): One in the Chamber, Gun Game, Sticks and
+      Stones and Sharpshooter run on `_wager.gsc` and their own scripts to
+      the end of a match on `mp_nuked`, with their HUDs (`oic_hud`,
+      `gungame_hud`, `hlnd_hud`, `shrp_hud`, `life_counter`,
+      `ammo_counter`): the place medal, score, weapon tier, players alive,
+      weapon cycle countdown, lives and bullets, from Black Ops' `player()`
+      fields, `getnumlives`, `playersalive`, `gettime`, `locstring` and
+      owner draws 126 to 129. `getwagergametypelist` answers the
+      executable's table.
+- [x] **G** Killcam and final killcam (#667): `_killcam.gsc` runs on the
+      shared killcam's script seats, but Black Ops' scripts force a
+      spectator's target with `spectatorclient` (Modern Warfare 2's with
+      `forcespectatorclient`), so the seat followed the first other
+      player, and the seat applied to a living viewer only on Modern
+      Warfare 2's `showingfinalkillcam` flag, so the killer's own final
+      killcam showed the live view. A game's native registry now names
+      its seat rule: for Black Ops multiplayer `spectatorclient`, and a
+      final or round end killcam while the scripts set the
+      `final_killcam` or `round_end_killcam` match flag. On `mp_nuked` a
+      killed player sees the killer's archived view under Black Ops'
+      `KILLCAM` banner and respawns; a Team Deathmatch won on its score
+      limit and a Search and Destroy round won by the kill play the
+      final killcam (`GAME WINNING KILL`) of the killer's archived view
+      for every player, the killer too.
+
+- [x] **G** Multiplayer movement (#647): the player moves by
+      `movement_t5` with `zombiemode` 0 and `BlackOpsMP.exe`'s own
+      registered defaults where they differ from `BlackOps.exe`
+      (`bg_fallDamageMaxHeight` 300, `bg_prone_yawcap` 45,
+      `player_breath_hold_lerp` 1, `player_sliding_wishspeed` 4000), and
+      dive to prone, mantles and ladders were not seen in a run. On
+      `mp_nuked`: holding the stance key while sprinting dives (the dive
+      starts and lands on the grass); jumping at the
+      ledge the dogs' `mantle_on_40` traversal crosses shows Black Ops'
+      mantle hint and climbs it; walking into the ladder behind the
+      yellow house climbs it to its top (79) at the ladder's speed.
+
+- [x] **V** Client script faults on `mp_nuked` (#645): `map_material`,
+      `set_filter_pass_*` and `set_overlay_*` were missing, so
+      `_players.csc` faulted mapping the scope, infrared and guided-missile
+      filters; `HasTacticalMaskOverlay` was missing; `_scrambler.csc`
+      faulted comparing the local player's `team`, undefined before the
+      scripts set one, where Black Ops' client answers `free`; and
+      `_face_utility_mp.csc` faulted animating a player with no model,
+      because `hasdobj` answered true for every player. Now the filter
+      builtins check and keep their arguments as Black Ops does
+      (`t5.csc.filters` for the draws), `HasTacticalMaskOverlay` answers
+      false as `BlackOpsMP.exe` does, a multiplayer entity's `team` is
+      `free` until it has one, and `hasdobj` follows the entity's model.
+
+- [x] **G** Perk tests (#734): Hardened Pro (`specialty_bulletflinch`)
+      did not soften a hit's view kick, Ninja Pro
+      (`specialty_loudenemies`) did not silence the mantle and dive
+      sounds, and the Ghost Pro name rule read Modern Warfare 2's perk
+      words, which a Black Ops player never sets, so an enemy with
+      `specialty_noname` still showed a name. Black Ops' client multiplies
+      a hit's kick by `perk_damageKickReduction` (0.2) before holding it
+      to its range, for the view and the red flash; it plays no mantle,
+      dive launch or dive landing sound for a player with
+      `specialty_loudenemies` (the landing's `dtp_land` notify stays);
+      the name and kick rules read Black Ops' own perk words.
+
+- [x] **V** Names over players (#651): multiplayer drew Modern Warfare
+      2's names, every visible teammate's and the aimed enemy's, with
+      Modern Warfare 2's perk bits (so a Ninja Pro enemy hid and a Ghost
+      Pro one did not). Black Ops' client draws one name, the crosshair's
+      target's, friend or enemy, faded in over `cg_enemyNameFadeIn` (250)
+      and out over `cg_enemyNameFadeOut` (250) for an enemy and held
+      `cg_friendlyNameFadeOut` (1500) for a teammate; an enemy with
+      `specialty_noname` (Ghost Pro) gets none.
+
+- [x] **G** Flashed dogs (#758, #649): Willy Pete's cloud, Nova gas and
+      a flash or concussion's light damage make `_dogs.gsc`'s
+      `flash_dogs` call `setFlashBanged(true, 500)` on the dogs it
+      reaches, but nothing ran the dog's `flashed` animscript and
+      `getFlashBangedStrength` was missing. Now `setFlashBanged` keeps the
+      stronger strength (off clears both), `getFlashBangedStrength`
+      answers it, and the dog's think, right before its attack and
+      movement choice, starts `maps/mp/animscripts/dog_flashed` (movemode
+      stop, both animation deltas, facing kept) while it is flashbanged
+      and not locked in a melee with its enemy.
+
+- [x] **V** The motion sensor (#649): `SetLocalRadarEnabled` and
+      `SetLocalRadarPosition` were not implemented, so
+      `_acousticsensor.csc` faulted. They now keep the client's local
+      radar, which spreads a ring from the sensor to
+      `compassLocalRadarRadius` (700) every `compassLocalRadarUpdateTime`
+      (2.25 s), pinging each enemy it passes (Ninja Pro,
+      `specialty_nomotionsensor`, hides one) and drawing
+      `compass_acoustic_ping` as wide as it has spread, clipped to the
+      compass and faded out over the second half of each spread.
+
+- [x] **G** Smoke, gas and the tactical insertion's tests (#649):
+      `SpawnTimedFX(weapon, origin, [dir], [seconds])` plays the weapon's
+      `projExplosionEffect` at the origin snapped to whole units, facing
+      the direction (up by default), so Willy Pete's smoke and Nova gas's
+      clouds show. `TestSpawnPoint(origin)` answers whether a player box
+      (−15 −15 0 to 15 15 70) at the point starts clear of what blocks a
+      player. `ent IsTouchingVolume(origin, mins, maxs)` tests the box,
+      grown in height to at least its width, against the entity.
+
+- [x] **G** Sticking grenades (#649): a grenade whose `stickiness`
+      sticks to everything (Semtex, C4) or to bodies only (the tomahawk)
+      stops in the player or actor it strikes and rides the tag of the
+      hit location struck (head, neck, spine, elbows, wrists, knees,
+      ankles; the body itself for none; an actor's right knee when the
+      tag is missing), telling the scripts `grenade_stuck`, `stationary`
+      and, on a player, `stuck_to_player`. A tomahawk sits turned to the
+      yaw of its throw and set back from the tag (5 units at the head and
+      neck, 2 at the limbs, 7.5 elsewhere). A grenade without a timed
+      fuse does not stick to its thrower's teammates. Only a grenade that
+      sticks to everything rests on a player, and one at rest on a
+      script mover rides it.
 
 - [x] **G** Flash grenades (#649): a flash grenade's blast tells each
       player who takes damage within its `explosionRadius` (searched in a

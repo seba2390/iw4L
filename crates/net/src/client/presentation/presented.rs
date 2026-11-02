@@ -357,6 +357,11 @@ impl PresentedSnapshot {
     }
 
     pub fn viewweapon_player(&self, id: ClientId) -> Option<&PlayerState> {
+        // A follower sees the followed player's weapon, whatever its own
+        // controls and move type.
+        if let Some(ps) = self.player(id).filter(|ps| ps.is_live_follow()) {
+            return Some(ps);
+        }
         if self
             .snapshot()
             .and_then(|snapshot| snapshot.meta.for_client(id))

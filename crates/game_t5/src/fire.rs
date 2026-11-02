@@ -571,7 +571,6 @@ impl Shot<'_> {
                 parms.up,
                 parms.muzzle,
                 world,
-                self.gaps,
             ),
             _ => self.gaps.push(fire_unknown()),
         }
@@ -601,7 +600,6 @@ impl Shot<'_> {
             parms.up,
             parms.muzzle,
             world,
-            self.gaps,
         );
     }
 
@@ -1507,7 +1505,6 @@ fn grenade_suicide(
                 ps.origin,
                 ps.grenade_time_left,
                 world,
-                gaps,
             );
         } else {
             gaps.push(crate::movement::weapon_unknown());

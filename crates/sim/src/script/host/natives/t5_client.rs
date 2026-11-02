@@ -18,6 +18,7 @@ pub(crate) fn register(registry: &mut NativeRegistry) {
     super::t5_vision::register_client(registry);
     register_random(registry);
     register_extra_camera(registry);
+    register_multiplayer_entity(registry);
     register_ui3d(registry);
     // Its entities' animation trees: `useAnimTree`, the `SetAnim` family and
     // `clearAnim` on the client's own copy of the match's trees.
@@ -195,15 +196,15 @@ pub(crate) fn register(registry: &mut NativeRegistry) {
             return Err("HasDObj: Must be passed the local client number".into());
         }
         local_index(args)?;
-        let (id, is_player) = {
-            let (id, ent) = entity(world, receiver)?;
-            (id, ent.kind == EntityKind::Player)
-        };
+        // Black Ops answers whether the client keeps a DObj for the entity,
+        // which it builds from the entity's model (a player's from the
+        // model its spawn gives it).
+        let (id, _) = entity(world, receiver)?;
         let has_model = matches!(
             super::super::players::entity_field(world, id, "model"),
             Value::String(s) if !s.is_empty()
         );
-        Ok(Value::Int((is_player || has_model).into()))
+        Ok(Value::Int(has_model.into()))
     });
     registry.register(Method, "clientflag", |world, receiver, args| {
         let id = super::engine::entity_id(world, receiver)?;
@@ -935,6 +936,18 @@ fn register_models(registry: &mut NativeRegistry) {
             (time, accel, decel),
             "movedone",
         )
+    });
+    // `ent rotateTo(angles, time, [accel], [decel])`: each axis the short way.
+    registry.register(Method, "rotateto", |world, receiver, args| {
+        let id = super::engine::entity_id(world, receiver)?;
+        let angles = vector(args, 0)?;
+        let times = move_times(args)?;
+        let from = entity_vector(world, id, "angles");
+        let to = std::array::from_fn(|axis| {
+            let turns = (angles[axis] - from[axis]) / 360.0;
+            from[axis] + (turns - turns.round()) * 360.0
+        });
+        move_entity(world, receiver, "angles", from, to, times, "rotatedone")
     });
     // `ent rotatePitch|Yaw|Roll(delta, time, [accel], [decel])`: from the
     // entity's angles now.
@@ -1771,6 +1784,39 @@ pub(crate) fn extra_camera(world: &mut World) -> Option<game_api::ExtraCamera> {
 /// Black Ops' extra camera: one client entity whose view the renderer draws
 /// for the materials that show it. Each native takes its arguments in the
 /// game's order: the count, then the local client.
+/// The `AnimateUI` moves already reported as not ported.
+#[derive(bevy_ecs::prelude::Resource, Default)]
+struct AnimateUiAsked(std::collections::BTreeSet<(String, String, String)>);
+
+/// `GetInKillcam` and `SetFlagAsAway`, which Black Ops multiplayer's client
+/// keeps in its own state: the client VM here knows neither a killcam nor
+/// the compass's flag icons, so both log and take the living default.
+fn register_multiplayer_entity(registry: &mut NativeRegistry) {
+    use Namespace::Method;
+    registry.register(Method, "getinkillcam", |world, receiver, args| {
+        entity(world, receiver)?;
+        local_index(args)?;
+        diag::warn!(
+            Sim,
+            "t5.csc.in_killcam: GetInKillcam answers false while a killcam plays"
+        );
+        Ok(Value::Int(0))
+    });
+    registry.register(Method, "setflagasaway", |world, receiver, args| {
+        entity(world, receiver)?;
+        if args.len() < 2 {
+            return Err("Not enough parameters supplied to SetFlagAsAway".into());
+        }
+        local_index(args)?;
+        int(args, 1)?;
+        diag::warn!(
+            Sim,
+            "t5.csc.flag_away: SetFlagAsAway does not reach the compass's flag icons"
+        );
+        Ok(Value::Undefined)
+    });
+}
+
 fn register_extra_camera(registry: &mut NativeRegistry) {
     use Namespace::{Function, Method};
     registry.register(Method, "isextracam", |world, receiver, args| {
@@ -1812,6 +1858,82 @@ fn register_extra_camera(registry: &mut NativeRegistry) {
     });
     registry.register(Function, "extracamconfig", |_, _, _| {
         Err("extracamconfig is deprecated".into())
+    });
+    // `AnimateUI(localClientNum, menu, item, state, ms)`: Black Ops moves
+    // the menu's named items (`*` for all) from where they stand to the
+    // named animation state over the time given. The menus here keep only
+    // each item's state as loaded, so the move is not ported: each menu,
+    // item and state asked for logs `t5.csc.animate_ui` once.
+    registry.register(Function, "animateui", |world, _, args| {
+        if args.len() != 5 {
+            return Err("Incorrect number of parameters passed to AnimateUI()\nUSAGE: AnimateUI( <localClientNum>, <menuName>, <itemName>, <newState>, <milliseconds> )\n".into());
+        }
+        local_index(args)?;
+        let menu = string(args, 1)?;
+        let item = string(args, 2)?;
+        let state = string(args, 3)?;
+        int(args, 4)?;
+        let mut asked = world.get_resource_or_insert_with(AnimateUiAsked::default);
+        if asked.0.insert((menu.clone(), item.clone(), state.clone())) {
+            diag::warn!(
+                Sim,
+                "t5.csc.animate_ui: AnimateUI({menu}, {item}, {state}) does not move the menu's items"
+            );
+        }
+        Ok(Value::Undefined)
+    });
+    // Black Ops multiplayer's extra camera (the camera spike's view): its
+    // client keeps the entity, the active and static flags, and an origin
+    // and angles, checking only the parameter count and the local client
+    // (`active` and `static` only with fewer than two local clients). The
+    // view it draws from them is not ported: turning it on logs
+    // `t5.csc.extra_camera`.
+    registry.register(Function, "setextracamentity", |world, _, args| {
+        if args.len() != 2 {
+            return Err("Incorrect number of parameters passed to SetExtraCamEntity()\nUSAGE: SetExtraCam( <localClientNum>, <entity> )\n".into());
+        }
+        local_index(args)?;
+        if !matches!(args[1], Value::Undefined) {
+            entity(world, &args[1])?;
+        }
+        Ok(Value::Undefined)
+    });
+    registry.register(Function, "setextracamactive", |_, _, args| {
+        if args.len() != 2 {
+            return Err("Incorrect number of parameters passed to SetExtraCamActive()\nUSAGE: SetExtraCam( <localClientNum>, <active> )\n".into());
+        }
+        local_index(args)?;
+        if int(args, 1)? != 0 {
+            diag::warn!(
+                Sim,
+                "t5.csc.extra_camera: the client scripts turned on Black Ops' extra camera (the camera spike's view), which is not drawn"
+            );
+        }
+        Ok(Value::Undefined)
+    });
+    registry.register(Function, "setextracamstatic", |_, _, args| {
+        if args.len() != 2 {
+            return Err("Incorrect number of parameters passed to SetExtraCamStatic()\nUSAGE: SetExtraCamStatic( <localClientNum>, <active> )\n".into());
+        }
+        local_index(args)?;
+        int(args, 1)?;
+        Ok(Value::Undefined)
+    });
+    registry.register(Function, "setextracamorigin", |_, _, args| {
+        if args.len() != 2 {
+            return Err("Incorrect number of parameters passed to SetExtraCamOrigin()\nUSAGE: SetExtraCamOrigin( <localClientNum>, <origin> )\n".into());
+        }
+        local_index(args)?;
+        vector(args, 1)?;
+        Ok(Value::Undefined)
+    });
+    registry.register(Function, "setextracamangles", |_, _, args| {
+        if args.len() != 2 {
+            return Err("Incorrect number of parameters passed to SetExtraCamAngles()\nUSAGE: SetExtraCamAngles( <localClientNum>, <angles> )\n".into());
+        }
+        local_index(args)?;
+        vector(args, 1)?;
+        Ok(Value::Undefined)
     });
     // The client's `HasCollectible(n)` reads the same dvar as the server's.
     registry.register(Function, "hascollectible", |world, _, args| {

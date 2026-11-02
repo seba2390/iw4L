@@ -67,18 +67,19 @@ const PERKS: [&str; 52] = [
 /// `bulletpenetration`, `fallheight`, `fastmantle`, `fastmeleerecovery`,
 /// `fastreload`, `fastweaponswitch`, `longersprint`, `pistoldeath`,
 /// `shellshock`, `sprintrecovery`, `unlimitedsprint`, `fastads`) run in
-/// the game's movement, fire and damage rules and in `shellshock`, and
-/// `nottargetedbyai` in the Sentry Gun's search and a dog's choice of enemy.
-const ENGINE_PERKS: [&str; 11] = [
+/// the game's movement, fire and damage rules and in `shellshock`,
+/// `nottargetedbyai` in the Sentry Gun's search and a dog's choice of enemy,
+/// `scavenger` in the item touch, `noname` in the crosshair's name and
+/// `loudenemies` in the client's mantle and dive sounds. No perk row of
+/// Black Ops' stats table and no script gives `grenadepulldeath` or
+/// `reconnaissance`.
+const ENGINE_PERKS: [&str; 8] = [
     "specialty_bulletflinch",
     "specialty_gas_mask",
     "specialty_grenadepulldeath",
-    "specialty_loudenemies",
-    "specialty_noname",
     "specialty_pin_back",
     "specialty_quieter",
     "specialty_reconnaissance",
-    "specialty_scavenger",
     "specialty_showenemyequipment",
     "specialty_twogrenades",
 ];

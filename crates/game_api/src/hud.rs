@@ -42,9 +42,21 @@ pub struct GameCodeHud {
     pub killfeed: Option<&'static KillfeedRules>,
     /// The game's compass owner draws; `None` draws none.
     pub compass: Option<&'static CompassRules>,
+    /// Whose names the game shows over players; `None` keeps the
+    /// runtime's own rule.
+    pub names: Option<&'static NameRules>,
     /// The game's code-drawn pieces the runtime does not draw, reported
     /// while the HUD shows.
     pub undrawn: &'static [&'static Unknown],
+}
+
+/// Whose names a game's HUD shows over players.
+#[derive(Debug)]
+pub struct NameRules {
+    /// Only the player under the crosshair, friend or enemy.
+    pub crosshair_target_only: bool,
+    /// An enemy whose perks keep its name hidden.
+    pub enemy_hidden: fn(&MovePlayer) -> bool,
 }
 
 /// A game's kill feed: the obituary lines its client prints to a game
@@ -131,6 +143,9 @@ pub struct CompassRadarRules {
     /// The sweep line's place across the compass, when a spy plane is up:
     /// the texture's centre `s` and its turn (degrees).
     pub line: fn(&CompassRadarView<'_>, &CompassRadar) -> Option<CompassRadarLine>,
+    /// The local radar's ring (the motion sensor's), drawn by the line's
+    /// owner draw, while it is on.
+    pub ring: fn(&CompassRadarView<'_>, &CompassRadar) -> Option<CompassRadarRing>,
 }
 
 /// What the radar reads of a frame.
@@ -159,6 +174,9 @@ pub struct CompassRadarView<'a> {
     /// up (the client scripts' scrambler state).
     pub enemy_scrambler: f32,
     pub global_scrambler: bool,
+    /// Where the local radar (the motion sensor's) sweeps from, while the
+    /// client scripts keep it on.
+    pub local_radar: Option<[f32; 2]>,
     pub dvar: &'a dyn Fn(&str) -> Option<f32>,
 }
 
@@ -200,6 +218,8 @@ pub struct CompassActor {
 #[derive(Clone, Debug)]
 pub struct CompassRadar {
     pub sweep: f32,
+    /// How far the local radar's ring has spread, 0 to 1.
+    pub local_sweep: f32,
     pub last_ms: Option<i32>,
     pub actors: [CompassActor; 32],
 }
@@ -208,6 +228,7 @@ impl Default for CompassRadar {
     fn default() -> Self {
         Self {
             sweep: 0.0,
+            local_sweep: 0.0,
             last_ms: None,
             actors: [CompassActor::default(); 32],
         }
@@ -233,6 +254,17 @@ pub struct CompassRadarLine {
     pub center_s: f32,
     pub radius_st: f32,
     pub turn: f32,
+    pub material: &'static str,
+}
+
+/// A ring spreading on the compass from a point in the world: a square of
+/// the material `radius` world units each way from its centre, clipped to
+/// the compass.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct CompassRadarRing {
+    pub pos: [f32; 2],
+    pub radius: f32,
+    pub alpha: f32,
     pub material: &'static str,
 }
 
@@ -303,6 +335,8 @@ pub struct VisibilityView<'a> {
     /// The scoreboard is up.
     pub scoreboard: bool,
     pub in_killcam: bool,
+    /// A spectator following a player live.
+    pub following: bool,
     /// The visibility bits the scripts set: the player's UI flags (0–3)
     /// and the match flags (4–16).
     pub ui_flags: u32,
@@ -483,6 +517,9 @@ pub struct LowAmmoWarning {
 #[derive(Clone, Copy, Debug)]
 pub struct DamageFlash {
     pub kick_scale: f32,
+    /// What the hurt player's perks multiply the kick by before it is held
+    /// to its range.
+    pub kick_perk_scale: fn(&MovePlayer) -> f32,
     pub kick_min: f32,
     pub kick_max: f32,
     pub kick_random: f32,

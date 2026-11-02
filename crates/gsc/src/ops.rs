@@ -53,7 +53,7 @@ pub fn truth(value: &Value) -> Result<bool, String> {
     match value {
         Value::Int(n) => Ok(*n != 0),
         Value::Float(n) => Ok(*n != 0.0),
-        _ => Err(format!("cast from {} to bool", type_name(value))),
+        _ => Err(format!("cannot cast {} to bool", type_name(value))),
     }
 }
 
@@ -122,7 +122,10 @@ pub fn equality(a: Value, b: Value) -> Result<bool, String> {
     let (a, b) = weaker(a, b);
     Ok(match (&a, &b) {
         (Value::Array(_), _) | (_, Value::Array(_)) => {
-            return Err("cannot compare arrays".into());
+            // The executables' equality takes an array for a type mismatch:
+            // the comparison leaves undefined, the condition on it fails and
+            // does not jump. `is_in_array` on arrays of arrays returns true.
+            return Err(mismatch(&a, &b));
         }
         (Value::Undefined, Value::Undefined) => true,
         (Value::Object(_), Value::Object(_)) => a == b,

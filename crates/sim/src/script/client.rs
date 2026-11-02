@@ -922,7 +922,9 @@ pub(crate) fn install(
         &level.entities,
         level.client_keys.as_ref().unwrap_or(&level.keys),
         level.entity_fields.as_ref(),
+        &level.destructible_defs,
     )?;
+    let multiplayer = runs_multiplayer_scripts(server);
     let local = {
         let mut runtime = world.resource_mut::<RoundScript>();
         let object = runtime
@@ -934,6 +936,11 @@ pub(crate) fn install(
         runtime.set_object_field(object, "species", Value::string("human"));
         runtime.set_object_field(object, "model", Value::string(""));
         runtime.set_object_field(object, "serverflags", Value::Int(0));
+        // Black Ops multiplayer's client answers a player's `team` from its
+        // client info: `free` until the player has one.
+        if multiplayer {
+            runtime.set_object_field(object, "team", Value::string("free"));
+        }
         LocalClient {
             object,
             has_snapshot: false,
@@ -1054,6 +1061,11 @@ pub(crate) fn advance_client_scripts(server: &mut World) {
             let ui3d_windows = client.world.resource::<ClientOutput>().ui3d_windows;
             let alternate_aim = client.world.resource::<ClientOutput>().alternate_aim;
             let scrambler = client.world.resource::<ClientOutput>().scrambler.screen();
+            let local_radar = client
+                .world
+                .resource::<ClientOutput>()
+                .scrambler
+                .local_radar();
             let script_vectors = super::host::natives::t5_client::script_vectors(&mut client.world);
             let mut frame = crate::frame::FrameWorld::from_world(server);
             if frame.client_meta(crate::ClientId(0)).is_some() {
@@ -1069,6 +1081,7 @@ pub(crate) fn advance_client_scripts(server: &mut World) {
                     screen.global_scrambler,
                     screen.friendly_scramblers,
                 ) = scrambler;
+                screen.local_radar = local_radar;
                 screen.script_vectors = script_vectors;
             }
             // Its screen overlays past their time stop and fade, and fades
@@ -1321,8 +1334,24 @@ pub(crate) fn effect_rows(server: &World, now: i32) -> Vec<(u32, ClientEffect)> 
         .collect()
 }
 
+/// The server runs the multiplayer scripts (rather than zombies').
+fn runs_multiplayer_scripts(server: &World) -> bool {
+    server
+        .resource::<RoundScript>()
+        .program
+        .as_ref()
+        .is_some_and(|program| {
+            program
+                .names
+                .contains_key("maps/mp/gametypes/_globallogic::init")
+        })
+}
+
 fn collect_server_entities(server: &mut World) -> Vec<ServerEntitySnapshot> {
     let mut snapshots = Vec::new();
+    // Black Ops multiplayer's client answers an entity's `team` from its
+    // team bits (a player's from its client info), `free` when none is set.
+    let default_team = runs_multiplayer_scripts(server).then(|| Value::string("free"));
     let ids: Vec<(u64, super::host::entities::ScriptEntity)> = server
         .resource::<RoundScript>()
         .entities
@@ -1436,7 +1465,7 @@ fn collect_server_entities(server: &mut World) -> Vec<ServerEntitySnapshot> {
             // (`setOwner`).
             let team = match runtime.object_field(id, "team") {
                 Value::String(team) => Some(Value::String(team)),
-                _ => None,
+                _ => default_team.clone(),
             };
             let owner = match (
                 runtime.object_field(id, "owner"),
@@ -1602,6 +1631,35 @@ fn run_frame(
                         ],
                     ),
                     _ if client_num != 0 => continue,
+                    // Black Ops multiplayer's client leaves out a mantle's
+                    // and a dive's code sounds for a player with
+                    // `specialty_loudenemies` (Ninja Pro); the dive still
+                    // tells the scripts it landed.
+                    game_api::movement::JumpLand::Mantle
+                    | game_api::movement::JumpLand::DiveStart
+                        if super::host::natives::t5_perks::has_perk(
+                            world,
+                            0,
+                            "specialty_loudenemies",
+                        ) =>
+                    {
+                        continue;
+                    }
+                    game_api::movement::JumpLand::DiveLand(_)
+                        if super::host::natives::t5_perks::has_perk(
+                            world,
+                            0,
+                            "specialty_loudenemies",
+                        ) =>
+                    {
+                        super::notify_entity(
+                            world,
+                            player_obj,
+                            "dtp_land",
+                            &[super::NotifyValue::Int(0)],
+                        );
+                        continue;
+                    }
                     game_api::movement::JumpLand::Mantle => {
                         play_local_code_sound(world, "chr_launch_exert_plr".to_owned());
                         continue;

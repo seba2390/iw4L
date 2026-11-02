@@ -811,6 +811,12 @@ pub(crate) fn update_weaponbar(
         scores.sort_by_key(|&(idx, _)| idx);
         let mut rank_scores: Vec<i32> = snap.meta.clients.iter().map(|(_, c)| c.score).collect();
         rank_scores.sort_unstable_by(|a, b| b.cmp(a));
+        let players_alive: Vec<(i32, bool)> = snap
+            .meta
+            .clients
+            .iter()
+            .map(|(_, c)| (c.client_state_team, c.dead_since_tick.is_none()))
+            .collect();
         let dvars = snap.meta.script_dvars(local.0);
         let deadquote_start_ms =
             client_input
@@ -994,6 +1000,7 @@ pub(crate) fn update_weaponbar(
                             .map_or(0.0, |m| m.view_effects.client_screen.enemy_scrambler),
                         global_scrambler: meta
                             .is_some_and(|m| m.view_effects.client_screen.global_scrambler),
+                        local_radar: meta.and_then(|m| m.view_effects.client_screen.local_radar),
                         dvar: &dvar,
                     };
                     (radar.update)(&view, &mut client_input.compass_radar);
@@ -1003,6 +1010,7 @@ pub(crate) fn update_weaponbar(
                         pings: (radar.pings)(&view, &client_input.compass_radar),
                         friendlies: (radar.friendlies)(&view, &client_input.compass_radar),
                         line: (radar.line)(&view, &client_input.compass_radar),
+                        ring: (radar.ring)(&view, &client_input.compass_radar),
                         objectives: snap
                             .meta
                             .objectives
@@ -1051,6 +1059,20 @@ pub(crate) fn update_weaponbar(
             team: meta.map_or(crate::t5_hud::TEAM_FREE, |m| m.client_state_team),
             team_scores: snap.meta.objectives.scores,
             rank_scores,
+            own_stats: meta.map_or([0; 3], |m| [m.score, m.kills, m.deaths]),
+            view_name: {
+                let client = if ps.is_live_follow() {
+                    sim::ClientId(ps.kill_cam_client_num as u32)
+                } else {
+                    local.0
+                };
+                snap.meta.for_client(client).map_or_else(String::new, |m| {
+                    let end = m.name.iter().position(|b| *b == 0).unwrap_or(m.name.len());
+                    String::from_utf8_lossy(&m.name[..end]).into_owned()
+                })
+            },
+            players_alive,
+            server_time_ms: snap.tick.0.saturating_mul(sim::MATCH_TICK_MS) as i32,
             time_left_ms: snap
                 .meta
                 .objectives

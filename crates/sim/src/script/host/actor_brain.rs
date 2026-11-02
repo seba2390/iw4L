@@ -144,6 +144,8 @@ enum SpeciesScript {
     Stop,
     /// The hellhound's turn on the run.
     Turn,
+    /// A multiplayer dog blinded by a flash.
+    Flashed,
 }
 
 impl SpeciesScript {
@@ -156,6 +158,7 @@ impl SpeciesScript {
             Self::Scripted => "scripted",
             Self::Stop => "stop",
             Self::Turn => "turn",
+            Self::Flashed => "flashed",
         }
     }
 }
@@ -1672,6 +1675,23 @@ fn dog_exposed_think(world: &mut World, actor: u64) -> u8 {
         "nododgemove",
         Value::Int(i32::from(!planned)),
     );
+    // A flashbanged multiplayer dog runs its flashed animscript where it
+    // stands, its facing kept, unless it is locked in a melee with its
+    // enemy.
+    if prefix(world, actor) == MP_DOG_PREFIX
+        && super::natives::t5_zombie::flashbanged(world, actor)
+        && !in_synced_melee(world, actor)
+    {
+        set_anim_script(
+            world,
+            actor,
+            AnimScript::Species(SpeciesScript::Flashed),
+            MOVE_STOP,
+            AnimMode::Gravity,
+        );
+        set_code_orient(world, actor, Orient::Current);
+        return THINK_DONE;
+    }
     if locked || bite {
         if enemy.is_some() {
             let combat_ended = brain(world, actor).is_some_and(|brain| {

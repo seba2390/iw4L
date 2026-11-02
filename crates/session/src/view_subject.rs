@@ -10,11 +10,12 @@ pub fn publish_view_subject(
     let ps = presented.player(local.0);
     *subject = match ps {
         None => ViewSubject::None,
-        Some(p) if !p.is_live_frame() => {
+        Some(p) if !p.is_live_frame() || p.is_live_follow() => {
             let focus = u32::try_from(p.kill_cam_client_num).ok();
             ViewSubject::Seat {
                 viewer: local.0.0,
                 focus,
+                follow: p.is_live_frame(),
             }
         }
         Some(_) => ViewSubject::Own { client: local.0.0 },

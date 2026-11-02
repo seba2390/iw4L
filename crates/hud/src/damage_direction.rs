@@ -56,7 +56,7 @@ impl Flash {
     /// else by how far ahead it came from and a random share of how far to
     /// the side; a hit from yaw and pitch 0 keeps the last kick.
     fn hit(&mut self, rules: &game_api::hud::DamageFlash, hit: FlashHit, now: i32) {
-        let kick = hit.damage as f32 * rules.kick_scale;
+        let kick = hit.damage as f32 * rules.kick_scale * (rules.kick_perk_scale)(&hit.player);
         let kick = if kick < rules.kick_min || rules.kick_max < kick {
             if kick < rules.kick_min {
                 rules.kick_min
@@ -120,12 +120,13 @@ impl Flash {
 }
 
 /// What a hit's flash reads: its damage, the direction it came from (as
-/// yaw and pitch bytes) and the view's angles.
+/// yaw and pitch bytes), the view's angles and the player.
 struct FlashHit {
     damage: i32,
     yaw: i32,
     pitch: i32,
     viewangles: [f32; 3],
+    player: game_api::movement::MovePlayer,
 }
 
 /// The forward vector of a pitch and yaw in degrees.
@@ -199,6 +200,7 @@ pub(crate) fn update(
             yaw: ps.damage_yaw as i32,
             pitch: ps.damage_pitch as i32,
             viewangles: ps.viewangles,
+            player: ps.move_player(0, false),
         };
         directions.flash.hit(rules, hit, now);
     }

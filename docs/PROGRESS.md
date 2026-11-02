@@ -244,10 +244,10 @@ Each milestone names its issues; open rules are in
 
 - [x] The install's multiplayer zones and scripts are read, and multiplayer maps load, render and collide (#643).
   - [x] Each of the 14 base maps loads the multiplayer zone set and installs Black Ops' Team Deathmatch scripts with no script error; the scripts run the pre-match countdown.
-- [ ] A match starts on Black Ops' own multiplayer scripts and client scripts (#644, #645).
+- [x] A match starts on Black Ops' own multiplayer scripts and client scripts (#644, #645).
   - [x] Free-for-all and Team Deathmatch install Black Ops' own startup; on Nuketown the scripts spawn the player with the picked class's weapons (#644).
-  - [ ] The multiplayer client scripts (`clientscripts/mp`) run (#645).
-- [ ] Players move by Black Ops' multiplayer movement rules (#647).
+  - [x] The multiplayer client scripts (`clientscripts/mp`) run (#645).
+- [x] Players move by Black Ops' multiplayer movement rules (#647).
 - [ ] Weapons, attachments, lethals, tacticals and equipment work by Black Ops' rules (#648, #649).
   - [x] Weapons fire, reload, aim and take attachments by Black Ops' rules (#648).
 - [x] Free-for-all and Team Deathmatch run on Black Ops' own gametype scripts to the end of a match (#646).
@@ -255,7 +255,8 @@ Each milestone names its issues; open rules are in
 - [x] Every other gametype is verified in a match (#653, #654).
   - [x] Domination, Headquarters and Capture the Flag (#653): on `mp_nuked` a flag capture, a captured enemy flag and a held HQ score on Black Ops' own scripts.
   - [x] Search and Destroy, Sabotage and Demolition (#654): on `mp_nuked` bombs are picked up and planted, a detonation wins an S&D round and the next round starts.
-- [ ] Wager matches (#655).
+- [x] Wager matches (#655).
+  - [x] On `mp_nuked` with Black Ops' bots, One in the Chamber ends on its last player standing, Gun Game on its score limit and on its time limit, Sticks and Stones and Sharpshooter on their time limits, on their own scripts, HUDs and end screens. A private match plays them without CoD Points; their popups are `t5.mp.wager_popup` (#651).
 - [ ] Create-a-class, perks and Pro perks with private-match unlocks (#650, #729, #734).
   - [x] A custom class spawns with the profile's Black Ops stats (a fresh profile gets Black Ops' default classes), and the perks its movement, weapons and damage test apply, Second Chance among them (#650).
   - [x] Black Ops' `equipClass`, `equipClassItem`, `equipClassAttachment` and `copyclass` edit a custom class with its unlock, attachment and body rules, and the next spawn uses it (#729).
@@ -274,7 +275,8 @@ Each milestone names its issues; open rules are in
   - [x] Black Ops' `_bot.gsc` adds its bots (`addtestclient`) and picks their team, class and loadout; IW4L's host bots move and shoot them. Black Ops' own bot behaviour is #709.
 - [ ] Private matches with friends: an unlisted lobby, join by invite, teams, game settings, back to the lobby after a match (#663, #665).
 - [ ] Two-machine play with prediction and lag compensation (#666).
-- [ ] Killcam, final killcam and spectating (#667).
+- [x] Killcam, final killcam and spectating (#667).
+  - [x] On `mp_nuked`: a killcam, a final killcam and an S&D round end replay the killer's view; a dead S&D player follows a living teammate, and a player on the spectator team cycles through the players, each with the followed player's view, viewmodel and ammo. The `SPECTATING` label is `t5.hud.spectator_label` (#651).
 - [ ] Black Ops' multiplayer HUD, front end and sound (#651, #664, #668).
 - [ ] Every base map plays, with its destructibles and interactives (#669, #670).
   - [x] Each of the 14 base maps plays a Team Deathmatch to its end with Black Ops' bots, its scripts faulting only on `testspawnpoint` when a bot carries a tactical insertion (#670).

@@ -45,6 +45,15 @@ const MATCH_FLAGS: [(&str, u32); 13] = [
     ("disableIngameMenu", 16),
 ];
 
+/// Whether the scripts set the `final_killcam` or `round_end_killcam`
+/// match flag: a final or round end killcam is showing.
+pub(crate) fn killcam_flagged(world: &World) -> bool {
+    let flags = world
+        .get_resource::<MatchFlags>()
+        .map_or(0, |flags| flags.0);
+    [4, 5].iter().any(|bit| flags & 1 << bit != 0)
+}
+
 fn set_match_flag(world: &mut World, _: &Value, args: &[Value]) -> Result<Value, String> {
     // Any other count of arguments sets nothing.
     if args.len() != 2 {
