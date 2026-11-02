@@ -164,6 +164,8 @@ pub struct ClientScreen {
     pub enemy_scrambler: f32,
     pub global_scrambler: bool,
     pub friendly_scramblers: Vec<[f32; 2]>,
+    /// Where the motion sensor's local radar sweeps from, while it is on.
+    pub local_radar: Option<[f32; 2]>,
 }
 
 /// The script vector rows an entity's draws take (`mapshaderconstant`,

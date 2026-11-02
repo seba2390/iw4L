@@ -116,6 +116,8 @@ pub(crate) struct T5CompassRadar {
     pub pings: Vec<game_api::hud::CompassPing>,
     pub friendlies: Vec<game_api::hud::CompassPing>,
     pub line: Option<game_api::hud::CompassRadarLine>,
+    /// The motion sensor's ring.
+    pub ring: Option<game_api::hud::CompassRadarRing>,
     /// The objectives the local player sees, in index order.
     pub objectives: Vec<T5Objective>,
 }
@@ -1979,11 +1981,14 @@ fn paint_compass_radar_line(
     let Some(compass) = state.compass.as_ref() else {
         return OwnerDrawPaint::Painted;
     };
-    let Some(line) = compass.radar.as_ref().and_then(|r| r.line) else {
-        return OwnerDrawPaint::Painted;
-    };
     let Some([x, y, w, h]) = compass_rect(state, compass, args) else {
         return OwnerDrawPaint::Gap(ChromeGapKind::OwnerDraw);
+    };
+    if let Some(ring) = compass.radar.as_ref().and_then(|r| r.ring) {
+        paint_compass_ring(state, compass, args, [x, y, w, h], &ring, frame);
+    }
+    let Some(line) = compass.radar.as_ref().and_then(|r| r.line) else {
+        return OwnerDrawPaint::Painted;
     };
     let applied = args.surface.apply_rect(
         x,
@@ -2021,6 +2026,67 @@ fn paint_compass_radar_line(
         layer: 1,
     });
     OwnerDrawPaint::Painted
+}
+
+/// The motion sensor's ring: a square of its material centred on the
+/// sensor's place on the compass, as wide each way as the ring has spread
+/// (in the compass's scale), clipped to the compass, in the item's colour
+/// at the ring's alpha.
+fn paint_compass_ring(
+    state: &T5HudState<'_>,
+    compass: &T5Compass,
+    args: &OwnerDrawArgs<'_>,
+    [x, y, w, h]: [f32; 4],
+    ring: &game_api::hud::CompassRadarRing,
+    frame: &mut ChromeFrame,
+) {
+    let max_range = compass_dvar(state, "compassMaxRange", compass.rules.max_range);
+    let rotation = compass_dvar(
+        state,
+        "compassRotation",
+        f32::from(u8::from(compass.rules.rotation)),
+    ) != 0.0;
+    let [dx, dy] = compass_project(compass, rotation, max_range, h, ring.pos);
+    let half = h / max_range * ring.radius;
+    if half <= 0.0 {
+        return;
+    }
+    let (cx, cy) = (x + w * 0.5 + dx, y + h * 0.5 + dy);
+    let (x0, x1) = ((cx - half).max(x), (cx + half).min(x + w));
+    let (y0, y1) = ((cy - half).max(y), (cy + half).min(y + h));
+    if x0 >= x1 || y0 >= y1 {
+        return;
+    }
+    let st = |v: f32, lo: f32| (v - lo) / (half * 2.0);
+    let applied = args.surface.apply_rect(
+        x0,
+        y0,
+        x1 - x0,
+        y1 - y0,
+        args.rect.horz_align as i32,
+        args.rect.vert_align as i32,
+    );
+    let [r, g, b, _] = args.color;
+    frame.list.cmds.push(Draw2dCmd {
+        material_namespace: args
+            .assets
+            .catalog
+            .and_then(|c| c.namespace)
+            .unwrap_or(crate::images::HUD_CHROME_NAMESPACE),
+        x: applied.x,
+        y: applied.y,
+        w: applied.w,
+        h: applied.h,
+        s0: st(x0, cx - half),
+        t0: st(y0, cy - half),
+        s1: st(x1, cx - half),
+        t1: st(y1, cy - half),
+        color: [r, g, b, ring.alpha],
+        material: ring.material.into(),
+        op: Draw2dOp::StretchPic,
+        provenance: Draw2dProvenance::OwnerDraw(args.item.owner_draw),
+        layer: 1,
+    });
 }
 
 /// An action slot's arrow: the item's picture in its colour, with the alpha
