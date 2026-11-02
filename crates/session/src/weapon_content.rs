@@ -205,6 +205,10 @@ fn game_weapons(
                 .combat_fx_of(id as u32)
                 .and_then(|fx| fx.world_flash_present())
                 .map(|fx| fx.name.to_owned()),
+            explosion_effect: weapons
+                .combat_fx_of(id as u32)
+                .and_then(|fx| fx.explosion_present())
+                .map(|fx| fx.name.to_owned()),
             fire_loop_sounds: [
                 authored(WeaponSoundSlot::FireLoop),
                 authored(WeaponSoundSlot::FireLoopPlayer),

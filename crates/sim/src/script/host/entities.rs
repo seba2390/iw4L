@@ -38,6 +38,10 @@ pub struct LevelData {
     /// The keys the engine reads into an entity itself; when given, other
     /// keys not in `keys` are dropped, and a struct keeps only `keys`.
     pub entity_fields: Option<BTreeMap<String, KeyType>>,
+    /// Black Ops' destructible definitions: whether a definition is client
+    /// only (the server spawns every other's entities) and its base piece's
+    /// health, which its entity starts with.
+    pub destructible_defs: BTreeMap<String, (bool, i32)>,
     /// Layouts of bit-packed buffers (a player's stats), by name.
     pub layouts: BTreeMap<String, Arc<asset_core::BitLayout>>,
     /// Zombies barrier types, by lowercase name.
@@ -564,6 +568,7 @@ impl RoundScript {
         entities: &[Vec<(String, String)>],
         keys: &BTreeMap<String, KeyType>,
         entity_fields: Option<&BTreeMap<String, KeyType>>,
+        destructible_defs: &BTreeMap<String, (bool, i32)>,
     ) -> Result<Vec<u64>, String> {
         self.zombies.authored = Arc::new(entities.to_vec());
         let structs = match self.object_field(0, "struct") {
@@ -605,7 +610,7 @@ impl RoundScript {
             if entity_fields.is_some() && !self.client && is_client_map_entity(classname, pairs) {
                 continue;
             }
-            let client_only = t5 && is_t5_client_map_entity(classname, pairs);
+            let client_only = t5 && is_t5_client_map_entity(classname, pairs, destructible_defs);
             // Black Ops' server leaves the client its own map entities: it
             // skips a client-side `script_model`/`script_origin` (its model
             // still precached) and frees a client trigger.
@@ -800,6 +805,14 @@ impl RoundScript {
                     self.set_object_field(id, "model", Value::string(""));
                 }
             }
+            let destructible_health = pairs
+                .iter()
+                .find(|(k, _)| k.eq_ignore_ascii_case("destructibledef"))
+                .and_then(|(_, v)| destructible_defs.get(v.as_str()))
+                .map(|(_, health)| *health);
+            if let Some(health) = destructible_health.filter(|_| t5 && !client_only) {
+                self.set_object_field(id, "health", Value::Int(health));
+            }
             if let Some(entity) = self.entities.get_mut(&id) {
                 entity.client_only = client_only;
                 if matches!(classname, "trigger_radius" | "trigger_radius_use") {
@@ -865,9 +878,14 @@ pub(crate) fn typed_key(ty: KeyType, value: &str) -> Value {
 
 /// Whether a Black Ops map entity block is spawned on the client by its own
 /// entity spawner (`script_model`/`script_origin` with spawnflag 2,
-/// `clientside` 1 or a `destructibledef`; `glass`; or `trigger_multiple`,
-/// `trigger_radius` or `trigger_once` with spawnflag 0x80).
-fn is_t5_client_map_entity(classname: &str, pairs: &[(String, String)]) -> bool {
+/// `clientside` 1, or a `destructibledef` whose definition is client only;
+/// `glass`; or `trigger_multiple`, `trigger_radius` or `trigger_once` with
+/// spawnflag 0x80).
+fn is_t5_client_map_entity(
+    classname: &str,
+    pairs: &[(String, String)],
+    destructible_defs: &BTreeMap<String, (bool, i32)>,
+) -> bool {
     let pair = |name: &str| {
         pairs
             .iter()
@@ -877,8 +895,10 @@ fn is_t5_client_map_entity(classname: &str, pairs: &[(String, String)]) -> bool 
     let spawnflags = pair("spawnflags").map_or(0, super::natives::iw4::atoi);
     match classname {
         "script_model" | "script_origin" => {
-            if pair("destructibledef").is_some_and(|v| !v.is_empty()) {
-                return true;
+            if let Some(definition) = pair("destructibledef").filter(|v| !v.is_empty()) {
+                return destructible_defs
+                    .get(definition)
+                    .is_some_and(|(client_only, _)| *client_only);
             }
             let clientside =
                 pair("clientside").is_some_and(|v| super::natives::iw4::atof(v) == 1.0);

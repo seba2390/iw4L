@@ -3,8 +3,8 @@
 //! enemies its radar shows.
 
 use game_api::hud::{
-    CompassActor, CompassFrame, CompassPing, CompassRadar, CompassRadarLine, CompassRadarRules,
-    CompassRadarView, CompassRules,
+    CompassActor, CompassFrame, CompassPing, CompassRadar, CompassRadarLine, CompassRadarRing,
+    CompassRadarRules, CompassRadarView, CompassRules,
 };
 use game_api::movement::MovePlayer;
 use game_api::{Unknown, unknown};
@@ -25,8 +25,8 @@ pub(crate) static COMPASS: CompassRules = CompassRules {
 };
 
 /// The compass's enemies (owner draw 170), teammates (158), the spy
-/// plane's sweep line (332), the counter-spy plane's static (328) and the
-/// objectives (152).
+/// plane's sweep line and the motion sensor's ring (332), the counter-spy
+/// plane's static (328) and the objectives (152).
 static RADAR: CompassRadarRules = CompassRadarRules {
     enemies_owner_draw: 170,
     friendlies_owner_draw: 158,
@@ -37,6 +37,7 @@ static RADAR: CompassRadarRules = CompassRadarRules {
     pings: radar_pings,
     friendlies: friendly_pings,
     line: radar_line,
+    ring: local_radar_ring,
 };
 
 /// An enemy the client has not seen for this long gets no ping.
@@ -44,6 +45,8 @@ const SEEN_MS: i32 = 1500;
 /// The perks that hide a player from a ping: Ghost hides it from the spy
 /// plane's sweep; nothing hides it from the satellite.
 const PERK_GPSJAMMER: u32 = 25;
+/// Ninja's Pro hides a player from the motion sensor's ring.
+const PERK_NOMOTIONSENSOR: u32 = 33;
 /// Always on the radar.
 const PERK_SHOWONRADAR: u32 = 47;
 /// The client's team numbers with no teammates on the compass.
@@ -196,6 +199,7 @@ fn radar_update(view: &CompassRadarView<'_>, radar: &mut CompassRadar) {
             actor.ping_pos = fire.pos;
         }
     }
+    local_radar_sweep(view, radar, now);
     if spyplane == 0 && satellite == 0 {
         radar.sweep = 0.0;
         return;
@@ -223,6 +227,36 @@ fn radar_update(view: &CompassRadarView<'_>, radar: &mut CompassRadar) {
             if alive && behind(from, actor.pos) != behind(to, actor.pos) {
                 ping(actor, now, Some(PERK_GPSJAMMER));
             }
+        }
+    }
+}
+
+/// The motion sensor's local radar: a ring spreading from the sensor to
+/// `compassLocalRadarRadius` every `compassLocalRadarUpdateTime` seconds,
+/// pinging the enemies it passes this frame.
+fn local_radar_sweep(view: &CompassRadarView<'_>, radar: &mut CompassRadar, now: i32) {
+    let Some(center) = view.local_radar else {
+        radar.local_sweep = 0.0;
+        return;
+    };
+    let before = radar.local_sweep;
+    let period = dvar(view, "compassLocalRadarUpdateTime", 2.25);
+    let advanced = before + view.frame_ms as f32 / (period * 1000.0);
+    radar.local_sweep = advanced - advanced.floor();
+    let range = dvar(view, "compassLocalRadarRadius", 700.0);
+    let (inner, outer) = (before * range, radar.local_sweep * range);
+    for (client, actor) in radar.actors.iter_mut().enumerate() {
+        if client == view.local_client || !actor.enemy {
+            continue;
+        }
+        let alive = view
+            .players
+            .iter()
+            .any(|p| p.client == client && known(p).3);
+        let (dx, dy) = (actor.pos[0] - center[0], actor.pos[1] - center[1]);
+        let d = dx * dx + dy * dy;
+        if alive && inner * inner < d && d < outer * outer {
+            ping(actor, now, Some(PERK_NOMOTIONSENSOR));
         }
     }
 }
@@ -402,6 +436,18 @@ fn radar_line(view: &CompassRadarView<'_>, radar: &CompassRadar) -> Option<Compa
         radius_st: thickness * 0.5,
         turn,
         material: "compass_radarline",
+    })
+}
+
+/// The motion sensor's ring (`compass_acoustic_ping`): as wide as the
+/// sweep has spread, fading out over its second half.
+fn local_radar_ring(view: &CompassRadarView<'_>, radar: &CompassRadar) -> Option<CompassRadarRing> {
+    let pos = view.local_radar?;
+    Some(CompassRadarRing {
+        pos,
+        radius: dvar(view, "compassLocalRadarRadius", 700.0) * radar.local_sweep,
+        alpha: (1.0 - (radar.local_sweep - 0.5) * 2.0).clamp(0.0, 1.0),
+        material: "compass_acoustic_ping",
     })
 }
 

@@ -358,6 +358,8 @@ pub struct GameWeapon {
     pub perpendicular_bounce: Option<Box<[f32]>>,
     /// The effect a shot flashes in the world (not the first person's).
     pub world_flash: Option<String>,
+    /// The effect its projectile explodes with (`projExplosionEffect`).
+    pub explosion_effect: Option<String>,
     /// The fire loop and fire stop sound aliases, the world's then a
     /// player's, when the definition names them.
     pub fire_loop_sounds: [Option<String>; 2],

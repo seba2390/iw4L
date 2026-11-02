@@ -6,9 +6,10 @@
 
 use game_api::hud::{
     CodeScoreboard, CommandHint, Crosshair, CrosshairPicture, CrosshairView, CrosshairWeapon,
-    DamageFlash, DamageIcons, GameCodeHud, OverlayPicture, OwnerHint, OwnerHintView, ScoreAlign,
-    ScoreColumn, ScoreValue, SightOverlay, VisibilityView,
+    DamageFlash, DamageIcons, GameCodeHud, NameRules, OverlayPicture, OwnerHint, OwnerHintView,
+    ScoreAlign, ScoreColumn, ScoreValue, SightOverlay, VisibilityView,
 };
+use game_api::movement::MovePlayer;
 use game_api::{Unknown, unknown};
 use movement_t5::state::e_flags;
 use movement_t5::weapon::state as ws;
@@ -19,10 +20,11 @@ pub(crate) static CODE_HUD: GameCodeHud = ZOMBIES_CODE_HUD;
 pub(crate) static MP_CODE_HUD: GameCodeHud = GameCodeHud {
     killfeed: Some(&crate::killfeed::KILLFEED),
     compass: Some(&crate::compass::COMPASS),
+    names: Some(&NAMES),
     undrawn: &[
         unknown!(
             "t5.hud.code_hud",
-            "Black Ops' other code-drawn HUD pieces are not drawn: friendly names, the players-in-view scan, chat lines and the night vision overlay",
+            "Black Ops' other code-drawn HUD pieces are not drawn as Black Ops draws them: the crosshair's target is found by the runtime's aim test rather than Black Ops' trace (no enemy crosshair range, no vehicle drivers or dogs), the name keeps the runtime's size, colour and team indicator rather than Black Ops' dvars, the crosshair does not turn red on an enemy, and the players-in-view scan, chat lines and the night vision overlay are not drawn",
             "those pieces of its 2D draw (executable)"
         ),
         unknown!(
@@ -38,24 +40,62 @@ pub(crate) static MP_CODE_HUD: GameCodeHud = GameCodeHud {
     ],
     crosshair: mp_crosshair,
     visibility_bit: Some(mp_visibility_bit),
+    damage_flash: Some(DamageFlash {
+        kick_perk_scale: mp_kick_perk_scale,
+        ..ZOMBIES_DAMAGE_FLASH
+    }),
     ..ZOMBIES_CODE_HUD
+};
+
+/// Black Ops multiplayer's client scales a hit's kick by
+/// `perk_damageKickReduction` (0.2) for a player with
+/// `specialty_bulletflinch` (Hardened Pro).
+fn mp_kick_perk_scale(player: &MovePlayer) -> f32 {
+    if has_perk(player, PERK_BULLETFLINCH) {
+        0.2
+    } else {
+        1.0
+    }
+}
+
+/// `specialty_bulletflinch`'s index in Black Ops' perk table.
+const PERK_BULLETFLINCH: u32 = 4;
+
+/// Whether the player state's perk words hold this perk.
+fn has_perk(player: &MovePlayer, perk: u32) -> bool {
+    let mut player = *player;
+    movement_t5::perks::mp::has(&crate::movement::unpack(&mut player).0, perk)
+}
+
+/// Black Ops multiplayer shows one name: the crosshair's target's, a
+/// teammate's or an enemy's; an enemy with `specialty_noname` (Ghost Pro)
+/// shows none.
+static NAMES: NameRules = NameRules {
+    crosshair_target_only: true,
+    enemy_hidden: |player| has_perk(player, PERK_NONAME),
+};
+
+/// `specialty_noname`'s index in Black Ops' perk table.
+const PERK_NONAME: u32 = 34;
+
+const ZOMBIES_DAMAGE_FLASH: DamageFlash = DamageFlash {
+    kick_scale: 0.2,
+    kick_perk_scale: |_| 1.0,
+    kick_min: 0.5,
+    kick_max: 90.0,
+    kick_random: 0.4,
+    time_ms: 500,
+    alpha_per_ms: 0.002,
+    alpha_max: 5.0,
+    color: [0.2, 0.0, 0.0, 0.2],
+    alpha_scale: 0.7,
+    corner: -10.0,
+    grow: 10.0,
 };
 
 const ZOMBIES_CODE_HUD: GameCodeHud = GameCodeHud {
     blood: false,
-    damage_flash: Some(DamageFlash {
-        kick_scale: 0.2,
-        kick_min: 0.5,
-        kick_max: 90.0,
-        kick_random: 0.4,
-        time_ms: 500,
-        alpha_per_ms: 0.002,
-        alpha_max: 5.0,
-        color: [0.2, 0.0, 0.0, 0.2],
-        alpha_scale: 0.7,
-        corner: -10.0,
-        grow: 10.0,
-    }),
+    damage_flash: Some(ZOMBIES_DAMAGE_FLASH),
     damage_icons: DamageIcons {
         slots: 8,
         time_ms: 2000,
@@ -71,6 +111,7 @@ const ZOMBIES_CODE_HUD: GameCodeHud = GameCodeHud {
     visibility_bit: Some(visibility_bit),
     killfeed: None,
     compass: None,
+    names: None,
     undrawn: &[unknown!(
         "t5.hud.code_hud",
         "Black Ops' other code-drawn HUD pieces are not drawn: friendly names, the players-in-view scan, chat lines and the night vision overlay",
@@ -720,7 +761,7 @@ fn mp_visibility_bit(
         21 => view.in_killcam,
         // The location selector is open (with a selector material).
         22 | 30 => view.selecting_location,
-        25 => other_flags() & POPUP_HIDING_FLAGS != 0,
+        25 => view.following || other_flags() & POPUP_HIDING_FLAGS != 0,
         27 => {
             let mut player = *view.player;
             crate::movement::unpack(&mut player).0.e_flags & e_flags::VEHICLE_VIEW != 0

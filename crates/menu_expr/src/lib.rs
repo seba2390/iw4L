@@ -77,6 +77,22 @@ pub trait GameQueries {
         let _ = rank;
         Err(ExprError::Host("the host does not answer scoreatrank"))
     }
+    /// The lives the local player has left, -1 when it has none (Black Ops'
+    /// `getnumlives`).
+    fn num_lives(&self) -> Result<i32, ExprError> {
+        Err(ExprError::Host("the host does not answer getnumlives"))
+    }
+    /// The living players of `team` (`TEAM_ALLIES`, `TEAM_AXIS`, anything
+    /// else counts every team: Black Ops' `playersalive`).
+    fn players_alive(&self, team: &str) -> Result<i32, ExprError> {
+        let _ = team;
+        Err(ExprError::Host("the host does not answer playersalive"))
+    }
+    /// The server's time in the local client's snapshot (Black Ops'
+    /// `gettime`).
+    fn server_time(&self) -> Result<i32, ExprError> {
+        Err(ExprError::Host("the host does not answer gettime"))
+    }
     /// The localized name of the match's gametype.
     fn gametype_name(&self) -> Result<Operand, ExprError> {
         Err(ExprError::Host("the host does not answer gametypename"))

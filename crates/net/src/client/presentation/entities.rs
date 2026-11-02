@@ -313,6 +313,10 @@ fn sync_snapshot_entities(
         if Some(*client) == seated_viewer {
             continue;
         }
+        // A spectator's own row holds the player it follows: no body of its own.
+        if ps.is_live_follow() {
+            continue;
+        }
         let Some(number) = player_entity_number(*client) else {
             gaps.raise(NetGapCause::ClientOutOfNumberSpace { client: *client });
             continue;

@@ -124,7 +124,13 @@ pub(crate) enum LinkTag {
     KneeRight,
     /// The bone struck, by its number on the entity's model.
     Bone(u16),
+    /// The tag of the hit location struck on a body, by the location's
+    /// number (`grenade::hit_tag`).
+    Hit(u8),
 }
+
+/// Codes from here on are hit locations.
+const LINK_HIT: u16 = 0xff00;
 
 impl LinkTag {
     fn code(self) -> u16 {
@@ -132,7 +138,8 @@ impl LinkTag {
             Self::None => 0,
             Self::Origin => 1,
             Self::KneeRight => 2,
-            Self::Bone(bone) => bone.saturating_add(3),
+            Self::Bone(bone) => bone.saturating_add(3).min(LINK_HIT - 1),
+            Self::Hit(location) => LINK_HIT | u16::from(location),
         }
     }
 
@@ -141,6 +148,7 @@ impl LinkTag {
             0 => Self::None,
             1 => Self::Origin,
             2 => Self::KneeRight,
+            code if code >= LINK_HIT => Self::Hit(code as u8),
             code => Self::Bone(code - 3),
         }
     }

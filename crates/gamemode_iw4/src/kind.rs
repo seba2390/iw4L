@@ -32,6 +32,16 @@ pub enum GameModeKind {
 
     /// Black Ops 2's Turned: players as zombies.
     Zcleansed = 12,
+
+    /// Black Ops' wager matches: One in the Chamber, Gun Game, Sticks and
+    /// Stones, Sharpshooter.
+    OneInTheChamber = 13,
+
+    GunGame = 14,
+
+    SticksAndStones = 15,
+
+    Sharpshooter = 16,
 }
 
 impl GameModeKind {
@@ -53,6 +63,10 @@ impl GameModeKind {
             b"zstandard" => Some(Self::Zstandard),
             b"zgrief" => Some(Self::Zgrief),
             b"zcleansed" => Some(Self::Zcleansed),
+            b"oic" => Some(Self::OneInTheChamber),
+            b"gun" => Some(Self::GunGame),
+            b"hlnd" => Some(Self::SticksAndStones),
+            b"shrp" => Some(Self::Sharpshooter),
             _ => None,
         }
     }
@@ -84,6 +98,10 @@ impl GameModeKind {
             Self::Zstandard => "zstandard",
             Self::Zgrief => "zgrief",
             Self::Zcleansed => "zcleansed",
+            Self::OneInTheChamber => "oic",
+            Self::GunGame => "gun",
+            Self::SticksAndStones => "hlnd",
+            Self::Sharpshooter => "shrp",
         }
     }
 
@@ -102,6 +120,10 @@ impl GameModeKind {
             Self::Zstandard => &["zstandard"],
             Self::Zgrief => &["zgrief"],
             Self::Zcleansed => &["zcleansed"],
+            Self::OneInTheChamber => &["oic"],
+            Self::GunGame => &["gun"],
+            Self::SticksAndStones => &["hlnd"],
+            Self::Sharpshooter => &["shrp"],
         }
     }
 
@@ -124,6 +146,10 @@ impl GameModeKind {
             10 => Some(Self::Zstandard),
             11 => Some(Self::Zgrief),
             12 => Some(Self::Zcleansed),
+            13 => Some(Self::OneInTheChamber),
+            14 => Some(Self::GunGame),
+            15 => Some(Self::SticksAndStones),
+            16 => Some(Self::Sharpshooter),
             _ => None,
         }
     }
@@ -141,6 +167,10 @@ impl GameModeKind {
             Self::Zombies | Self::Zclassic | Self::Zstandard | Self::Zgrief | Self::Zcleansed => {
                 "ZOMBIES"
             }
+            Self::OneInTheChamber => "ONE IN THE CHAMBER",
+            Self::GunGame => "GUN GAME",
+            Self::SticksAndStones => "STICKS AND STONES",
+            Self::Sharpshooter => "SHARPSHOOTER",
         }
     }
 
@@ -153,7 +183,16 @@ impl GameModeKind {
     }
 
     pub fn is_team(self) -> bool {
-        !matches!(self, Self::FreeForAll | Self::Zclassic | Self::Zstandard)
+        !matches!(
+            self,
+            Self::FreeForAll
+                | Self::Zclassic
+                | Self::Zstandard
+                | Self::OneInTheChamber
+                | Self::GunGame
+                | Self::SticksAndStones
+                | Self::Sharpshooter
+        )
     }
 
     pub fn team_start_classname(self, axis: bool) -> Option<&'static str> {
@@ -168,7 +207,11 @@ impl GameModeKind {
             | Self::Zclassic
             | Self::Zstandard
             | Self::Zgrief
-            | Self::Zcleansed => None,
+            | Self::Zcleansed
+            | Self::OneInTheChamber
+            | Self::GunGame
+            | Self::SticksAndStones
+            | Self::Sharpshooter => None,
             Self::Domination => Some(if axis {
                 dom::START_SPAWN_AXIS
             } else {
@@ -194,7 +237,11 @@ impl GameModeKind {
             | Self::Zclassic
             | Self::Zstandard
             | Self::Zgrief
-            | Self::Zcleansed => &[],
+            | Self::Zcleansed
+            | Self::OneInTheChamber
+            | Self::GunGame
+            | Self::SticksAndStones
+            | Self::Sharpshooter => &[],
             Self::Domination => &[dom::SPAWN_CLASSNAME],
             Self::Demolition => {
                 if axis {

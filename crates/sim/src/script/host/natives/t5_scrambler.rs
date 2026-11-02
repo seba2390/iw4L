@@ -6,7 +6,7 @@
 //! `getOwner` and `getLocalPlayerTeam` serve the scripts' friend-or-foe
 //! test.
 
-use super::super::args::{float, int};
+use super::super::args::{float, int, vector};
 use crate::script::Namespace::{Function, Method};
 use crate::script::client::ClientOutput;
 use crate::script::{NativeRegistry, Value};
@@ -31,6 +31,10 @@ pub(crate) struct ClientScrambler {
     pub friendly_amount: f32,
     pub friendlies: [FriendlyScrambler; FRIENDLY_SLOTS],
     serial: u32,
+    /// The motion sensor's local radar (`SetLocalRadarEnabled`,
+    /// `SetLocalRadarPosition`): on or off, and its place.
+    local_radar: bool,
+    local_radar_xy: [f32; 2],
 }
 
 impl ClientScrambler {
@@ -44,6 +48,11 @@ impl ClientScrambler {
             .map(|slot| slot.xy)
             .collect();
         (self.enemy_amount, self.global != 0, friendlies)
+    }
+
+    /// Where the local radar sweeps from, while it is on.
+    pub(crate) fn local_radar(&self) -> Option<[f32; 2]> {
+        self.local_radar.then_some(self.local_radar_xy)
     }
 }
 
@@ -157,6 +166,26 @@ pub(crate) fn register_client(registry: &mut NativeRegistry) {
             slot.added = 0;
             slot.handle = 0;
         }
+        Ok(Value::Undefined)
+    });
+    // `SetLocalRadarEnabled(localClientNum, enabled)` and
+    // `SetLocalRadarPosition(localClientNum, position)`: the motion
+    // sensor's sweep on the compass, which keeps the position's x and y.
+    registry.register(Function, "setlocalradarenabled", |world, _, args| {
+        if args.len() != 2 {
+            return Err("Incorrect number of parameters passed to SetLocalRadarEnabled()\nUSAGE: SetLocalRadarEnabled( <localClientNum>, <enabled> )\n".into());
+        }
+        local_client(args, 0)?;
+        scrambler(world).local_radar = int(args, 1)? != 0;
+        Ok(Value::Undefined)
+    });
+    registry.register(Function, "setlocalradarposition", |world, _, args| {
+        if args.len() != 2 {
+            return Err("Incorrect number of parameters passed to SetLocalRadarPosition()\nUSAGE: SetLocalRadarPosition( <localClientNum>, <position> )\n".into());
+        }
+        local_client(args, 0)?;
+        let at = vector(args, 1)?;
+        scrambler(world).local_radar_xy = [at[0], at[1]];
         Ok(Value::Undefined)
     });
     // The nearest enemy Jammer: nothing ported reads it yet (ledger
