@@ -247,7 +247,7 @@ Each milestone names its issues; open rules are in
 - [x] A match starts on Black Ops' own multiplayer scripts and client scripts (#644, #645).
   - [x] Free-for-all and Team Deathmatch install Black Ops' own startup; on Nuketown the scripts spawn the player with the picked class's weapons (#644).
   - [x] The multiplayer client scripts (`clientscripts/mp`) run (#645).
-- [ ] Players move by Black Ops' multiplayer movement rules (#647).
+- [x] Players move by Black Ops' multiplayer movement rules (#647).
 - [ ] Weapons, attachments, lethals, tacticals and equipment work by Black Ops' rules (#648, #649).
   - [x] Weapons fire, reload, aim and take attachments by Black Ops' rules (#648).
 - [x] Free-for-all and Team Deathmatch run on Black Ops' own gametype scripts to the end of a match (#646).

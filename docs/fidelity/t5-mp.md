@@ -125,14 +125,11 @@ Each open section names the issue that works it.
 
 ## Player, movement and weapons (#647, #648, #649, #650)
 
-- [ ] **G** The multiplayer player moves by `movement_t5` with
-      `zombiemode` 0 and `BlackOpsMP.exe`'s own registered defaults where
-      they differ from `BlackOps.exe` (`bg_fallDamageMaxHeight` 300,
-      `bg_prone_yawcap` 45, `player_breath_hold_lerp` 1,
-      `player_sliding_wishspeed` 4000). Dive to prone (hold the stance key
-      while sprinting), ladders and mantles on a multiplayer map are not
-      verified in a run yet (#461, #647); a dump shows only the shared
-      player state, not the dive's flags.
+- [ ] **I** The multiplayer movement raises its entity events by
+      `BlackOps.exe`'s numbers; `BlackOpsMP.exe` numbers them two higher
+      from the footsteps on (its mantle start raises 109, its dives 186
+      and 187). The runtime's server and client agree, and nothing else
+      reads the numbers.
 - [ ] **G** A weapon dropped by `dropitem` goes from the player's middle to
       `tag_weapon_right` on their model as it stands unanimated: the server
       keeps no animated pose of a player to read the tag from, and it takes the
@@ -664,6 +661,18 @@ Each open section names the issue that works it.
       limit and a Search and Destroy round won by the kill play the
       final killcam (`GAME WINNING KILL`) of the killer's archived view
       for every player, the killer too.
+
+- [x] **G** Multiplayer movement (#647): the player moves by
+      `movement_t5` with `zombiemode` 0 and `BlackOpsMP.exe`'s own
+      registered defaults where they differ from `BlackOps.exe`
+      (`bg_fallDamageMaxHeight` 300, `bg_prone_yawcap` 45,
+      `player_breath_hold_lerp` 1, `player_sliding_wishspeed` 4000), and
+      dive to prone, mantles and ladders were not seen in a run. On
+      `mp_nuked`: holding the stance key while sprinting dives (the dive
+      starts and lands on the grass); jumping at the
+      ledge the dogs' `mantle_on_40` traversal crosses shows Black Ops'
+      mantle hint and climbs it; walking into the ladder behind the
+      yellow house climbs it to its top (79) at the ladder's speed.
 
 - [x] **V** Client script faults on `mp_nuked` (#645): `map_material`,
       `set_filter_pass_*` and `set_overlay_*` were missing, so
