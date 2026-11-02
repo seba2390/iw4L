@@ -459,10 +459,19 @@ Each open section names the issue that works it.
       catalog plus the multiplayer client's own function and entity method
       tables (`mp_client_catalog.rs`, 48 builtins from `BlackOpsMP.exe`)
       and run on `mp_nuked`. Not implemented yet, each faulting the thread
-      that calls it: `map_material`, `set_filter_pass_*`, `set_overlay_*`
-      (the scope and guided-missile filters, #645); `animateui` (menu item
-      animations, #651); the extra
+      that calls it: `animateui` (menu item animations, #651); the extra
       camera builtins (camera spike, #649); the vehicle queries (#660).
+- [ ] **V** `t5.csc.filters`: the client keeps what the filter and overlay
+      builtins check (`map_material`'s 64 slots; three filters of 16
+      passes, three overlays, with Black Ops' ranges and usage errors), but
+      neither Black Ops' filter passes (its renderer) nor its overlay draw
+      (its 2D pass, by sort index) is ported; a pass or overlay a script
+      enables logs the id. No multiplayer script enables one: the only
+      one, `_tacticalmask.csc`, waits on `HasTacticalMaskOverlay`, which
+      `BlackOpsMP.exe` answers false for every player. Not drawn either:
+      the engine's own uses of mapped slots 0–3 (`generic_filter_scope`
+      over a scope's lens, `generic_filter_infrared` in infrared sights,
+      `tow_filter_overlay` while a Valkyrie rocket is steered).
 - [ ] **V** `t5.csc.saved_dvars`: `setsaveddvar` keeps the client's dvar,
       but nothing reads the ones the multiplayer scripts set (wind,
       `r_outdoorfeather`); Black Ops' refusal of a dvar that does not exist
@@ -606,6 +615,19 @@ Each open section names the issue that works it.
       compensation of Black Ops' movement and weapons are unmeasured.
 
 ## Closed
+
+- [x] **V** Client script faults on `mp_nuked` (#645): `map_material`,
+      `set_filter_pass_*` and `set_overlay_*` were missing, so
+      `_players.csc` faulted mapping the scope, infrared and guided-missile
+      filters; `HasTacticalMaskOverlay` was missing; `_scrambler.csc`
+      faulted comparing the local player's `team`, undefined before the
+      scripts set one, where Black Ops' client answers `free`; and
+      `_face_utility_mp.csc` faulted animating a player with no model,
+      because `hasdobj` answered true for every player. Now the filter
+      builtins check and keep their arguments as Black Ops does
+      (`t5.csc.filters` for the draws), `HasTacticalMaskOverlay` answers
+      false as `BlackOpsMP.exe` does, a multiplayer entity's `team` is
+      `free` until it has one, and `hasdobj` follows the entity's model.
 
 - [x] **V** Names over players (#651): multiplayer drew Modern Warfare
       2's names, every visible teammate's and the aimed enemy's, with

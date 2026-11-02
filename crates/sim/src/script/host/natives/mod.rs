@@ -12,6 +12,7 @@ pub(crate) mod t5_cac;
 pub(crate) mod t5_classes;
 pub(crate) mod t5_client;
 pub(crate) mod t5_equipment;
+pub(crate) mod t5_filters;
 pub(crate) mod t5_guided;
 pub(crate) mod t5_items;
 pub(crate) mod t5_location;

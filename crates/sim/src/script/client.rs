@@ -923,6 +923,7 @@ pub(crate) fn install(
         level.client_keys.as_ref().unwrap_or(&level.keys),
         level.entity_fields.as_ref(),
     )?;
+    let multiplayer = runs_multiplayer_scripts(server);
     let local = {
         let mut runtime = world.resource_mut::<RoundScript>();
         let object = runtime
@@ -934,6 +935,11 @@ pub(crate) fn install(
         runtime.set_object_field(object, "species", Value::string("human"));
         runtime.set_object_field(object, "model", Value::string(""));
         runtime.set_object_field(object, "serverflags", Value::Int(0));
+        // Black Ops multiplayer's client answers a player's `team` from its
+        // client info: `free` until the player has one.
+        if multiplayer {
+            runtime.set_object_field(object, "team", Value::string("free"));
+        }
         LocalClient {
             object,
             has_snapshot: false,
@@ -1327,8 +1333,24 @@ pub(crate) fn effect_rows(server: &World, now: i32) -> Vec<(u32, ClientEffect)> 
         .collect()
 }
 
+/// The server runs the multiplayer scripts (rather than zombies').
+fn runs_multiplayer_scripts(server: &World) -> bool {
+    server
+        .resource::<RoundScript>()
+        .program
+        .as_ref()
+        .is_some_and(|program| {
+            program
+                .names
+                .contains_key("maps/mp/gametypes/_globallogic::init")
+        })
+}
+
 fn collect_server_entities(server: &mut World) -> Vec<ServerEntitySnapshot> {
     let mut snapshots = Vec::new();
+    // Black Ops multiplayer's client answers an entity's `team` from its
+    // team bits (a player's from its client info), `free` when none is set.
+    let default_team = runs_multiplayer_scripts(server).then(|| Value::string("free"));
     let ids: Vec<(u64, super::host::entities::ScriptEntity)> = server
         .resource::<RoundScript>()
         .entities
@@ -1442,7 +1464,7 @@ fn collect_server_entities(server: &mut World) -> Vec<ServerEntitySnapshot> {
             // (`setOwner`).
             let team = match runtime.object_field(id, "team") {
                 Value::String(team) => Some(Value::String(team)),
-                _ => None,
+                _ => default_team.clone(),
             };
             let owner = match (
                 runtime.object_field(id, "owner"),
