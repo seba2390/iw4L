@@ -131,6 +131,9 @@ pub struct CompassRadarRules {
     /// The sweep line's place across the compass, when a spy plane is up:
     /// the texture's centre `s` and its turn (degrees).
     pub line: fn(&CompassRadarView<'_>, &CompassRadar) -> Option<CompassRadarLine>,
+    /// The local radar's ring (the motion sensor's), drawn by the line's
+    /// owner draw, while it is on.
+    pub ring: fn(&CompassRadarView<'_>, &CompassRadar) -> Option<CompassRadarRing>,
 }
 
 /// What the radar reads of a frame.
@@ -159,6 +162,9 @@ pub struct CompassRadarView<'a> {
     /// up (the client scripts' scrambler state).
     pub enemy_scrambler: f32,
     pub global_scrambler: bool,
+    /// Where the local radar (the motion sensor's) sweeps from, while the
+    /// client scripts keep it on.
+    pub local_radar: Option<[f32; 2]>,
     pub dvar: &'a dyn Fn(&str) -> Option<f32>,
 }
 
@@ -200,6 +206,8 @@ pub struct CompassActor {
 #[derive(Clone, Debug)]
 pub struct CompassRadar {
     pub sweep: f32,
+    /// How far the local radar's ring has spread, 0 to 1.
+    pub local_sweep: f32,
     pub last_ms: Option<i32>,
     pub actors: [CompassActor; 32],
 }
@@ -208,6 +216,7 @@ impl Default for CompassRadar {
     fn default() -> Self {
         Self {
             sweep: 0.0,
+            local_sweep: 0.0,
             last_ms: None,
             actors: [CompassActor::default(); 32],
         }
@@ -233,6 +242,17 @@ pub struct CompassRadarLine {
     pub center_s: f32,
     pub radius_st: f32,
     pub turn: f32,
+    pub material: &'static str,
+}
+
+/// A ring spreading on the compass from a point in the world: a square of
+/// the material `radius` world units each way from its centre, clipped to
+/// the compass.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct CompassRadarRing {
+    pub pos: [f32; 2],
+    pub radius: f32,
+    pub alpha: f32,
     pub material: &'static str,
 }
 

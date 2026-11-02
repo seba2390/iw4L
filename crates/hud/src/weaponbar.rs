@@ -994,6 +994,7 @@ pub(crate) fn update_weaponbar(
                             .map_or(0.0, |m| m.view_effects.client_screen.enemy_scrambler),
                         global_scrambler: meta
                             .is_some_and(|m| m.view_effects.client_screen.global_scrambler),
+                        local_radar: meta.and_then(|m| m.view_effects.client_screen.local_radar),
                         dvar: &dvar,
                     };
                     (radar.update)(&view, &mut client_input.compass_radar);
@@ -1003,6 +1004,7 @@ pub(crate) fn update_weaponbar(
                         pings: (radar.pings)(&view, &client_input.compass_radar),
                         friendlies: (radar.friendlies)(&view, &client_input.compass_radar),
                         line: (radar.line)(&view, &client_input.compass_radar),
+                        ring: (radar.ring)(&view, &client_input.compass_radar),
                         objectives: snap
                             .meta
                             .objectives

@@ -1054,6 +1054,11 @@ pub(crate) fn advance_client_scripts(server: &mut World) {
             let ui3d_windows = client.world.resource::<ClientOutput>().ui3d_windows;
             let alternate_aim = client.world.resource::<ClientOutput>().alternate_aim;
             let scrambler = client.world.resource::<ClientOutput>().scrambler.screen();
+            let local_radar = client
+                .world
+                .resource::<ClientOutput>()
+                .scrambler
+                .local_radar();
             let script_vectors = super::host::natives::t5_client::script_vectors(&mut client.world);
             let mut frame = crate::frame::FrameWorld::from_world(server);
             if frame.client_meta(crate::ClientId(0)).is_some() {
@@ -1069,6 +1074,7 @@ pub(crate) fn advance_client_scripts(server: &mut World) {
                     screen.global_scrambler,
                     screen.friendly_scramblers,
                 ) = scrambler;
+                screen.local_radar = local_radar;
                 screen.script_vectors = script_vectors;
             }
             // Its screen overlays past their time stop and fade, and fades

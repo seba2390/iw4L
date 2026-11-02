@@ -149,7 +149,7 @@ Each open section names the issue that works it.
       that shares the weapon's ammo cap instead, which is not applied.
 - [ ] **G** Lethal, tactical and equipment items (`_weaponobjects.gsc`):
       concussion, Willy Pete, Nova gas, decoy, tactical insertion, camera
-      spike, jammer, motion sensor; `makegrenadedud` is refused.
+      spike; `makegrenadedud` is refused.
       `t5.mp.grenade_stick`: a sticking grenade that strikes a dead
       player (Black Ops links it to the player's body) or a vehicle
       (linked to the part struck, its blast then hurting the vehicle
@@ -257,6 +257,10 @@ Each open section names the issue that works it.
       `compassSoundPingFadeTime`); Black Ops pings them from the client's
       weapon-fire events for teammates, and for enemies while a spy plane
       or satellite is up or a client flag is clear (not identified).
+- [ ] **V** The motion sensor's ring pings the enemies it passes, but an
+      enemy firing inside the ring is not pinged by it as Black Ops'
+      client fire ping does, and the dogs and other actors on Black Ops'
+      actor list are not swept (the runtime's compass keeps no actors).
 - [ ] **V** `t5.hud.compass_jammers`: the local player's Jammers
       (`compass_scrambler_large`, owner draw 325) are kept from
       `addFriendlyScrambler` but not drawn; the nearest enemy Jammer
@@ -449,8 +453,7 @@ Each open section names the issue that works it.
       and run on `mp_nuked`. Not implemented yet, each faulting the thread
       that calls it: `map_material`, `set_filter_pass_*`, `set_overlay_*`
       (the scope and guided-missile filters, #645); `animateui` (menu item
-      animations, #651); `setlocalradarenabled`, `setlocalradarposition`
-      (the motion sensor, #649); the extra
+      animations, #651); the extra
       camera builtins (camera spike, #649); the vehicle queries (#660).
 - [ ] **V** `t5.csc.saved_dvars`: `setsaveddvar` keeps the client's dvar,
       but nothing reads the ones the multiplayer scripts set (wind,
@@ -585,6 +588,16 @@ Each open section names the issue that works it.
       compensation of Black Ops' movement and weapons are unmeasured.
 
 ## Closed
+
+- [x] **V** The motion sensor (#649): `SetLocalRadarEnabled` and
+      `SetLocalRadarPosition` were not implemented, so
+      `_acousticsensor.csc` faulted. They now keep the client's local
+      radar, which spreads a ring from the sensor to
+      `compassLocalRadarRadius` (700) every `compassLocalRadarUpdateTime`
+      (2.25 s), pinging each enemy it passes (Ninja Pro,
+      `specialty_nomotionsensor`, hides one) and drawing
+      `compass_acoustic_ping` as wide as it has spread, clipped to the
+      compass and faded out over the second half of each spread.
 
 - [x] **G** Sticking grenades (#649): a grenade whose `stickiness`
       sticks to everything (Semtex, C4) or to bodies only (the tomahawk)
