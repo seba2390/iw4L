@@ -60,6 +60,7 @@ pub(crate) fn install(
         tables: Arc::new(level.tables),
         keys: Arc::new(level.keys),
         entity_fields: Arc::new(level.entity_fields),
+        destructible_defs: Arc::new(level.destructible_defs),
         layouts: level.layouts,
         barriers: level.barriers,
         weapons: level.weapons,
@@ -83,6 +84,7 @@ pub(crate) fn install_client(
     entities: &[Vec<(String, String)>],
     keys: &BTreeMap<String, host::entities::KeyType>,
     entity_fields: Option<&BTreeMap<String, host::entities::KeyType>>,
+    destructible_defs: &BTreeMap<String, (bool, i32)>,
 ) -> Result<(), Fault> {
     let location = Location {
         module: "<runtime>".into(),
@@ -123,7 +125,7 @@ pub(crate) fn install_client(
     }
     world
         .resource_mut::<RoundScript>()
-        .spawn_map_entities(entities, keys, entity_fields)
+        .spawn_map_entities(entities, keys, entity_fields, destructible_defs)
         .map_err(|m| Fault::at(&location, m))?;
     Ok(())
 }
@@ -201,10 +203,16 @@ pub(crate) fn install_level(
     let entities = plan.entities.clone();
     let keys = plan.keys.clone();
     let entity_fields = plan.entity_fields.clone();
+    let destructible_defs = plan.destructible_defs.clone();
     world.resource_mut::<RoundScript>().restart = Some(Arc::new(plan));
     let handed = world
         .resource_mut::<RoundScript>()
-        .spawn_map_entities(&entities, &keys, entity_fields.as_ref().as_ref())
+        .spawn_map_entities(
+            &entities,
+            &keys,
+            entity_fields.as_ref().as_ref(),
+            &destructible_defs,
+        )
         .map_err(|m| Fault::at(&location, m))?;
     if let Some(&function) = program.names.get(CREATE_STRUCT) {
         for id in handed {

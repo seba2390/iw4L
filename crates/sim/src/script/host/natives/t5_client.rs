@@ -18,6 +18,7 @@ pub(crate) fn register(registry: &mut NativeRegistry) {
     super::t5_vision::register_client(registry);
     register_random(registry);
     register_extra_camera(registry);
+    register_multiplayer_entity(registry);
     register_ui3d(registry);
     // Its entities' animation trees: `useAnimTree`, the `SetAnim` family and
     // `clearAnim` on the client's own copy of the match's trees.
@@ -1774,6 +1775,35 @@ pub(crate) fn extra_camera(world: &mut World) -> Option<game_api::ExtraCamera> {
 /// The `AnimateUI` moves already reported as not ported.
 #[derive(bevy_ecs::prelude::Resource, Default)]
 struct AnimateUiAsked(std::collections::BTreeSet<(String, String, String)>);
+
+/// `GetInKillcam` and `SetFlagAsAway`, which Black Ops multiplayer's client
+/// keeps in its own state: the client VM here knows neither a killcam nor
+/// the compass's flag icons, so both log and take the living default.
+fn register_multiplayer_entity(registry: &mut NativeRegistry) {
+    use Namespace::Method;
+    registry.register(Method, "getinkillcam", |world, receiver, args| {
+        entity(world, receiver)?;
+        local_index(args)?;
+        diag::warn!(
+            Sim,
+            "t5.csc.in_killcam: GetInKillcam answers false while a killcam plays"
+        );
+        Ok(Value::Int(0))
+    });
+    registry.register(Method, "setflagasaway", |world, receiver, args| {
+        entity(world, receiver)?;
+        if args.len() < 2 {
+            return Err("Not enough parameters supplied to SetFlagAsAway".into());
+        }
+        local_index(args)?;
+        int(args, 1)?;
+        diag::warn!(
+            Sim,
+            "t5.csc.flag_away: SetFlagAsAway does not reach the compass's flag icons"
+        );
+        Ok(Value::Undefined)
+    });
+}
 
 fn register_extra_camera(registry: &mut NativeRegistry) {
     use Namespace::{Function, Method};

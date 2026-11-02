@@ -41,9 +41,16 @@ Each open section names the issue that works it.
 - [ ] **V** On Firing Range a jeep stands above the sandbags it should rest
       on (seen from the pre-match spectator view); not yet traced to the
       model, its destructible script or the map's entity data (#669).
-- [ ] **G** Destructibles (`_destructible.gsc`: cars, barrels), interactive
-      objects, elevators, rotating objects, shutters and minefields have not
-      run; `setdamagestage` is not implemented.
+- [ ] **G** Interactive objects, elevators, rotating objects, shutters and
+      minefields are not verified moving or hurting in a run (#669).
+- [ ] **V** A destructible's debris models (`destructible spawn-model debris
+      unavailable`, the Nuketown mannequins' limbs) are not spawned, and a
+      client script's `UseAnimTree` / `SetAnim` on a server entity faults, so
+      a destroyed car does not play `veh_car_destroy`
+      (`clientscripts/mp/_destructible.csc`) (#669).
+- [ ] **V** `t5.csc.in_killcam`: `GetInKillcam` answers false, the client VM
+      knowing no killcam. `t5.csc.flag_away`: `SetFlagAsAway` does not reach
+      the compass's flag icons.
 
 ## Game mode and flow (#644, #646, #667)
 
@@ -647,6 +654,12 @@ Each open section names the issue that works it.
 
 ## Closed
 
+- [x] **G** Destructibles (#669): a map entity with a `destructibledef` is
+      the client's only when its definition says so, as the executable's
+      server and client spawners read it; the others are server entities
+      with their base piece's health, so `_destructible.gsc` sees them,
+      bullets and blasts reach their pieces, and their events run its own
+      `CodeCallback_DestructibleEvent`.
 - [x] **G** Spectating (#667): a dead player follows a living teammate, and a
       player on the spectator team (`g_allow_spectator` on) cycles through
       the players with attack. The viewer sees the followed player's live
