@@ -1759,7 +1759,7 @@ fn register_refused(registry: &mut NativeRegistry) {
         let names = ["oic", "hlnd", "gun", "shrp"];
         new_array(
             world,
-            names.iter().map(|name| Value::string(*name)).collect(),
+            names.iter().map(|name| Value::string(name)).collect(),
         )
     });
 
