@@ -1212,7 +1212,8 @@ impl PlayerSlot {
 
 pub(crate) fn script_seats(world: &World) -> Vec<(ClientId, crate::ScriptSeat)> {
     let runtime = world.resource::<RoundScript>();
-    let final_kill = level_flag(runtime, "showingfinalkillcam");
+    let final_kill = level_flag(runtime, "showingfinalkillcam")
+        || seat_rule(world).is_some_and(|rule| (rule.final_killcam)(world));
     runtime
         .players
         .iter()
@@ -1249,6 +1250,26 @@ const SEAT_FIELDS: [&str; 6] = [
 ];
 
 const RADAR_FIELDS: [&str; 3] = ["hasradar", "radarmode", "isradarblocked"];
+
+fn seat_rule(world: &World) -> Option<super::registry::SeatRule> {
+    world
+        .get_resource::<crate::script::NativeRegistry>()
+        .and_then(crate::script::NativeRegistry::seat_rule)
+}
+
+/// The seat field a player field names: the game's own field for forcing
+/// a spectator's target (`forcespectatorclient` unless its rule names
+/// another) stands for the forced target.
+fn seat_field(world: &World, name: &str) -> Option<&'static str> {
+    let forced = seat_rule(world).map_or(SEAT_FIELDS[0], |rule| rule.spectator_field);
+    if name == forced {
+        return Some(SEAT_FIELDS[0]);
+    }
+    SEAT_FIELDS[1..]
+        .iter()
+        .copied()
+        .find(|field| *field == name)
+}
 
 pub(crate) fn publish_radar(world: &mut World) {
     let constant = world
@@ -1609,12 +1630,12 @@ pub(crate) fn load_field(world: &mut World, client: u32, name: &str) -> Option<V
             .get(&client)
             .map(|slot| Value::String(slot.sessionstate.clone().into()));
     }
-    if SEAT_FIELDS.contains(&name) {
+    if let Some(field) = seat_field(world, name) {
         let runtime = world.resource::<RoundScript>();
         return runtime
             .players
             .get(&client)
-            .map(|slot| load_seat_field(&slot.seat, name));
+            .map(|slot| load_seat_field(&slot.seat, field));
     }
     if RADAR_FIELDS.contains(&name) {
         let slot = world.resource::<RoundScript>().players.get(&client)?;
@@ -1702,9 +1723,9 @@ pub(crate) fn store_field(
         Value::Float(f) => Ok(*f as i32),
         other => Err(format!("player field {name} takes a number, not {other:?}")),
     };
-    if SEAT_FIELDS.contains(&name) {
+    if let Some(field) = seat_field(world, name) {
         if let Some(slot) = world.resource_mut::<RoundScript>().players.get_mut(&client) {
-            store_seat_field(&mut slot.seat, name, value)?;
+            store_seat_field(&mut slot.seat, field, value)?;
         }
         return Ok(true);
     }

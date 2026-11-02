@@ -79,8 +79,16 @@ Each open section names the issue that works it.
 - [ ] **G** `sendranks`, `setplayerteamrank` are not implemented;
       `ghost`, `boundswouldtelefrag`, `testspawnpoint`, `killserver`,
       `ban`, `endparty`, `endlobby`, `sethostmigrationstatus` are refused.
-- [ ] **G** Killcam, final killcam and spectating (`_killcam.gsc`,
-      `_spectating.gsc`) have not run.
+- [ ] **G** Spectating (`_spectating.gsc`) is not verified in a run: a
+      dead player following a living teammate, and a player on the
+      spectator team. The killcam and the final and round end killcams
+      run (Closed).
+- [ ] **G** `CanJoinTeam(team)`, which Black Ops' patched
+      `_globallogic_ui.gsc` asks before `menuAllies`, `menuAxis` and
+      `menuSpectator` switch a player's team (`PATCH_MP_CANNOT_JOIN_TEAM`
+      when it refuses), is in no builtin table of the studied
+      `BlackOpsMP.exe`, so its rule is not known; it has no native, and
+      those menus refuse every switch (#665).
 
 - [ ] **G** The builtins the multiplayer server binds beyond the shared T5
       catalog (`mp_catalog.rs`, 187 functions and methods read from
@@ -637,6 +645,22 @@ Each open section names the issue that works it.
       compensation of Black Ops' movement and weapons are unmeasured.
 
 ## Closed
+
+- [x] **G** Killcam and final killcam (#667): `_killcam.gsc` runs on the
+      shared killcam's script seats, but Black Ops' scripts force a
+      spectator's target with `spectatorclient` (Modern Warfare 2's with
+      `forcespectatorclient`), so the seat followed the first other
+      player, and the seat applied to a living viewer only on Modern
+      Warfare 2's `showingfinalkillcam` flag, so the killer's own final
+      killcam showed the live view. A game's native registry now names
+      its seat rule: for Black Ops multiplayer `spectatorclient`, and a
+      final or round end killcam while the scripts set the
+      `final_killcam` or `round_end_killcam` match flag. On `mp_nuked` a
+      killed player sees the killer's archived view under Black Ops'
+      `KILLCAM` banner and respawns; a Team Deathmatch won on its score
+      limit and a Search and Destroy round won by the kill play the
+      final killcam (`GAME WINNING KILL`) of the killer's archived view
+      for every player, the killer too.
 
 - [x] **G** Multiplayer movement (#647): the player moves by
       `movement_t5` with `zombiemode` 0 and `BlackOpsMP.exe`'s own
