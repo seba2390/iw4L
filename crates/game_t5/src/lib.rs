@@ -152,6 +152,15 @@ const MULTIPLAYER_ENGINE_DVARS: &[(&str, &str)] = &[
 /// Black Ops' front-end level: the main menu draws over it.
 pub(crate) const FRONT_END_LEVEL: &str = "frontend";
 
+/// The zone of Black Ops' multiplayer front end: BlackOpsMP.exe's UI loads
+/// `ui_mp` and `patch_ui_mp`, then this zone, whose level
+/// (`mp_ui_viewer`) its menus draw over. No level script runs on it.
+pub(crate) const MP_UI_LEVEL: &str = "ui_viewer_mp";
+
+/// The menu BlackOpsMP.exe's UI opens once it has loaded: `main`, whose
+/// `onOpen` opens `main_text`.
+const MP_UI_MAIN_MENU: &str = "main";
+
 /// Engine dvars the zombie scripts read without setting: the mode itself and
 /// the AI locomotion tuning the run animscript reads, at the defaults the
 /// executable registers (no config a zombies match loads sets them).
@@ -209,6 +218,24 @@ impl game_api::GameScripts for T5 {
         request: &ScriptRequest<'_>,
         sources: &dyn gsc::SourceResolver,
     ) -> Rule<ScriptProgram> {
+        // No server runs under BlackOpsMP.exe's UI, so no script does: the
+        // engine's own code scripts compile, and nothing is entered.
+        if multiplayer(request.gametype) && request.map == MP_UI_LEVEL {
+            return Rule::Known(ScriptProgram {
+                catalog: gsc::Catalog::from_list(asset_core::FamilyId::T5, catalog::T5)
+                    .extended(mp_catalog::T5_MP.iter().cloned()),
+                roots: vec![
+                    "codescripts/delete".to_owned(),
+                    "codescripts/struct".to_owned(),
+                ],
+                entries: Vec::new(),
+                built: None,
+                settings: Vec::new(),
+                key_types: Vec::new(),
+                entity_fields: Vec::new(),
+                dvars: Vec::new(),
+            });
+        }
         if multiplayer(request.gametype) {
             let startup = mp_startup::T5MpStartup::new(sources, request.gametype, request.map);
             return Rule::Known(ScriptProgram {
@@ -258,8 +285,11 @@ impl game_api::GameScripts for T5 {
         request: &ScriptRequest<'_>,
         _sources: &dyn gsc::SourceResolver,
     ) -> Option<ScriptProgram> {
-        // A multiplayer map keeps its client scripts under `clientscripts/mp`.
-        let dir = if request.gametype == ZOMBIES {
+        // A multiplayer map keeps its client scripts under `clientscripts/mp`;
+        // the multiplayer front end runs none.
+        let dir = if request.map == MP_UI_LEVEL {
+            return None;
+        } else if request.gametype == ZOMBIES {
             "clientscripts"
         } else if multiplayer(request.gametype) {
             "clientscripts/mp"
@@ -507,6 +537,7 @@ const ZOMBIE_MODE: ModeRules = ModeRules {
     // A zombies map's 3D UI texture; the front end's is square
     // (`ui3d_size`).
     ui3d: Some(game_api::Ui3dRules { size: [1024, 512] }),
+    level_menu: None,
 };
 
 /// A multiplayer match: Black Ops' multiplayer scripts run it from the
@@ -1121,6 +1152,7 @@ impl game_api::GameModes for T5 {
                 ui3d: Some(game_api::Ui3dRules {
                     size: ui3d_size(map),
                 }),
+                level_menu: (map == MP_UI_LEVEL).then_some(MP_UI_MAIN_MENU),
                 ..mode
             }),
             unknown => unknown,

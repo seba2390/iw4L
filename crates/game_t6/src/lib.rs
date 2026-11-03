@@ -462,6 +462,7 @@ const MULTIPLAYER_MODE: ModeRules = ModeRules {
     menu_dvars_reach_server: false,
     runtime_class_slots: false,
     ui3d: None,
+    level_menu: None,
 };
 
 /// Black Ops 2's own multiplayer scripts hold the match; the HUD is still

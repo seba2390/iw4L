@@ -857,6 +857,7 @@ pub fn apply_prepared_match(
             sim.start_gsc(&entry, sim::script::Value::level(), Vec::new())
                 .map_err(|e| script_refusal(&zone, gametype, "entry", &e))?;
         }
+        sim.finish_gsc_entries();
         if let Some(client) = compiled_client_scripts {
             let mut natives = sim::script::NativeRegistry::black_ops_2_client();
             let (missing, named) = natives.coverage(&client.program);

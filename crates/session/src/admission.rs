@@ -184,8 +184,12 @@ impl RevealGate<'_> {
     const LONGEST_HOLD: std::time::Duration = std::time::Duration::from_secs(10);
 
     fn awaits_script_spawn(&self, held_since: &mut Option<std::time::Instant>) -> bool {
+        // A front end's own level spawns nobody: its menu is what shows.
         if *self.role == RuntimeRole::Replay
-            || !self.mode.as_ref().is_some_and(|m| m.scripts_spawn_players)
+            || !self
+                .mode
+                .as_ref()
+                .is_some_and(|m| m.scripts_spawn_players && m.level_menu.is_none())
         {
             return false;
         }

@@ -903,9 +903,11 @@ fn fanout_loopback(
         queues.level_reload.write(LevelReloadCalled);
         diag::info!(Sim, "level reload: a failed level loads again");
     }
-    if let Some(map) = &tick.level_change {
-        queues.level_change.write(LevelChangeCalled(map.clone()));
-        diag::info!(Sim, "changeLevel: `{map}` loads next");
+    if let Some((map, gametype)) = &tick.level_change {
+        queues
+            .level_change
+            .write(LevelChangeCalled(map.clone(), gametype.clone()));
+        diag::info!(Sim, "changeLevel: `{map}` loads next ({gametype:?})");
     }
     queues.deaths.push_journal(&tick.snapshot.meta.journal);
     queues.gives.push_journal(&tick.snapshot.meta.journal);

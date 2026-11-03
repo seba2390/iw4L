@@ -37,6 +37,7 @@ const T5_SHIFTRIGHT: i32 = 23;
 
 const T5_FN_MIN: i32 = 26;
 const T5_FN_MAX: i32 = 27;
+const T5_FN_MILLISECONDS: i32 = 28;
 const T5_FN_DVARINT: i32 = 30;
 const T5_FN_DVARBOOL: i32 = 31;
 const T5_FN_DVARSTRING: i32 = 33;
@@ -60,6 +61,7 @@ const T5_FN_LOCALVARSTRING: i32 = 68;
 const T5_FN_TIMELEFT: i32 = 69;
 const T5_FN_SECONDSASCOUNTDOWN: i32 = 70;
 const T5_FN_INT: i32 = 72;
+const T5_FN_FLOAT: i32 = 74;
 const T5_FN_GAMETYPENAME: i32 = 75;
 const T5_FN_SCOREATRANK: i32 = 78;
 const T5_FN_SPECTATINGCLIENT: i32 = 80;
@@ -68,6 +70,7 @@ const T5_FN_GAMEHOST: i32 = 86;
 const T5_FN_ISVISIBILITYBITSET: i32 = 87;
 const T5_FN_ISSPLITSCREEN: i32 = 88;
 const T5_FN_ISSPLITSCREENHOST: i32 = 89;
+const T5_FN_HASINVITES: i32 = 100;
 const T5_FN_ISINTERMISSION: i32 = 104;
 const T5_FN_GETTEXTWIDTH: i32 = 204;
 const T5_FN_ISPROFILESIGNEDIN: i32 = 209;
@@ -75,7 +78,9 @@ const T5_FN_GETNUMLIVES: i32 = 214;
 const T5_FN_PLAYERSALIVE: i32 = 215;
 const T5_FN_GETTIME: i32 = 217;
 const T5_FN_SELECT: i32 = 291;
+const T5_FN_ISSIGNEDINTOLIVE: i32 = 319;
 const T5_FN_GETLOCALCLIENTNUM: i32 = 321;
+const T5_FN_ISDEMONWAREFETCHINGDONE: i32 = 392;
 const T5_FN_TOUPPER: i32 = 425;
 // Not in `functions.txt`: the evaluator keeps its own number for these.
 const T5_FN_MENUHASFOCUS: i32 = 309;
@@ -402,6 +407,16 @@ fn call(op: i32, stack: &mut Vec<Value>, host: &dyn GameQueries) -> Result<Opera
         T5_FN_ISSPLITSCREEN => Operand::Int(0),
         T5_FN_ISSPLITSCREENHOST => Operand::Int(1),
         T5_FN_ISPROFILESIGNEDIN => Operand::Int(1),
+        // The UI's clock: Black Ops' `Sys_Milliseconds`.
+        T5_FN_MILLISECONDS => Operand::Int(host.milliseconds()?),
+        // The count of pending invites; IW4L's private matches send none.
+        T5_FN_HASINVITES => Operand::Int(0),
+        // A Live sign-in and `dw_active` (registered 1): the player runs
+        // the game they own, so the profile is signed in as it is above.
+        T5_FN_ISSIGNEDINTOLIVE => Operand::Int(1),
+        // Whether the profile's stats have been fetched: IW4L keeps them in
+        // the profile on disk, read before any menu.
+        T5_FN_ISDEMONWAREFETCHINGDONE => Operand::Int(1),
         T5_FN_GETLOCALCLIENTNUM => Operand::Int(0),
         T5_FN_MIN | T5_FN_MAX => {
             let args = args()?;
@@ -465,6 +480,10 @@ fn call(op: i32, stack: &mut Vec<Value>, host: &dyn GameQueries) -> Result<Opera
             Operand::Int(i32::from(host.local_var_int(&arg_str(&args()?)?)? != 0))
         }
         T5_FN_LOCALVARSTRING => Operand::Str(host.local_var_string(&arg_str(&args()?)?)?),
+        // `float(x)`: a number as a float, a string by `atof`.
+        T5_FN_FLOAT => Operand::Float(source_float(
+            args()?.first().ok_or(ExprError::StackUnderflow)?,
+        )),
         // A float truncates, a string is `atoi`.
         T5_FN_INT => Operand::Int(source_int(
             args()?.first().ok_or(ExprError::StackUnderflow)?,
@@ -484,10 +503,13 @@ fn call(op: i32, stack: &mut Vec<Value>, host: &dyn GameQueries) -> Result<Opera
         T5_FN_MENUHASFOCUS => Operand::Int(host.menu_has_focus()?),
         // `isInGame`: a client is in a level, no open menu is a full-screen
         // one and the level is no menu level (`menu_`). The front end
-        // answers 0 too, as Black Ops behaves there (`t5.hud.front_end_in_game`).
+        // answers 0 too, as Black Ops behaves there (`t5.hud.front_end_in_game`),
+        // and so does the multiplayer front end's level.
         T5_FN_ISINGAME => {
             let map = host.dvar_string("mapname")?;
-            let menu_level = map.starts_with("menu_") || map == crate::FRONT_END_LEVEL;
+            let menu_level = map.starts_with("menu_")
+                || map == crate::FRONT_END_LEVEL
+                || map == crate::MP_UI_LEVEL;
             Operand::Int(i32::from(
                 host.in_game()? != 0 && host.fullscreen_menu_open()? == 0 && !menu_level,
             ))

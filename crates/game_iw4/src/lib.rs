@@ -89,6 +89,7 @@ const MODE: ModeRules = ModeRules {
     menu_dvars_reach_server: false,
     runtime_class_slots: true,
     ui3d: None,
+    level_menu: None,
 };
 
 impl game_api::GameVision for Iw4 {

@@ -231,6 +231,7 @@ const ZOMBIES_MODE: ModeRules = ModeRules {
     menu_dvars_reach_server: false,
     runtime_class_slots: false,
     ui3d: None,
+    level_menu: None,
 };
 
 impl game_api::GameModes for T7 {

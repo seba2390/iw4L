@@ -503,15 +503,31 @@ fn run_level_reload(
     }
 }
 
-/// `ChangeLevel`: the named level of the current map's game loads next.
+/// `ChangeLevel`: the named level of the current map's game loads next,
+/// under the gametype it names, else the match's own.
 fn run_level_change(
     mut called: MessageReader<frame::LevelChangeCalled>,
     manifest: Option<Res<crate::SessionContentManifest>>,
     mut transition: ResMut<SessionSwapRequest>,
+    mut commands: Commands,
 ) {
-    let Some(frame::LevelChangeCalled(map)) = called.read().last().cloned() else {
+    let Some(frame::LevelChangeCalled(map, gametype)) = called.read().last().cloned() else {
         return;
     };
+    if let Some(gametype) = gametype {
+        let Some(mode) = sim::HostGameModeSelection::from_token(&gametype) else {
+            diag::info!(
+                Sim,
+                "session: changeLevel refused — unknown gametype `{gametype}`"
+            );
+            return;
+        };
+        asset_transport::select_zombies_start(Some(asset_transport::ZombiesStart {
+            gametype,
+            location: None,
+        }));
+        commands.insert_resource(mode);
+    }
     let namespace = manifest.as_ref().and_then(|manifest| match &manifest.map {
         crate::ManifestFact::Known(current) => Some(current.namespace),
         _ => None,

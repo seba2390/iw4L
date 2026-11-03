@@ -87,7 +87,9 @@ pub(crate) struct RoundScript {
     /// The match time after which a failed level loads again.
     pub(crate) reload_after_ms: Option<i64>,
     /// `ChangeLevel`: the level to load and the match time it loads at.
-    pub(crate) change_level: Option<(String, i64)>,
+    /// The level that loads next, the gametype it loads under (`None`:
+    /// this match's) and the level time it loads at.
+    pub(crate) change_level: Option<(String, Option<String>, i64)>,
     pub(crate) shown: BTreeMap<u64, host::presence::Shown>,
     pub(crate) retired_presence: Vec<(crate::ScriptModelId, bool)>,
     /// Map models the server leaves to the client (Black Ops' client-only

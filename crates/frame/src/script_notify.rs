@@ -8,9 +8,10 @@ pub struct ExitLevelCalled;
 pub struct LevelReloadCalled;
 
 /// The match's scripts change to another level of the same game
-/// (`ChangeLevel`): its map name.
+/// (`ChangeLevel`): its map name, and the gametype it loads under when the
+/// change also switches the game's mode (`None`: the match's own).
 #[derive(Message, Clone, Debug, PartialEq, Eq)]
-pub struct LevelChangeCalled(pub String);
+pub struct LevelChangeCalled(pub String, pub Option<String>);
 
 pub fn register_script_notify(app: &mut App) {
     app.add_message::<ExitLevelCalled>();

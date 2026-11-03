@@ -587,6 +587,14 @@ impl SimWorld {
         }
     }
 
+    /// The program's entries have all been entered: a level with none (a
+    /// front end's own level) has started its scripts all the same.
+    pub fn finish_gsc_entries(&mut self) {
+        if let Some(mut runtime) = self.ecs.get_resource_mut::<crate::script::RoundScript>() {
+            runtime.started = true;
+        }
+    }
+
     pub fn start_gsc(
         &mut self,
         name: &str,
