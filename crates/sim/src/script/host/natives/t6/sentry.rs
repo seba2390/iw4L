@@ -267,12 +267,20 @@ fn sentient_team(world: &mut World, id: u64) -> usize {
 /// `tag_aim` (or `tag_turret`) and `tag_aim_animated`, nothing on
 /// `tag_flash`; a model with neither turns only `tag_barrel`'s pitch.
 fn controls(world: &mut World, id: u64, gun: [f32; 2]) -> Vec<(&'static str, [f32; 3])> {
-    let [pitch, yaw] = gun;
     let Some([aim_pitch, aim, turret]) =
         presence::tags_present(world, id, ["tag_aim_pitch", "tag_aim", "tag_turret"])
     else {
         return Vec::new();
     };
+    bone_controls(gun, aim_pitch, aim, turret)
+}
+
+fn bone_controls(
+    [pitch, yaw]: [f32; 2],
+    aim_pitch: bool,
+    aim: bool,
+    turret: bool,
+) -> Vec<(&'static str, [f32; 3])> {
     let mut out = Vec::new();
     let mut rest = pitch;
     if aim_pitch {
@@ -291,6 +299,33 @@ fn controls(world: &mut World, id: u64, gun: [f32; 2]) -> Vec<(&'static str, [f3
     out.push(("tag_aim_animated", [rest, yaw, 0.0]));
     out.push(("tag_flash", [0.0; 3]));
     out
+}
+
+/// The gun's angles on the turrets, for their posed models (and so for what
+/// the clients draw).
+pub(super) fn guns(world: &World, only: Option<u64>) -> Vec<(u64, [f32; 2])> {
+    let Some(turrets) = world.get_resource::<Turrets>() else {
+        return Vec::new();
+    };
+    turrets
+        .0
+        .iter()
+        .filter(|(id, _)| only.is_none_or(|only| only == **id))
+        .map(|(id, turret)| (*id, turret.aim.gun))
+        .collect()
+}
+
+/// The bone control a posed model takes for a gun's angles.
+pub(super) fn pose_controls(
+    gun: [f32; 2],
+    has_tag: &dyn Fn(&str) -> bool,
+) -> Vec<(&'static str, [f32; 3])> {
+    bone_controls(
+        gun,
+        has_tag("tag_aim_pitch"),
+        has_tag("tag_aim"),
+        has_tag("tag_turret"),
+    )
 }
 
 /// A tag's world position and axis with the gun's bone control.
@@ -781,6 +816,16 @@ fn think_one(
 
 /// Every turret's think, once a server frame (the engine's 50 ms).
 pub(super) fn think(world: &mut World) {
+    if super::super::super::players::now_ms(world) % 1000 < i64::from(crate::MATCH_TICK_MS) {
+        for (id, gun) in guns(world, None) {
+            diag::debug!(
+                Sim,
+                "turret {id}: gun pitch {:.0} yaw {:.0}",
+                gun[0],
+                gun[1]
+            );
+        }
+    }
     let ids: Vec<u64> = match world.get_resource::<Turrets>() {
         Some(turrets) if !turrets.0.is_empty() => turrets.0.keys().copied().collect(),
         _ => return,

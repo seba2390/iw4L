@@ -3540,3 +3540,16 @@ fn entities_by_key(world: &mut World, args: &[Value]) -> Result<Vec<u64>, String
         })
         .collect())
 }
+
+/// The guns of Black Ops 2's turrets, by entity (pitch and yaw).
+pub(crate) fn turret_guns(world: &World, only: Option<u64>) -> Vec<(u64, [f32; 2])> {
+    sentry::guns(world, only)
+}
+
+/// The bone control a turret's posed model takes for its gun's angles.
+pub(crate) fn turret_pose_controls(
+    gun: [f32; 2],
+    has_tag: &dyn Fn(&str) -> bool,
+) -> Vec<(&'static str, [f32; 3])> {
+    sentry::pose_controls(gun, has_tag)
+}
