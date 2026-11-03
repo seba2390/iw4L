@@ -52,6 +52,14 @@ pub fn merge_presented_projectiles(
 }
 
 impl PresentedProjectile {
+    /// Its entity number; none (-1) for a predicted one.
+    pub fn number(&self) -> i32 {
+        match self {
+            Self::Authoritative(p) => p.entnum,
+            Self::Predicted { .. } => -1,
+        }
+    }
+
     pub fn owner(&self) -> ClientId {
         match self {
             Self::Authoritative(p) => p.owner,

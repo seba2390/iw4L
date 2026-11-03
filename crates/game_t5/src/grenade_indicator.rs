@@ -46,8 +46,8 @@ pub(crate) fn draw(view: &GrenadeIndicatorView<'_>) -> GrenadeIndicators {
     let mut out = GrenadeIndicators::default();
     out.unrun.push(unknown!(
         "t5.hud.grenade_indicators",
-        "Black Ops' grenade indicators are drawn, but the height test does not take the clearance above the player (a trace up from his origin every 50 ms, plus 70) as a limit; the throwback icon (the player's cursor hint on the grenade) is not drawn, the cursor hint not being kept; and the screen scale Black Ops multiplies in is taken as 1",
-        "the client trace up, the cursor hint in the player state and that scale (executable)"
+        "Black Ops' grenade indicators are drawn, but the height test does not take the clearance above the player (a trace up from his origin every 50 ms, plus 70) as a limit; and the screen scale Black Ops multiplies in is taken as 1",
+        "the client trace up and that scale (executable)"
     ));
     let dvar = |name: &str, default: f32| (view.dvar)(name).unwrap_or(default);
     let mut player = *view.player;
@@ -99,17 +99,20 @@ pub(crate) fn draw(view: &GrenadeIndicatorView<'_>) -> GrenadeIndicators {
         if dx * dx + dy * dy + dz * dz > speed_limit {
             continue;
         }
-        let material = if grenade_like(def.proj_explosion_type) {
-            if def.has_icon {
-                IndicatorMaterial::WeaponIcon(missile.weapon)
+        let material =
+            if ps.throw_back_grenade_time_left != 0 && ps.cursor_hint_ent_index == missile.number {
+                IndicatorMaterial::Named("hud_grenadethrowback")
+            } else if grenade_like(def.proj_explosion_type) {
+                if def.has_icon {
+                    IndicatorMaterial::WeaponIcon(missile.weapon)
+                } else {
+                    IndicatorMaterial::Named("hud_grenadeicon")
+                }
+            } else if dvar("cg_hudGrenadeIconEnabledFlash", 0.0) != 0.0 {
+                IndicatorMaterial::Named("hud_flashbangicon")
             } else {
-                IndicatorMaterial::Named("hud_grenadeicon")
-            }
-        } else if dvar("cg_hudGrenadeIconEnabledFlash", 0.0) != 0.0 {
-            IndicatorMaterial::Named("hud_flashbangicon")
-        } else {
-            continue;
-        };
+                continue;
+            };
         let fuse = if def.fuse_time_ms != 0 {
             ((view.time - missile.time) as f32 / def.fuse_time_ms as f32).clamp(0.0, 1.0)
         } else {

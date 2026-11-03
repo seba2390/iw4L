@@ -226,9 +226,10 @@ pub(crate) fn fire_grenade(
             along * inv * vel[2],
         ]
     });
-    spawn_grenade(
+    let grenade = spawn_grenade(
         owner, weapon, def, muzzle, vel, carried, true, false, None, None, fuse, world,
     );
+    crate::throwback::thrown(owner, grenade, world);
 }
 
 /// A grenade launcher's shot by a player: the grenade leaves along the aim
@@ -803,12 +804,6 @@ pub(crate) fn bounce(
     gaps: &mut Vec<&'static Unknown>,
 ) {
     let vel = missile.position.delta;
-    eprintln!(
-        "TEMPBOUNCE stick {} struck {} loc {}",
-        def.stickiness(),
-        hit_id(trace),
-        trace.hit_location
-    );
     if !bounce_off(missile, def, state, trace, world, gaps) || trace.start_solid {
         return;
     }

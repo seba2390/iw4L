@@ -12,6 +12,7 @@ use game_api::movement::{ENTITY_NONE, ENTITY_WORLD, MoveSignal};
 use game_api::{Unknown, unknown};
 use movement_t5::PlayerState;
 use movement_t5::events::event as ev;
+use movement_t5::state::ENTITYNUM_NONE;
 
 /// What a bullet stops at: solids, glass, bodies and the like.
 const BULLET_MASK: u32 = 0x0280_e833;
@@ -240,6 +241,11 @@ pub(crate) fn server_events(
             }
             // Black Ops' scripts hear a detonation key as the player's notify.
             ev::DETONATE => world.notify(ps.client_num, "detonate", &[]),
+            ev::SWITCH_OFFHAND if !zombies => {
+                if crate::throwback::pick_up(ps.client_num, parm as u32, world) {
+                    gaps.push(crate::throwback::throwback_unknown());
+                }
+            }
             ev::GRENADE_SUICIDE => grenade_suicide(ps, zombies, &mut gaps, world),
             ev::FALL_DAMAGE..=FALL_DAMAGE_LAST => fall_damage(ps.client_num, parm, world),
             _ => {}
@@ -1498,8 +1504,17 @@ fn grenade_suicide(
             .map(|w| (w.def.clone(), w.variant.clone()))
             && let Some(def) = WeaponDefView::new(&def_bytes, &variant_bytes)
         {
+            // One thrown back and let go off in the hand is still its first
+            // owner's.
+            let owner = if ps.throw_back_grenade_owner != ENTITYNUM_NONE
+                && world.player(ps.throw_back_grenade_owner).is_some()
+            {
+                ps.throw_back_grenade_owner
+            } else {
+                client
+            };
             crate::grenade::drop_grenade(
-                client,
+                owner,
                 weapon,
                 &def,
                 ps.origin,

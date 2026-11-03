@@ -338,6 +338,7 @@ fn game_state(
     b.i(&mut ps.grenade_time_left, write);
     b.i(&mut ps.throw_back_grenade_owner, write);
     b.i(&mut ps.throw_back_grenade_time_left, write);
+    b.i(&mut ps.cursor_hint_ent_index, write);
     b.i(&mut ps.weapon_restrict_kick_time, write);
     b.word(&mut ps.offhand_index, write);
     b.word(&mut ps.last_weapon_alt_mode_switch, write);
@@ -1182,6 +1183,12 @@ impl PlayerMovement for T5Movement {
             self.zombies,
             world,
         )
+    }
+
+    fn use_search(&self, client: i32, world: &mut dyn game_api::fire::FireWorld) {
+        if !self.zombies {
+            crate::throwback::use_search(client, world);
+        }
     }
 
     fn radius_damage(

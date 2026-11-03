@@ -74,10 +74,9 @@ const PERKS: [&str; 52] = [
 /// the client's poison overlay. No perk row of
 /// Black Ops' stats table and no script gives `grenadepulldeath` or
 /// `reconnaissance`.
-const ENGINE_PERKS: [&str; 6] = [
+const ENGINE_PERKS: [&str; 5] = [
     "specialty_bulletflinch",
     "specialty_grenadepulldeath",
-    "specialty_pin_back",
     "specialty_reconnaissance",
     "specialty_showenemyequipment",
     "specialty_twogrenades",

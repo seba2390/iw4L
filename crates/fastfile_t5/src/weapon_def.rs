@@ -963,6 +963,12 @@ impl<'a> WeaponDefView<'a> {
         self.def[0x572] != 0
     }
 
+    /// The byte before `retrievable`: a live grenade of this weapon can be
+    /// thrown back.
+    pub fn throwback(&self) -> bool {
+        self.def[0x56c] != 0
+    }
+
     /// `retrievable`
     pub fn retrievable(&self) -> bool {
         self.def[0x56d] != 0
