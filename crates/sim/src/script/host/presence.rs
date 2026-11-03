@@ -221,6 +221,13 @@ fn settle_rows(world: &mut World, only: Option<u64>) {
         Vec<(Arc<str>, Arc<str>)>,
         u32,
     );
+    // What the last presentation showed: a destructible's stage model replaces
+    // the row's without touching the entity's `model`, so only a `setmodel` not
+    // presented yet may change the row here.
+    let presented: BTreeMap<ScriptModelId, Option<Arc<str>>> = placed
+        .iter()
+        .filter_map(|row| Some((row.1, runtime.shown.get(&row.0)?.model.clone())))
+        .collect();
     let wanted: BTreeMap<ScriptModelId, SettledRow> = placed
         .into_iter()
         .map(
@@ -312,10 +319,23 @@ fn settle_rows(world: &mut World, only: Option<u64>) {
         row.hidden = hidden;
         row.solid = solid;
         if let Some(model) = model {
-            if row.dobj.is_none() {
-                let cap = model_caps.get(model).cloned().flatten();
-                row.dobj = Some(AuthorityDObjState::at_pose(model, cap, origin, angles));
-                row.followed_pose = Some((origin, angles));
+            let cap = || model_caps.get(model).cloned().flatten();
+            match row.dobj.as_mut() {
+                None => {
+                    row.dobj = Some(AuthorityDObjState::at_pose(model, cap(), origin, angles));
+                    row.followed_pose = Some((origin, angles));
+                }
+                Some(dobj) => {
+                    let id = row.owner.script_model();
+                    let shown = id.and_then(|id| presented.get(&id));
+                    let stale = match shown {
+                        Some(shown) => shown.as_ref() != Some(model),
+                        None => dobj.current_model != **model,
+                    };
+                    if stale {
+                        dobj.replace_model(model, cap());
+                    }
+                }
             }
             if let Some(dobj) = row.dobj.as_mut() {
                 if !dobj.attachments_match(attachments) {
