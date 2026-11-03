@@ -102,6 +102,7 @@ impl WeaponCatalog {
             world_model: weapon
                 .def_asset_array_name(fastfile_t6::weapon::def::WORLD_MODEL, 0)
                 .map(t6_model_name),
+            alternate_world_models: Default::default(),
             projectile_model: weapon
                 .def_asset_name(fastfile_t6::weapon::def::PROJECTILE_MODEL)
                 .map(t6_model_name)

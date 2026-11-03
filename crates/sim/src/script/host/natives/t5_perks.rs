@@ -70,17 +70,17 @@ const PERKS: [&str; 52] = [
 /// the game's movement, fire and damage rules and in `shellshock`,
 /// `nottargetedbyai` in the Sentry Gun's search and a dog's choice of enemy,
 /// `scavenger` in the item touch, `noname` in the crosshair's name,
-/// `loudenemies` in the client's mantle and dive sounds and `gas_mask` in
-/// the client's poison overlay. No perk row of
+/// `loudenemies` in the client's mantle and dive sounds, `gas_mask` in the
+/// client's poison overlay, `bulletflinch` in the view's damage kick,
+/// `pin_back` in the throwback, `quieter` in the footstep AI events and
+/// `twogrenades` in the retrievable model. No perk row of
 /// Black Ops' stats table and no script gives `grenadepulldeath` or
 /// `reconnaissance`.
-const ENGINE_PERKS: [&str; 5] = [
-    "specialty_bulletflinch",
-    "specialty_grenadepulldeath",
-    "specialty_reconnaissance",
-    "specialty_showenemyequipment",
-    "specialty_twogrenades",
-];
+const ENGINE_PERKS: [&str; 2] = ["specialty_grenadepulldeath", "specialty_reconnaissance"];
+
+/// Hacker: its client rule swaps an enemy turret's model, which is not run;
+/// the detect models of claymores and the like are the scripts' own.
+const HACKER: &str = "specialty_showenemyequipment";
 
 /// Each player's perk bits, by client number. The client's player info
 /// takes a copy every frame.
@@ -150,6 +150,12 @@ pub(crate) fn register(registry: &mut NativeRegistry) {
             diag::warn!(
                 Sim,
                 "t5.mp.perk_effects: {perk}'s effect in Black Ops' own movement and weapon code is not applied"
+            );
+        }
+        if name.eq_ignore_ascii_case(HACKER) {
+            diag::warn!(
+                Sim,
+                "t5.mp.hacker_turret_model: an enemy turret does not draw with its detect model"
             );
         }
         Ok(Value::Undefined)

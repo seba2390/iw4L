@@ -18,6 +18,7 @@ pub(crate) static CODE_HUD: GameCodeHud = ZOMBIES_CODE_HUD;
 
 /// Black Ops multiplayer's: zombies' pieces and its kill feed.
 pub(crate) static MP_CODE_HUD: GameCodeHud = GameCodeHud {
+    retrievable_model: Some(retrievable_model),
     killfeed: Some(&crate::killfeed::KILLFEED),
     compass: Some(&crate::compass::COMPASS),
     names: Some(&NAMES),
@@ -108,6 +109,7 @@ const ZOMBIES_CODE_HUD: GameCodeHud = GameCodeHud {
     weapon_info: Some(&crate::weapon_info::WEAPON_INFO),
     command_hint: Some(command_hint),
     grenade_indicators: Some(crate::grenade_indicator::draw),
+    retrievable_model: None,
     visibility_bit: Some(visibility_bit),
     killfeed: None,
     compass: None,
@@ -611,6 +613,44 @@ fn crosshair_of(view: &CrosshairView<'_>, zombies: bool) -> Crosshair {
         });
     }
     out
+}
+
+/// A resting retrievable missile draws with its weapon's third world model
+/// for a player who could pick it up: one holding the weapon with none left,
+/// or at most one with Warlord Pro (`specialty_twogrenades`), once it has
+/// rested `cg_retrieveHintTime`, or `cg_retrieveHintTimeStuck` when stuck in
+/// an entity.
+fn retrievable_model(view: &game_api::hud::RetrievableView<'_>) -> bool {
+    let mut player = *view.player;
+    let (ps, _) = crate::movement::unpack(&mut player);
+    if !ps
+        .held_weapons
+        .iter()
+        .any(|held| held.weapon == view.weapon)
+    {
+        return false;
+    }
+    let count = |slots: &[movement_t5::state::AmmoSlot], index| {
+        slots
+            .iter()
+            .find(|slot| slot.index == index)
+            .map_or(0, |slot| slot.count)
+    };
+    let ammo =
+        count(&ps.ammo_not_in_clip, view.ammo_index) + count(&ps.ammo_in_clip, view.clip_index);
+    let limit = i32::from(movement_t5::perks::mp::has(
+        &ps,
+        movement_t5::perks::mp::TWO_GRENADES,
+    ));
+    let Some(resting) = view.resting_ms else {
+        return false;
+    };
+    let wait = if view.stuck {
+        (view.dvar)("cg_retrieveHintTimeStuck").unwrap_or(2000.0)
+    } else {
+        (view.dvar)("cg_retrieveHintTime").unwrap_or(0.0)
+    };
+    ammo <= limit && resting as f32 > wait
 }
 
 /// The solo zombies scoreboard: name, points, kills and headshots. Online

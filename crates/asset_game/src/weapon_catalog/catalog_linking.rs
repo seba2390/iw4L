@@ -442,10 +442,15 @@ impl WeaponCatalog {
     pub fn projectile_model_hints(&self) -> HashSet<asset_model::ProjectileMeshKey> {
         self.entries
             .iter()
-            .filter_map(|entry| {
-                let name = entry.projectile_model.as_deref()?;
-                (!name.is_empty())
-                    .then(|| asset_model::ProjectileMeshKey::new(entry.namespace, name))
+            .flat_map(|entry| {
+                [&entry.projectile_model]
+                    .into_iter()
+                    .chain(&entry.alternate_world_models)
+                    .filter_map(|name| {
+                        let name = name.as_deref()?;
+                        (!name.is_empty())
+                            .then(|| asset_model::ProjectileMeshKey::new(entry.namespace, name))
+                    })
             })
             .collect()
     }

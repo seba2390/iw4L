@@ -688,6 +688,8 @@ struct CatalogWeapon {
     pub grenade_weapon: Option<String>,
 
     pub world_model: Option<String>,
+    /// A world model slot past the first a missile can draw with.
+    pub alternate_world_models: [Option<String>; 2],
 
     pub camo_models: WeaponCamoModels,
     pub skin_parent: Option<String>,
@@ -1492,6 +1494,7 @@ struct WeaponRow {
     fpv_assemblies: Vec<Option<Result<crate::FpvSideAssemblies, String>>>,
 
     world_model: Option<String>,
+    alternate_world_models: [Option<String>; 2],
 
     world_model_edge: AssetEdge<WorldWeaponSpace>,
 
@@ -1632,6 +1635,7 @@ impl Default for WeaponRow {
             camo_world_edges: Vec::new(),
             attachment_world_model_edges: Vec::new(),
             attachment_world_mounts: Vec::new(),
+            alternate_world_models: Default::default(),
             projectile_model: None,
             projectile_model_edge: AssetEdge::Absent,
             rocket_model: None,
