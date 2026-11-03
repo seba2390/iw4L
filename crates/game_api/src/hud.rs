@@ -701,6 +701,8 @@ pub struct GrenadeIndicatorView<'a> {
 /// A missile as the grenade indicators read it.
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct IndicatorMissile {
+    /// Its entity number.
+    pub number: i32,
     pub weapon: u32,
     pub origin: [f32; 3],
     /// Its trajectory's velocity.

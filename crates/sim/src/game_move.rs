@@ -292,6 +292,10 @@ pub(crate) fn run(
         outcome.gaps.extend(gaps);
     }
     if world.publishes_snapshot() {
+        let mut around = crate::game_fire::MatchFireWorld::new(world, tick, Some(id));
+        movement.use_search(id.0 as i32, &mut around);
+    }
+    if world.publishes_snapshot() {
         for signal in &outcome.signals {
             if let Some((kind, surface)) = movement.footstep(signal, &player) {
                 crate::script::client::footstep(world.ecs(), id, kind, surface, cmd.server_time);

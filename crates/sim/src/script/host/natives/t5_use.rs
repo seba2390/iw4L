@@ -3,8 +3,9 @@
 //! ranked by distance and facing, then the pick of the first one the
 //! player may use, whose hint shows), and fires it when the player presses
 //! use. Script-made usable entities and weapons on the ground (which
-//! `t5_items` takes) are searched too. Its other usables (missiles, turrets
-//! and actors) are not run; the zombie maps' scripts make none.
+//! `t5_items` takes) are searched too. The game crate searches live grenades
+//! for multiplayer's throwback; its other usables (turrets and actors) are
+//! not run; the zombie maps' scripts make none.
 
 use crate::frame::FrameWorld;
 use crate::script::{NativeRegistry, RoundScript};

@@ -315,6 +315,7 @@ pub(crate) fn update_grenade_indicators(
         .presented_projectiles()
         .iter()
         .map(|row| game_api::hud::IndicatorMissile {
+            number: row.number(),
             weapon: row.weapon(),
             origin: row.origin_at(time),
             delta: row.pos().tr_delta,

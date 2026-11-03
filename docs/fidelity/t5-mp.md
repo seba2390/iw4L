@@ -191,6 +191,16 @@ Each open section names the issue that works it.
       (10 s by default), so a client that comes to see it later still
       starts the effect; here a late viewer sees nothing. The direction
       is not quantised to Black Ops' byte directions.
+- [ ] **V** `t5.mp.throwback`: a grenade is thrown back as Black Ops
+      does (#803), but the server's use search runs for grenades alone: a
+      grenade always comes before a use trigger, where Black Ops ranks them
+      by score (a grenade's less 512, a `trigger_use`'s less 256). Its sight
+      line stops at the world as well as entities, Black Ops' only at
+      entities. The search's gates for the player's turret and vehicle
+      states and two flags not identified (player state +0xe4 bit 28, +0x10
+      bit 20) are not tested, its pickup's `Touch` tests for those states
+      neither, and no `pickup` event is sent to the player. The cursor
+      hint's own text is not drawn, the grenade indicator's icon is.
 - [ ] **G** `t5.mp.perk_effects`: the perks Black Ops' multiplayer
       code tests that have no effect here yet (setting one logs the gap):
       `_showenemyequipment` (Hacker: the client draws an enemy's
@@ -199,10 +209,7 @@ Each open section names the issue that works it.
       with its third world model once `cg_retrieveHintTime`, or
       `cg_retrieveHintTimeStuck` when stuck in an entity, has passed and
       the player could pick it up, holding at most one rather than none;
-      that model swap is not ported for anyone); `_pin_back` (Flak Jacket
-      Pro: a thrown-back grenade keeps at least
-      `perk_grenadeTossBackTimer`, 2500 ms, of fuse; no throwback is
-      ported). No perk row
+      that model swap is not ported for anyone). No perk row
       of Black Ops' stats table and no script gives `_grenadepulldeath`
       (a grenade of `perk_grenadeDeath` dropped when a downed player
       dies) or `_reconnaissance` (compass marks), so a match never sets
@@ -704,6 +711,20 @@ Each open section names the issue that works it.
 
 ## Closed
 
+- [x] **G** Grenade throwback and Flak Jacket Pro's `specialty_pin_back`
+      (#803): each frame the use search puts a live grenade within
+      `player_throwbackInnerRadius` (flat; `perk_throwbackInnerRadius` with
+      the perk) under the player's cursor hint, kept out to
+      `player_throwbackOuterRadius`, slower than
+      `bg_maxGrenadeIndicatorSpeed`, not stuck to anything, an enemy's or
+      the player's own (a teammate's with `scr_team_fftype` on). The frag
+      key then takes it off the ground on what is left of its fuse, at
+      least `perk_grenadeTossBackTimer` with the perk, and scripts hear
+      `grenade_throwback`. One let go off in the hand is its first owner's.
+      The grenade indicator draws `hud_grenadethrowback` on it.
+- [x] **G** Ninja against AI (#806): dogs hear a player's running steps,
+      jumps and landings (`footstep`) and walking steps (`footsteplite`),
+      not a crouched player's or one with `specialty_quieter`.
 - [x] **V** The poison overlay and Tactical Mask (#805): Nova gas'
       `startPoisoning` / `stopPoisoning` set the player's poisoned word;
       the client fades its poison amount toward it at two thirds per
