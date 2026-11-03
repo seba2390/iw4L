@@ -196,7 +196,9 @@ fn occupy_missile_scene_ents(
         _ => None,
     };
     let viewer = local.as_ref().and_then(|local| {
-        let player = snapshot.player(local.0)?.move_player(local.0.0 as i32, false);
+        let player = snapshot
+            .player(local.0)?
+            .move_player(local.0.0 as i32, false);
         let dvars = snapshot.snapshot()?.meta.script_dvars(local.0);
         Some((player, dvars))
     });
@@ -225,7 +227,8 @@ fn occupy_missile_scene_ents(
         else {
             continue;
         };
-        let stuck = matches!(row, net::PresentedProjectile::Authoritative(p) if p.attached_to.is_some());
+        let stuck =
+            matches!(row, net::PresentedProjectile::Authoritative(p) if p.attached_to.is_some());
         let resting_ms = row.authoritative_id().and_then(|id| {
             let [dx, dy, dz] = row.pos().tr_delta;
             if stuck || f64::from(dx * dx + dy * dy + dz * dz) <= MISSILE_REST_SPEED_SQ {

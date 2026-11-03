@@ -904,7 +904,10 @@ impl WeaponRegistry {
     ) -> Option<(crate::AssetNamespace, &str)> {
         let (namespace, _) = self.projectile_model_reference_of(index)?;
         let row = self.rows.get(index as usize)?;
-        let name = row.alternate_world_models.get(slot.checked_sub(1)?)?.as_deref()?;
+        let name = row
+            .alternate_world_models
+            .get(slot.checked_sub(1)?)?
+            .as_deref()?;
         Some((namespace, name))
     }
 

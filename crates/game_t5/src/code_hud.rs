@@ -623,7 +623,11 @@ fn crosshair_of(view: &CrosshairView<'_>, zombies: bool) -> Crosshair {
 fn retrievable_model(view: &game_api::hud::RetrievableView<'_>) -> bool {
     let mut player = *view.player;
     let (ps, _) = crate::movement::unpack(&mut player);
-    if !ps.held_weapons.iter().any(|held| held.weapon == view.weapon) {
+    if !ps
+        .held_weapons
+        .iter()
+        .any(|held| held.weapon == view.weapon)
+    {
         return false;
     }
     let count = |slots: &[movement_t5::state::AmmoSlot], index| {
@@ -632,7 +636,8 @@ fn retrievable_model(view: &game_api::hud::RetrievableView<'_>) -> bool {
             .find(|slot| slot.index == index)
             .map_or(0, |slot| slot.count)
     };
-    let ammo = count(&ps.ammo_not_in_clip, view.ammo_index) + count(&ps.ammo_in_clip, view.clip_index);
+    let ammo =
+        count(&ps.ammo_not_in_clip, view.ammo_index) + count(&ps.ammo_in_clip, view.clip_index);
     let limit = i32::from(movement_t5::perks::mp::has(
         &ps,
         movement_t5::perks::mp::TWO_GRENADES,
