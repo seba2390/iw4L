@@ -520,14 +520,13 @@ Each open section names the issue that works it.
       builtin does not reach them yet. `_explode.csc`'s screen dirt and
       `_cameraspike.csc`'s HUD moves call it; each menu, item and state
       asked for logs the id once (#651).
-- [ ] **V** `t5.csc.extra_camera`: the camera spike's extra camera
-      builtins (`SetExtraCamEntity`, `…Active`, `…Static`, `…Origin`,
-      `…Angles`) check their parameters as `BlackOpsMP.exe` does, but its
-      view (drawn from the camera spike while active, with static while
-      `static` is set), the sound listener moving to it while the spike is
-      toggled, and `IsCameraSpikeToggled` (the player's flag that the
-      server's `SetCameraSpikeActive` sets) are not ported; turning the
-      camera on logs the id (#649).
+- [ ] **V** `t5.csc.extra_camera`: the camera spike's extra camera draws its
+      view while the client scripts have it on, and `IsCameraSpikeToggled`
+      reads the server's `SetCameraSpikeActive`. Open: its field of view stays
+      65 (its scripts set none and Black Ops' default is not read), the
+      static (`SetExtraCamStatic`) does not draw, and the sound listener does
+      not move to the spike while toggled. Not verified in a run (#848): the placing and the view
+      on screen.
 - [ ] **V** `t5.csc.filters`: the client keeps what the filter and overlay
       builtins check (`map_material`'s 64 slots; three filters of 16
       passes, three overlays, with Black Ops' ranges and usage errors), but
