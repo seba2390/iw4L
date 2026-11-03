@@ -213,6 +213,8 @@ pub struct MenuItem {
     pub anim_states: Vec<MenuAnimState>,
     /// A Black Ops list box's rows and looks.
     pub list: Option<MenuList>,
+    /// The item does not show until a script shows it (`visible 0`).
+    pub starts_hidden: bool,
 }
 
 /// A list box: its rows come from `feeder`, a number the game answers.
