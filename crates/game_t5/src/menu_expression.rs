@@ -86,6 +86,11 @@ const T5_FN_GETPROITEMVERSIONCOST: i32 = 433;
 const T5_FN_ISITEMEQUIPPED: i32 = 336;
 const T5_FN_ISATTACHMENTALLOWEDONITEMINDEX: i32 = 437;
 const T5_FN_GETNUMSORTEDITEMSEQUIPPED: i32 = 434;
+const T5_FN_GETDEFAULTCLASSSLOT: i32 = 153;
+const T5_FN_ISGUEST: i32 = 324;
+const T5_FN_ARESTATSFETCHED: i32 = 318;
+const T5_FN_INLOBBY: i32 = 49;
+const T5_FN_DVARFLOAT: i32 = 32;
 const T5_FN_GETFEEDERDATA: i32 = 147;
 const T5_FN_GETFEEDERCOUNT: i32 = 337;
 const T5_FN_TEAM: i32 = 43;
@@ -638,6 +643,19 @@ fn call(op: i32, stack: &mut Vec<Value>, host: &dyn GameQueries) -> Result<Opera
                 host.in_game()? != 0 && host.fullscreen_menu_open()? == 0 && !menu_level,
             ))
         }
+        // Its handler answers 0, always.
+        T5_FN_ISGUEST => Operand::Int(0),
+        // IW4L keeps the stats in the profile on disk, read before any menu.
+        T5_FN_ARESTATSFETCHED => Operand::Int(1),
+        // A client connected to a level; the front end's own level is none.
+        T5_FN_INLOBBY => {
+            let map = host.dvar_string("mapname")?;
+            let menu_level = map.starts_with("menu_")
+                || map == crate::FRONT_END_LEVEL
+                || map == crate::MP_UI_LEVEL;
+            Operand::Int(i32::from(host.in_game()? != 0 && !menu_level))
+        }
+        T5_FN_DVARFLOAT => Operand::Float(atof(&host.dvar_string(&arg_str(&args()?)?)?)),
         // The local profile: IW4L keeps no Live identity or clan.
         T5_FN_GETSELFGAMERTAG => Operand::Str(host.dvar_string("name")?),
         T5_FN_GETXUID => Operand::Str("0".to_owned()),
@@ -694,6 +712,7 @@ fn profile_function_name(op: i32) -> Option<&'static str> {
         T5_FN_GETPROITEMVERSIONCOST => "getproitemversioncost",
         T5_FN_ISITEMEQUIPPED => "isitemequipped",
         T5_FN_ISATTACHMENTALLOWEDONITEMINDEX => "isattachmentallowedonitemindex",
+        T5_FN_GETDEFAULTCLASSSLOT => "getdefaultclassslot",
         _ => return None,
     })
 }
