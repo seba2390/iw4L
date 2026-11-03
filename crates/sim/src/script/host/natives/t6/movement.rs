@@ -64,6 +64,8 @@ const PILE_HEIGHT_SQ: f32 = 6_400.0;
 const PILE_TOUCH_HEIGHT: f32 = 80.0;
 const PILE_MIN_MOVE_SQ: f32 = 2.25;
 const PILE_MOVED_SHARE: f32 = 0.25;
+/// A path request counts a path ending this near its point (squared) as there.
+const POINT_NEAR_SQ: f32 = 4.0;
 /// How fast a species counts itself when it stands still: 190 for a zombie,
 /// 300 for a dog.
 const ZOMBIE_SPEED: f32 = 190.0;
@@ -1315,25 +1317,7 @@ fn think_one(world: &mut World, id: u64) -> Result<(), String> {
             path.as_ref().map(Vec::len)
         );
         match path {
-            Some(path) => {
-                let first = path.first().map(|w| w.at);
-                let follow = follow_path(world, id, at, &path);
-                let state = movement(world, id);
-                state.look = follow.look;
-                state.follow = Some(follow);
-                state.path = path;
-                state.arrival = None;
-                state.path_goal = (!state.path.is_empty()).then_some(goal);
-                sync_path(state);
-                let mut runtime = world.resource_mut::<RoundScript>();
-                runtime.set_object_field(id, "pathstartpos", Value::Vector(at));
-                runtime.set_object_field(id, "pathgoalpos", Value::Vector(goal));
-                runtime.set_object_field(
-                    id,
-                    "lookaheadnodepos",
-                    first.map_or(Value::Undefined, Value::Vector),
-                );
-            }
+            Some(path) => install_path(world, id, at, goal, path),
             None => {
                 drop_path(movement(world, id));
                 {
@@ -1553,6 +1537,62 @@ pub(super) fn replan(world: &mut World, id: u64) {
     state.planned = false;
 }
 
+/// The engine's request for a path to a point: none for a linked actor; a
+/// path ending within 2 units of it stays, unless a traversal lies ahead or it
+/// was cut short; an actor already there has none.
+fn path_to_point(world: &mut World, id: u64, point: [f32; 3]) {
+    let at = origin_of(world, id);
+    let linked = world
+        .resource::<RoundScript>()
+        .entities
+        .get(&id)
+        .is_some_and(|entity| entity.linked_to.is_some());
+    if linked {
+        drop_path(movement(world, id));
+        return;
+    }
+    let reaches = |to: [f32; 3]| {
+        (to[2] - point[2]).powi(2) <= PILE_HEIGHT_SQ && flat_sq(to, point) <= POINT_NEAR_SQ
+    };
+    if movement(world, id).follow.is_some() {
+        let state = movement(world, id);
+        let end = state.path_goal;
+        let cut = state.follow.as_ref().is_some_and(Follow::truncated);
+        let path = state.path.clone();
+        let crossing = (0..path.len()).any(|index| negotiation(world, &path, index).is_some());
+        if !cut && !crossing && end.is_some_and(reaches) {
+            return;
+        }
+        drop_path(movement(world, id));
+    } else if reaches(at) {
+        return;
+    }
+    if let Some(path) = plan(world, id, at, point) {
+        install_path(world, id, at, point, path);
+    }
+}
+
+/// The actor's path becomes one planned to `goal` from `at`.
+fn install_path(world: &mut World, id: u64, at: [f32; 3], goal: [f32; 3], path: Vec<Waypoint>) {
+    let first = path.first().map(|w| w.at);
+    let follow = follow_path(world, id, at, &path);
+    let state = movement(world, id);
+    state.look = follow.look;
+    state.follow = Some(follow);
+    state.path = path;
+    state.arrival = None;
+    state.path_goal = (!state.path.is_empty()).then_some(goal);
+    sync_path(state);
+    let mut runtime = world.resource_mut::<RoundScript>();
+    runtime.set_object_field(id, "pathstartpos", Value::Vector(at));
+    runtime.set_object_field(id, "pathgoalpos", Value::Vector(goal));
+    runtime.set_object_field(
+        id,
+        "lookaheadnodepos",
+        first.map_or(Value::Undefined, Value::Vector),
+    );
+}
+
 /// `pushplayer`: `1` takes players' bodies out of the actor's move, `0` puts
 /// them back.
 pub(super) fn set_through_bodies(world: &mut World, id: u64, through: bool) {
@@ -1618,30 +1658,23 @@ pub(super) fn register(registry: &mut NativeRegistry) {
         Ok(Value::Int(length as i32))
     });
 
-    // gscm_calcpathlength(point): the length of the actor's path to the
-    // point (an int), 0 when no path joins them.
+    // gscm_calcpathlength(point): the actor's own path becomes one to the
+    // point, and the answer is its number of points (0 with no path).
     registry.register(
         Namespace::Method,
         "calcpathlength",
         |world, receiver, args| {
             let id = actor(world, receiver).map_err(|_| "not an actor".to_owned())?;
-            let Some(Value::Vector(goal)) = args.first() else {
+            let Some(Value::Vector(point)) = args.first() else {
                 return Err("calcpathlength expects a point".into());
             };
-            let from = origin_of(world, id);
-            let Some(path) = plan(world, id, from, *goal) else {
-                return Ok(Value::Int(0));
-            };
-            let mut length = 0.0;
-            let mut at = from;
-            for point in &path {
-                length += (0..3)
-                    .map(|i| (point.at[i] - at[i]).powi(2))
-                    .sum::<f32>()
-                    .sqrt();
-                at = point.at;
-            }
-            Ok(Value::Int(length as i32))
+            path_to_point(world, id, *point);
+            Ok(Value::Int(
+                movement(world, id)
+                    .follow
+                    .as_ref()
+                    .map_or(0, |follow| follow.len() as i32),
+            ))
         },
     );
     registry.on_tick(think);
