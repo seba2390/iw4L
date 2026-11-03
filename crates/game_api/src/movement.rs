@@ -959,6 +959,9 @@ pub trait PlayerMovement: Sync {
         Vec::new()
     }
 
+    /// The server's use search for a player, once a command has run.
+    fn use_search(&self, _client: i32, _world: &mut dyn crate::fire::FireWorld) {}
+
     /// A blast by the game's own rules; `None` when the game has none and
     /// the match applies its own.
     fn radius_damage(

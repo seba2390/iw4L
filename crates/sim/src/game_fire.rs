@@ -949,6 +949,20 @@ impl FireWorld for MatchFireWorld<'_, '_> {
         Some(entnum)
     }
 
+    fn game_missiles(&mut self) -> Vec<GameMissile> {
+        self.world
+            .ecs_ref()
+            .get_resource::<GameMissiles>()
+            .map_or_else(Vec::new, |missiles| missiles.0.values().copied().collect())
+    }
+
+    fn remove_game_missile(&mut self, entity: i32) {
+        if let Some(mut missiles) = self.world.ecs().get_resource_mut::<GameMissiles>() {
+            missiles.0.remove(&entity);
+        }
+        let _ = self.world.despawn_projectile(entity);
+    }
+
     fn guided_input(&mut self, entity: i32) -> Option<game_api::fire::GuidedInput> {
         let id = self.client(entity)?;
         Some(crate::script::host::natives::t5_guided::guided_input(

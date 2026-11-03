@@ -278,6 +278,14 @@ pub trait FireWorld {
     /// `None` when the match has no room for it.
     fn spawn_missile(&mut self, missile: GameMissile) -> Option<i32>;
 
+    /// The game's missiles in the match.
+    fn game_missiles(&mut self) -> Vec<GameMissile> {
+        Vec::new()
+    }
+
+    /// Takes a game's missile out of the match with no explosion.
+    fn remove_game_missile(&mut self, _entity: i32) {}
+
     /// What a player's command says to the missile they steer.
     fn guided_input(&mut self, _entity: i32) -> Option<GuidedInput> {
         None

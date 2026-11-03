@@ -50,6 +50,7 @@ pub mod mp {
     pub const FAST_RELOAD: u32 = 18;
     pub const FAST_WEAPON_SWITCH: u32 = 19;
     pub const LONGER_SPRINT: u32 = 30;
+    pub const PIN_BACK: u32 = 36;
     pub const QUIETER: u32 = 38;
     pub const SPRINT_RECOVERY: u32 = 46;
     pub const UNLIMITED_SPRINT: u32 = 51;

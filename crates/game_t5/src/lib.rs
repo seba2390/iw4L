@@ -29,6 +29,7 @@ mod radius;
 mod shake;
 mod shock;
 mod surface;
+mod throwback;
 mod top_down;
 mod tracer;
 mod turret;
