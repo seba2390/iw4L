@@ -21,7 +21,7 @@ const HEADER_BITS: i64 = 0x140;
 const VERSION_AT: usize = 4;
 /// The header's byte whose low bit a changed value sets.
 const CHANGED_AT: usize = 8;
-const MAX_PATH: usize = 8;
+pub(super) const MAX_PATH: usize = 8;
 /// A member only the server writes.
 const SERVER_PERMISSION: u32 = 2;
 const STRUCT_KINDS: [u32; 2] = [6, 7];
@@ -171,7 +171,7 @@ pub(super) fn step_name(layout: &BitLayout, at: Cursor, name: &str) -> Option<Cu
 
 /// The path `keys` walked from the root as `getdstat` and `setdstat` walk
 /// it; `builtin` names the builtin in the errors.
-fn walk(layout: &BitLayout, keys: &[Value], builtin: &str) -> Result<Cursor, String> {
+pub(super) fn walk(layout: &BitLayout, keys: &[Value], builtin: &str) -> Result<Cursor, String> {
     let mut at = ROOT;
     for key in keys {
         let current = member(layout, at.member);
@@ -272,7 +272,7 @@ pub(super) fn read_int(m: &BitMember, at: Cursor, buffer: &[u8]) -> Option<u32> 
     Some(m.min.wrapping_add(read_bits(buffer, offset, bits)))
 }
 
-fn read_u64(m: &BitMember, at: Cursor, buffer: &[u8]) -> Option<u64> {
+pub(super) fn read_u64(m: &BitMember, at: Cursor, buffer: &[u8]) -> Option<u64> {
     let (offset, half) = span(at, element_bits(m) / 2)?;
     let low = read_bits(buffer, offset, half);
     let high = read_bits(buffer, offset + 32, half);
@@ -281,7 +281,7 @@ fn read_u64(m: &BitMember, at: Cursor, buffer: &[u8]) -> Option<u64> {
 
 /// A string member's bytes up to the first zero; it reads all of the
 /// member's bits, at most 64 bytes.
-fn read_string(m: &BitMember, at: Cursor, buffer: &[u8]) -> String {
+pub(super) fn read_string(m: &BitMember, at: Cursor, buffer: &[u8]) -> String {
     if at.offset < 0 {
         diag::warn!(Sim, "DDL: Negative offset {}.", at.offset);
         return String::new();

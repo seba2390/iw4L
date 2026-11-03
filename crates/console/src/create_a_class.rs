@@ -4,7 +4,7 @@ use crate::{ConsoleCommand, ConsoleLine, ConsoleRegistry, ConsoleSettings, Conso
 
 /// Black Ops' create-a-class commands, which its menus run with `execnow`:
 /// each edits a custom class in the local profile's stats.
-const COMMANDS: [(&str, Option<&str>, &str); 12] = [
+const COMMANDS: [(&str, Option<&str>, &str); 15] = [
     (
         "equipclass",
         Some("equipClass"),
@@ -64,6 +64,21 @@ const COMMANDS: [(&str, Option<&str>, &str); 12] = [
         "clearattachmentforitematpoint",
         Some("clearAttachmentForItemAtPoint"),
         "clearAttachmentForItemAtPoint <customClassName> <itemIndex> <attachmentPoint> — take an attachment off at a point (1 top, 2 bottom, 3 trigger, 4 muzzle)",
+    ),
+    (
+        "statwriteddl",
+        Some("statWriteDDL"),
+        "statWriteDDL <path…> <value> — write a member of the profile's stats",
+    ),
+    (
+        "statsetbyname",
+        Some("statSetByName"),
+        "statSetByName <statname> <value> — write PlayerStatsList.<statname>",
+    ),
+    (
+        "uploadstats",
+        Some("uploadStats"),
+        "uploadStats — the profile's stats are saved as they change",
     ),
 ];
 

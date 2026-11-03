@@ -70,7 +70,20 @@ const T5_FN_GAMEHOST: i32 = 86;
 const T5_FN_ISVISIBILITYBITSET: i32 = 87;
 const T5_FN_ISSPLITSCREEN: i32 = 88;
 const T5_FN_ISSPLITSCREENHOST: i32 = 89;
+const T5_FN_TABLELOOKUP: i32 = 61;
 const T5_FN_HASINVITES: i32 = 100;
+const T5_FN_ISITEMLOCKED: i32 = 107;
+const T5_FN_ISITEMNEW: i32 = 110;
+const T5_FN_GETITEMNAME: i32 = 112;
+const T5_FN_GETITEMIMAGE: i32 = 113;
+const T5_FN_GETITEMINDEX: i32 = 117;
+const T5_FN_GETSTATBYNAME: i32 = 125;
+const T5_FN_GETDSTAT: i32 = 221;
+const T5_FN_GETITEMEQUIPPEDATTACHMENT: i32 = 261;
+const T5_FN_ISPARTYREADY: i32 = 274;
+const T5_FN_GETATTACHMENTNAME: i32 = 278;
+const T5_FN_ISITEMGROUPNEW: i32 = 290;
+const T5_FN_GETCACITEMINDEX: i32 = 313;
 const T5_FN_ISINTERMISSION: i32 = 104;
 const T5_FN_GETTEXTWIDTH: i32 = 204;
 const T5_FN_ISPROFILESIGNEDIN: i32 = 209;
@@ -417,6 +430,40 @@ fn call(op: i32, stack: &mut Vec<Value>, host: &dyn GameQueries) -> Result<Opera
         // Whether the profile's stats have been fetched: IW4L keeps them in
         // the profile on disk, read before any menu.
         T5_FN_ISDEMONWAREFETCHINGDONE => Operand::Int(1),
+        // Its handler answers 0, always.
+        T5_FN_ISPARTYREADY => Operand::Int(0),
+        // `getDStat(path…)` on the local client's stats.
+        T5_FN_GETDSTAT => host.profile_stat(&args()?)?,
+        // `getStatByName(name)`: `PlayerStatsList.<name>` of the same stats.
+        T5_FN_GETSTATBYNAME => {
+            let name = arg_str(&args()?)?;
+            host.profile_stat(&[Operand::Str("PlayerStatsList".into()), Operand::Str(name)])?
+        }
+        T5_FN_GETITEMINDEX => Operand::Int(host.item_index(&arg_str(&args()?)?)?),
+        T5_FN_GETCACITEMINDEX => cac_item_index(&args()?, host)?,
+        T5_FN_ISITEMLOCKED => host.profile_function("isitemlocked", &args()?)?,
+        T5_FN_ISITEMNEW => host.profile_function("isitemnew", &args()?)?,
+        T5_FN_GETITEMNAME => host.profile_function("getitemname", &args()?)?,
+        T5_FN_GETITEMIMAGE => host.profile_function("getitemimage", &args()?)?,
+        T5_FN_GETATTACHMENTNAME => host.profile_function("getattachmentname", &args()?)?,
+        T5_FN_ISITEMGROUPNEW => host.profile_function("isitemgroupnew", &args()?)?,
+        T5_FN_GETITEMEQUIPPEDATTACHMENT => {
+            host.profile_function("getitemequippedattachment", &args()?)?
+        }
+        // `tableLookup(table, column, value, result column)`, answered while
+        // `useFastFile` (registered 1) holds.
+        T5_FN_TABLELOOKUP => {
+            let args = args()?;
+            let [table, column, value, result] = args.as_slice() else {
+                return Ok(Operand::Str(String::new()));
+            };
+            Operand::Str(host.table_lookup(
+                &source_string(table),
+                source_int(column),
+                &source_string(value),
+                source_int(result),
+            )?)
+        }
         T5_FN_GETLOCALCLIENTNUM => Operand::Int(0),
         T5_FN_MIN | T5_FN_MAX => {
             let args = args()?;
@@ -517,6 +564,46 @@ fn call(op: i32, stack: &mut Vec<Value>, host: &dyn GameQueries) -> Result<Opera
         other => return Err(ExprError::UnsupportedOp(other)),
     })
 }
+
+/// `getCACItemIndex(class, slot)`: the class's item in that slot, read from
+/// `cacLoadouts` (`cacLoadouts` itself as the class names the global slots).
+/// A killstreak slot under `custom_killstreak_mode` 2 reads the custom
+/// killstreak dvar, and `ui_useCustomClassInfo` the custom gametype's class
+/// table, which is not ported.
+fn cac_item_index(args: &[Operand], host: &dyn GameQueries) -> Result<Operand, ExprError> {
+    let [class, slot] = args else {
+        return Ok(Operand::Int(0));
+    };
+    let (class, slot) = (source_string(class), source_string(slot));
+    let killstreak = slot.contains("killstreak");
+    if killstreak && host.dvar_int("custom_killstreak_mode")? == 2 {
+        let last = slot.chars().last().unwrap_or('0');
+        return Ok(Operand::Int(
+            host.dvar_int(&format!("custom_killstreak_{last}"))?,
+        ));
+    }
+    if !killstreak && host.dvar_int("ui_useCustomClassInfo")? != 0 {
+        return Err(ExprError::Unknown(CUSTOM_CLASS_INFO));
+    }
+    let path = if class.eq_ignore_ascii_case("cacLoadouts") {
+        vec![Operand::Str(class), Operand::Str(slot)]
+    } else {
+        vec![
+            Operand::Str("cacLoadouts".into()),
+            Operand::Str(class),
+            Operand::Str(slot),
+        ]
+    };
+    host.profile_stat(&path)
+}
+
+/// The custom gametype's class table (`ui_useCustomClassInfo`).
+const CUSTOM_CLASS_INFO: &str = game_api::unknown!(
+    "t5.hud.custom_class_info",
+    "with `ui_useCustomClassInfo` set, the create-a-class menus read the custom game mode's class table, which is not read",
+    "Black Ops' custom gametype class table (BlackOpsMP.exe)"
+)
+.id;
 
 fn evaluate(tokens: &[T5Token], host: &dyn GameQueries) -> Result<Operand, ExprError> {
     let mut stack: Vec<Value> = Vec::new();

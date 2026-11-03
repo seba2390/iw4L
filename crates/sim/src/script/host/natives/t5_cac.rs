@@ -70,6 +70,8 @@ const ATTACHMENT_FILTER: i32 = 0;
 struct Attachment {
     /// Its index in `ATTACHMENTS`.
     id: usize,
+    /// Column 3, the name its menus show.
+    name: String,
     point: usize,
     cost: i32,
     /// The attachments it goes with, by index (the last, no attachment's,
@@ -113,6 +115,7 @@ fn attachments(table: &StringTable) -> Vec<Attachment> {
         if id != NO_ATTACHMENT {
             out.push(Attachment {
                 id,
+                name: cell(row, 3).to_owned(),
                 point,
                 cost: super::iw4::atoi(cell(row, 12)),
                 compatible,
@@ -740,6 +743,9 @@ pub(crate) fn run(
             | "clearallitemsnew"
             | "clearallattachmentsforitem"
             | "clearattachmentforitematpoint"
+            | "statwriteddl"
+            | "statsetbyname"
+            | "uploadstats"
     ) {
         return None;
     }
@@ -747,6 +753,15 @@ pub(crate) fn run(
 }
 
 fn run_command(world: &mut World, name: &str, args: &[String]) -> Result<Vec<String>, String> {
+    let mut cac = build(world)?;
+    let before = cac.buffer.clone();
+    run_on(world, &mut cac, name, args);
+    finish(world, cac, &before)
+}
+
+/// The create-a-class state of the local profile: its stats (rebuilt as a
+/// match's first read rebuilds them), items, attachments, ranks and dvars.
+fn build(world: &mut World) -> Result<Cac, String> {
     let layout = super::t5_stats::layout(world)
         .ok_or("the match has no ddl_mp/stats.ddl (code_post_gfx_mp)")?;
     let bytes = super::t5_stats::profile_bytes(world, &layout)
@@ -760,7 +775,7 @@ fn run_command(world: &mut World, name: &str, args: &[String]) -> Result<Vec<Str
             })
             .collect()
     });
-    let mut cac = Cac {
+    let cac = Cac {
         buffer: bytes[..BUFFER_BYTES.min(bytes.len())].to_vec(),
         layout,
         items: table(STATS_TABLE).map(items).unwrap_or_else(Vec::new),
@@ -769,8 +784,43 @@ fn run_command(world: &mut World, name: &str, args: &[String]) -> Result<Vec<Str
         dvars: world.resource::<MatchScript>().dvars.clone(),
         messages: RefCell::new(Vec::new()),
     };
-    let before = cac.buffer.clone();
+    Ok(cac)
+}
+
+fn run_on(world: &mut World, cac: &mut Cac, name: &str, args: &[String]) {
     match name {
+        // `statWriteDDL <path…> <value>`: the member the path names takes
+        // the value.
+        "statwriteddl" if args.len() < 2 => {
+            cac.say("DDL: statsDDLTest usage: statsDDLTest <path>".into());
+        }
+        "statwriteddl" => {
+            let (value, path) = args.split_last().unwrap_or((&args[0], &[]));
+            let path: Vec<&str> = path.iter().map(String::as_str).collect();
+            match cac.walk(&path) {
+                Some(at) => {
+                    let value = super::iw4::atoi(value) as u32;
+                    if !set_raw_int(&cac.layout, &mut cac.buffer, at, value) {
+                        cac.say(format!("DDL: could not write {}", path.join(".")));
+                    }
+                }
+                None => cac.say(format!("DDL: Member '{}' not found.", path.join("."))),
+            }
+        }
+        // `statSetByName <name> <value>`: `PlayerStatsList.<name>`.
+        "statsetbyname" if args.is_empty() => {
+            cac.say("statsetbyname usage: statset <statname> <value>".into());
+        }
+        "statsetbyname" => match cac.walk(&["PlayerStatsList", arg(args, 0)]) {
+            Some(at) => {
+                let value = super::iw4::atoi(arg(args, 1)) as u32;
+                set_raw_int(&cac.layout, &mut cac.buffer, at, value);
+            }
+            None => cac.say(format!("DDL: Member '{}' not found.", arg(args, 0))),
+        },
+        // Black Ops sends the stats to its online service; the profile's
+        // stats are saved on this machine as they change.
+        "uploadstats" => {}
         "equipclass" if args.len() < 2 => {
             cac.say("equipclass usage: equipclass <customclassname> <item>".into());
         }
@@ -898,8 +948,13 @@ fn run_command(world: &mut World, name: &str, args: &[String]) -> Result<Vec<Str
             }
         }
     }
+}
+
+/// Saves what a command changed in the profile's stats; the messages the
+/// game printed.
+fn finish(world: &mut World, cac: Cac, before: &[u8]) -> Result<Vec<String>, String> {
     let messages = cac.messages.into_inner();
-    if cac.buffer != before {
+    if cac.buffer != *before {
         if super::t5_stats::profile_received(world) {
             diag::warn!(
                 Sim,
@@ -913,4 +968,219 @@ fn run_command(world: &mut World, name: &str, args: &[String]) -> Result<Vec<Str
         stored.revision += 1;
     }
     Ok(messages)
+}
+
+/// What Black Ops' menus read of the local profile while it plays this
+/// level: its stats (the client buffer `getDStat` reads, as the
+/// create-a-class commands keep it), its items and the level's string
+/// tables.
+pub struct T5MenuData {
+    cac: Cac,
+    tables: Arc<BTreeMap<String, StringTable>>,
+}
+
+/// One step of a stats path a menu names: a member, or an array index.
+pub enum MenuStatKey<'a> {
+    Name(&'a str),
+    Index(i32),
+}
+
+/// A stat as a menu reads it: an integer, or text (a 64-bit value or a
+/// string member).
+pub enum MenuStat {
+    Int(i32),
+    Text(String),
+}
+
+impl T5MenuData {
+    /// `getDStat(path…)`: members of types 0 to 2 read as integers, type 3
+    /// as its 64-bit value's digits, type 5 as its string.
+    pub fn stat(&self, path: &[MenuStatKey<'_>]) -> Result<MenuStat, String> {
+        use super::t5_stats::{MAX_PATH, member, read_string, read_u64, walk};
+        if path.len() > MAX_PATH {
+            return Err("getDStat: path is too deep.".into());
+        }
+        let keys: Vec<crate::script::Value> = path
+            .iter()
+            .map(|key| match key {
+                MenuStatKey::Name(name) => crate::script::Value::String((*name).into()),
+                MenuStatKey::Index(n) => crate::script::Value::Int(*n),
+            })
+            .collect();
+        let (layout, buffer) = (&self.cac.layout, &self.cac.buffer);
+        let at = walk(layout, &keys, "getDStat")?;
+        let Some(m) = member(layout, at.member) else {
+            return Err("getDStat: could not find ddl member.".into());
+        };
+        let leaf = leaf(layout, at);
+        Ok(match m.kind {
+            0..=2 => MenuStat::Int(
+                leaf.and_then(|leaf| read_int(leaf, at, buffer))
+                    .unwrap_or(0) as i32,
+            ),
+            3 => MenuStat::Text(
+                leaf.and_then(|leaf| read_u64(leaf, at, buffer))
+                    .unwrap_or(0)
+                    .to_string(),
+            ),
+            5 => {
+                MenuStat::Text(leaf.map_or_else(String::new, |leaf| read_string(leaf, at, buffer)))
+            }
+            _ => return Err("getDStat: stat type undefined".into()),
+        })
+    }
+
+    /// `getItemIndex(name)`: the item of that name, -1 for none.
+    pub fn item_index(&self, name: &str) -> i32 {
+        self.cac.index_by_name(name)
+    }
+
+    /// `isItemLocked(n)`: the profile's rank or prestige is below the
+    /// item's (free items and purchases do not count here).
+    pub fn item_locked(&self, n: i32) -> bool {
+        let (prestige, rank) = (self.cac.prestige(), self.cac.rank());
+        self.cac
+            .item(n)
+            .is_none_or(|item| !(item.unlock_rank <= rank && item.unlock_prestige <= prestige))
+    }
+
+    /// `isItemNew(n)`.
+    pub fn item_new(&self, n: i32) -> bool {
+        self.cac.is_new(n)
+    }
+
+    /// `getItemName(n)`: the item's name, empty for none.
+    pub fn item_name(&self, n: i32) -> String {
+        self.cac
+            .item(n)
+            .map_or_else(String::new, |item| item.name.clone())
+    }
+
+    /// `getItemImage(n)`: column 6 of a usable item (and of item 0), empty
+    /// otherwise.
+    pub fn item_image(&self, n: i32) -> String {
+        let usable = self.cac.get(n).is_some_and(|item| !item.null);
+        if !usable && n != 0 {
+            return String::new();
+        }
+        self.cac
+            .item(n)
+            .map_or_else(String::new, |item| item.body_perk.clone())
+    }
+
+    /// `getItemEquippedAttachment(class, n, k)`: the `k`th attachment (by
+    /// point, top to muzzle) the class has on item `n`, -1 for none.
+    pub fn equipped_attachment(&self, class: &str, n: i32, k: i32) -> i32 {
+        let Some(item) = self.cac.get(n).filter(|item| !item.null) else {
+            return -1;
+        };
+        let Some(slot) = item.slot.and_then(|slot| SLOTS.get(slot)) else {
+            return -1;
+        };
+        let mut k = k;
+        for point in 1..5 {
+            let key = format!("{slot}attachment{}", point_name(point));
+            let at = self.cac.read_slot(Some(class), &key) as usize;
+            if at == 0 {
+                continue;
+            }
+            let Some(&id) = item.attachments.get(at) else {
+                self.cac.say(format!(
+                    "Item {} does not have attachment number {at} it only has {} attachments",
+                    item.name,
+                    item.attachments.len()
+                ));
+                continue;
+            };
+            if id == 0 {
+                continue;
+            }
+            if k == 0 {
+                return id as i32;
+            }
+            k -= 1;
+        }
+        -1
+    }
+
+    /// One of the create-a-class menu functions by its lowercased name:
+    /// `isitemlocked`, `isitemnew`, `getitemname`, `getitemimage`,
+    /// `getitemequippedattachment`; `None` for another name.
+    pub fn call(&self, name: &str, args: &[MenuStatKey<'_>]) -> Option<MenuStat> {
+        let int = |n: usize| match args.get(n) {
+            Some(MenuStatKey::Index(n)) => *n,
+            Some(MenuStatKey::Name(text)) => super::iw4::atoi(text),
+            None => 0,
+        };
+        let text = |n: usize| match args.get(n) {
+            Some(MenuStatKey::Name(text)) => (*text).to_owned(),
+            Some(MenuStatKey::Index(n)) => n.to_string(),
+            None => String::new(),
+        };
+        Some(match name {
+            "isitemlocked" => MenuStat::Int(i32::from(self.item_locked(int(0)))),
+            "isitemnew" => MenuStat::Int(i32::from(self.item_new(int(0)))),
+            "getitemname" => MenuStat::Text(self.item_name(int(0))),
+            "getitemimage" => MenuStat::Text(self.item_image(int(0))),
+            "getitemequippedattachment" => {
+                MenuStat::Int(self.equipped_attachment(&text(0), int(1), int(2)))
+            }
+            // The attachment table's name of attachment `id`.
+            "getattachmentname" => MenuStat::Text(
+                usize::try_from(int(0))
+                    .ok()
+                    .filter(|id| *id < NO_ATTACHMENT)
+                    .and_then(|id| self.cac.attachment(id))
+                    .map_or_else(String::new, |(_, attachment)| attachment.name.clone()),
+            ),
+            // Some item of the group is new; never once everything is free.
+            "isitemgroupnew" => {
+                let group = super::t5_stats_reset::ITEM_GROUPS
+                    .iter()
+                    .position(|name| name.eq_ignore_ascii_case(&text(0)));
+                let new = match group {
+                    _ if self.cac.all_unlocked() => false,
+                    None => {
+                        self.cac.say(format!("Item Group {} not found", text(0)));
+                        false
+                    }
+                    Some(group) => self
+                        .cac
+                        .items
+                        .iter()
+                        .any(|item| item.group == group as i32 && self.cac.is_new(item.index)),
+                };
+                MenuStat::Int(i32::from(new))
+            }
+            _ => return None,
+        })
+    }
+
+    /// `tableLookup(table, column, value, result column)`.
+    pub fn table_lookup(&self, name: &str, column: i32, value: &str, result: i32) -> String {
+        let Some(table) = crate::script::host::tables::table(&self.tables, name) else {
+            return String::new();
+        };
+        if column < 0 || result < 0 {
+            return String::new();
+        }
+        crate::script::host::tables::table_search(table, column as usize, value)
+            .and_then(|row| table.cell(row, result as usize))
+            .unwrap_or("")
+            .to_owned()
+    }
+}
+
+/// The local profile's menu data, `dvars` (the menus' own) over the
+/// match's; `None` on a level without Black Ops' multiplayer stats layout or
+/// without a local profile.
+pub(crate) fn menu_data(world: &mut World, dvars: &[(String, String)]) -> Option<T5MenuData> {
+    let mut cac = build(world).ok()?;
+    for (name, value) in dvars {
+        cac.dvars.insert(name.to_ascii_lowercase(), value.clone());
+    }
+    Some(T5MenuData {
+        cac,
+        tables: world.resource::<RoundScript>().tables.clone(),
+    })
 }
