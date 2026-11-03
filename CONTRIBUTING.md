@@ -44,6 +44,32 @@ acceptance list and a command that shows it working.
 
 Stopping halfway is fine: say what is done and what is left in a comment.
 
+## Opening an issue
+
+Every issue needs its labels, and you don't need write access to set them: fill
+in **Game**, **Mode** and **Area** on the Task or Bug report form, and they are
+applied when you submit. The form sets the first label too (`status: help wanted`
+or `bug`). Choose `all` when a game or mode doesn't narrow it down, and fix a
+wrong answer by editing the issue's text; a maintainer removes a label that no
+longer applies.
+
+Opening one from the command line, `gh issue create --label` needs that access.
+Without it, end the body with these sections instead:
+
+```markdown
+### Game
+
+game: Black Ops 2
+
+### Mode
+
+mode: Zombies
+
+### Area
+
+area: gsc, area: ai
+```
+
 ## Changes
 
 Every change goes through a pull request into `main`: create a branch for
@@ -54,7 +80,7 @@ accepts merged pull requests whose checks pass.
 * **Small and self-contained** — a fix, a crash, a wrong constant, a doc
   correction: open it directly, no issue needed.
 * **Anything larger** — take an existing issue, or open one with the Task
-  form first. A new crate, a new subsystem or a change to how data flows
+  form first (see Opening an issue). A new crate, a new subsystem or a change to how data flows
   between `sim`, `render_frontend` and `net` is discussed in its issue before
   the branch grows: a large branch that arrives unannounced is likely to be
   turned down for reasons that have nothing to do with its quality.

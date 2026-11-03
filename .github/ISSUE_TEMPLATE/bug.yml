@@ -6,6 +6,48 @@ body:
     attributes:
       value: |
         Do not attach your `.env`, a memory dump or any game files. See [CONTRIBUTING.md](https://github.com/seba2390/iw4L/blob/main/CONTRIBUTING.md).
+  - type: dropdown
+    id: game_label
+    attributes:
+      label: Game
+      options:
+        - "game: Modern Warfare 2"
+        - "game: Black Ops 1"
+        - "game: Black Ops 2"
+        - "game: all"
+    validations:
+      required: true
+  - type: dropdown
+    id: mode_label
+    attributes:
+      label: Mode
+      options:
+        - "mode: Multiplayer"
+        - "mode: Zombies"
+        - "mode: all"
+    validations:
+      required: true
+  - type: dropdown
+    id: area_label
+    attributes:
+      label: Area
+      description: Pick every one it touches.
+      multiple: true
+      options:
+        - "area: gsc"
+        - "area: render"
+        - "area: audio"
+        - "area: ai"
+        - "area: ui"
+        - "area: assets"
+        - "area: net"
+        - "area: gameplay"
+        - "area: perf"
+        - "area: platform"
+        - "area: tooling"
+        - "area: docs"
+    validations:
+      required: false
   - type: input
     id: revision
     attributes:
