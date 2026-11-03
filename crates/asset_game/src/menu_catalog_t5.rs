@@ -22,7 +22,7 @@ use fastfile_t5::{
 use crate::localize::decode_localized_text;
 use crate::menu_catalog::{
     FontDef, MenuAnimState, MenuBorder, MenuCatalog, MenuDef, MenuEditField, MenuEvent, MenuFrame,
-    MenuItem, MenuRect, MenuSlider, T5EventScript, T5ScriptCondition,
+    MenuItem, MenuList, MenuListColumn, MenuRect, MenuSlider, T5EventScript, T5ScriptCondition,
 };
 
 /// The HUD menu lists a Black Ops zombies client draws, in its load order:
@@ -192,6 +192,7 @@ impl T5MenuSink {
     fn item(&self, read: ItemRead) -> MenuItem {
         let ty = read.item_type;
         let window = read.window;
+        let (outline_color, modal) = (window.outline_color, window.modal);
         let mut item = MenuItem {
             name: window.name.clone().unwrap_or_else(String::new),
             item_type: engine_item_type(ty),
@@ -277,6 +278,8 @@ impl T5MenuSink {
                 "onaccept" => handlers.accept = events,
                 "onfocus" => handlers.focus = events,
                 "leavefocus" => handlers.leave_focus = events,
+                "doubleclick" => handlers.double_click = events,
+                "onlistboxselectionchange" => handlers.selection_change = events,
                 _ => {}
             }
         }
@@ -284,6 +287,31 @@ impl T5MenuSink {
             item.handlers.mouse_enter = script_text(focus.mouse_enter);
             item.handlers.mouse_exit = script_text(focus.mouse_exit);
             item.handlers.keys = key_handlers(focus.keys);
+            item.list = focus.list.map(|list| MenuList {
+                feeder: list.feeder as i32,
+                element_width: list.element_width,
+                element_height: list.element_height,
+                columns: list
+                    .columns
+                    .iter()
+                    .map(|column| MenuListColumn {
+                        max_chars: column.max_chars,
+                        x: column.x,
+                        y: column.y,
+                        width: column.width,
+                        height: column.height,
+                        align: column.align,
+                    })
+                    .collect(),
+                not_selectable: list.not_selectable,
+                no_scroll_bars: list.no_scroll_bars,
+                use_paging: list.use_paging,
+                select_border: list.select_border,
+                highlight_color: list.highlight_color,
+                background_color: list.background_color,
+                outline_color,
+                modal,
+            });
             if let Some(multi) = focus.multi {
                 item.choices = multi
                     .into_iter()

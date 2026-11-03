@@ -23,6 +23,16 @@ pub(crate) struct ItemAnim {
     pub(crate) duration_ms: i32,
 }
 
+/// A list box's cursor and first row, kept while its menu is closed as the
+/// game keeps them on the list box.
+#[derive(Clone, Copy, Debug, Default)]
+pub(crate) struct ListPos {
+    pub(crate) cursor: i32,
+    pub(crate) top: i32,
+    /// The UI time and row of the last click: a second soon after activates.
+    pub(crate) click: Option<(i32, i32)>,
+}
+
 #[derive(Clone, Debug)]
 pub(crate) struct OpenMenu {
     pub(crate) name: String,
@@ -74,6 +84,12 @@ pub struct ScriptMenus {
     /// The item a game's create-a-class menus act on (Black Ops'
     /// `setCurrentItemIndex`).
     pub(crate) current_item: i32,
+    /// The list the `buildItemListFor*` commands last filled.
+    pub(crate) item_list: Vec<i32>,
+    /// The attachment and the weapon option the lists have selected.
+    pub(crate) current_attachment: i32,
+    pub(crate) current_option: i32,
+    pub(crate) list_positions: std::collections::HashMap<(String, usize), ListPos>,
 }
 
 impl ScriptMenus {

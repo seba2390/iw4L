@@ -15,6 +15,8 @@ const WINDOW_FRAME_EDGES: usize = 59;
 const WINDOW_FRAME_INSET: usize = 60;
 const WINDOW_FRAME_SIZE: usize = 64;
 const WINDOW_BORDER_COLOR: usize = 124;
+const WINDOW_OUTLINE_COLOR: usize = 140;
+const WINDOW_MODAL: usize = 58;
 const WINDOW_BORDER: usize = 57;
 const WINDOW_BORDER_SIZE: usize = 76;
 const WINDOW_OWNER_DRAW: usize = 68;
@@ -81,6 +83,32 @@ const FOCUS_MOUSE_EXIT: usize = 12;
 const FOCUS_ON_KEY: usize = 16;
 const FOCUS_TYPE_DATA: usize = 20;
 
+const LIST_ELEMENT_WIDTH: usize = 0x14;
+const LIST_ELEMENT_HEIGHT: usize = 0x18;
+const LIST_NUM_COLUMNS: usize = 0x1c;
+const LIST_FEEDER: usize = 0x20;
+const LIST_COLUMNS: usize = 0x24;
+const LIST_COLUMN_SIZE: usize = 0x20;
+const LIST_COLUMN_ELEMENT_TYPE: usize = 0;
+const LIST_COLUMN_MAX_CHARS: usize = 4;
+const LIST_COLUMN_X: usize = 8;
+const LIST_COLUMN_Y: usize = 0xc;
+const LIST_COLUMN_WIDTH: usize = 0x10;
+const LIST_COLUMN_HEIGHT: usize = 0x14;
+const LIST_COLUMN_ALIGN: usize = 0x18;
+const LIST_NOT_SELECTABLE: usize = 0x224;
+const LIST_NO_SCROLL_BARS: usize = 0x228;
+const LIST_USE_PAGING: usize = 0x22c;
+const LIST_SELECT_BORDER: usize = 0x230;
+const LIST_DISABLE_COLOR: usize = 0x240;
+const LIST_FOCUS_COLOR: usize = 0x250;
+const LIST_HIGHLIGHT_COLOR: usize = 0x260;
+const LIST_BACKGROUND_COLOR: usize = 0x270;
+const LIST_SELECT_ICON: usize = 0x280;
+const LIST_BACKGROUND_ITEM: usize = 0x284;
+const LIST_HIGHLIGHT_TEXTURE: usize = 0x288;
+const LIST_MAX_ROWS: usize = 0x294;
+
 const MULTI_DVAR_STR: usize = 0x80;
 const MULTI_DVAR_VALUE: usize = 0x100;
 const MULTI_COUNT: usize = 0x180;
@@ -136,6 +164,8 @@ fn item_is_focus_def(ty: i32) -> bool {
 
 /// `ItemDefType` values whose focus def carries an `editFieldDef_s`
 /// (`Item_IsEditFieldDef`).
+const ITEM_TYPE_LIST_BOX: i32 = 4;
+
 fn focus_has_edit_field(ty: i32) -> bool {
     matches!(ty, 5 | 7 | 8 | 9 | 0xc | 0xd | 0xe | 0x10 | 0x16 | 0x1e)
 }
@@ -170,6 +200,8 @@ pub struct WindowRead {
     pub border: u8,
     pub border_size: f32,
     pub border_color: [f32; 4],
+    pub outline_color: [f32; 4],
+    pub modal: bool,
     pub owner_draw: i32,
     pub static_flags: i32,
     pub fore_color: [f32; 4],
@@ -242,6 +274,42 @@ pub struct FocusRead {
     pub keys: Vec<(i32, Vec<EventScriptRead>)>,
     pub multi: Option<Vec<MultiChoiceRead>>,
     pub edit: Option<EditFieldRead>,
+    pub list: Option<ListBoxRead>,
+}
+
+/// A `listBoxDef_s`.
+#[derive(Clone, Debug)]
+pub struct ListBoxRead {
+    pub element_width: f32,
+    pub element_height: f32,
+    pub feeder: f32,
+    pub columns: Vec<ListColumnRead>,
+    pub not_selectable: bool,
+    pub no_scroll_bars: bool,
+    pub use_paging: bool,
+    pub select_border: [f32; 4],
+    pub disable_color: [f32; 4],
+    pub focus_color: [f32; 4],
+    pub highlight_color: [f32; 4],
+    pub background_color: [f32; 4],
+    pub select_icon: Option<Ptr>,
+    pub background_item: Option<Ptr>,
+    pub highlight_texture: Option<Ptr>,
+    pub max_rows: i32,
+}
+
+/// A list box column.
+#[derive(Clone, Copy, Debug)]
+pub struct ListColumnRead {
+    /// 1: a picture.
+    pub element_type: i32,
+    pub max_chars: i32,
+    pub x: f32,
+    pub y: f32,
+    pub width: f32,
+    pub height: f32,
+    /// 1 centred, 2 to the right.
+    pub align: i32,
 }
 
 /// An `itemDef_s`.
@@ -499,6 +567,41 @@ fn key_handlers(s: &ZoneStream<'_>, first: Option<Ptr>) -> Vec<(i32, Vec<EventSc
     handlers
 }
 
+fn list_box(s: &ZoneStream<'_>, list: Ptr) -> ListBoxRead {
+    let count = i32_at(s, list, LIST_NUM_COLUMNS).clamp(0, 16) as usize;
+    ListBoxRead {
+        element_width: f32_at(s, list, LIST_ELEMENT_WIDTH),
+        element_height: f32_at(s, list, LIST_ELEMENT_HEIGHT),
+        feeder: f32_at(s, list, LIST_FEEDER),
+        columns: (0..count)
+            .map(|i| {
+                let column = list.at(LIST_COLUMNS + i * LIST_COLUMN_SIZE);
+                ListColumnRead {
+                    element_type: i32_at(s, column, LIST_COLUMN_ELEMENT_TYPE),
+                    max_chars: i32_at(s, column, LIST_COLUMN_MAX_CHARS),
+                    x: f32_at(s, column, LIST_COLUMN_X),
+                    y: f32_at(s, column, LIST_COLUMN_Y),
+                    width: f32_at(s, column, LIST_COLUMN_WIDTH),
+                    height: f32_at(s, column, LIST_COLUMN_HEIGHT),
+                    align: i32_at(s, column, LIST_COLUMN_ALIGN),
+                }
+            })
+            .collect(),
+        not_selectable: i32_at(s, list, LIST_NOT_SELECTABLE) != 0,
+        no_scroll_bars: i32_at(s, list, LIST_NO_SCROLL_BARS) != 0,
+        use_paging: i32_at(s, list, LIST_USE_PAGING) != 0,
+        select_border: color_at(s, list, LIST_SELECT_BORDER),
+        disable_color: color_at(s, list, LIST_DISABLE_COLOR),
+        focus_color: color_at(s, list, LIST_FOCUS_COLOR),
+        highlight_color: color_at(s, list, LIST_HIGHLIGHT_COLOR),
+        background_color: color_at(s, list, LIST_BACKGROUND_COLOR),
+        select_icon: ptr_at(s, list, LIST_SELECT_ICON),
+        background_item: ptr_at(s, list, LIST_BACKGROUND_ITEM),
+        highlight_texture: ptr_at(s, list, LIST_HIGHLIGHT_TEXTURE),
+        max_rows: i32_at(s, list, LIST_MAX_ROWS),
+    }
+}
+
 /// A `multiDef_s`'s choices.
 fn multi_choices(s: &ZoneStream<'_>, multi: Ptr) -> Vec<MultiChoiceRead> {
     let count = (i32_at(s, multi, MULTI_COUNT).max(0) as usize).min(MULTI_MAX);
@@ -531,6 +634,8 @@ fn window(s: &ZoneStream<'_>, p: Ptr) -> WindowRead {
         border: u8_at(s, p, WINDOW_BORDER),
         border_size: f32_at(s, p, WINDOW_BORDER_SIZE),
         border_color: color_at(s, p, WINDOW_BORDER_COLOR),
+        outline_color: color_at(s, p, WINDOW_OUTLINE_COLOR),
+        modal: u8_at(s, p, WINDOW_MODAL) != 0,
         owner_draw: i32_at(s, p, WINDOW_OWNER_DRAW),
         static_flags: i32_at(s, p, WINDOW_STATIC_FLAGS),
         fore_color: color_at(s, p, WINDOW_FORE_COLOR),
@@ -588,6 +693,9 @@ fn item(s: &ZoneStream<'_>, p: Ptr) -> ItemRead {
             keys: key_handlers(s, ptr_at(s, focus, FOCUS_ON_KEY)),
             multi,
             edit,
+            list: data
+                .filter(|_| ty == ITEM_TYPE_LIST_BOX)
+                .map(|list| list_box(s, list)),
         }
     });
     ItemRead {

@@ -255,6 +255,14 @@ pub trait ExprHost {
         let _ = name;
         Err(ExprError::Host("getitemindex"))
     }
+    fn feeder_count(&self, item: &str) -> Result<i32, ExprError> {
+        let _ = item;
+        Err(ExprError::Host("the host does not answer getfeedercount"))
+    }
+    fn feeder_field(&self, item: Option<&str>, field: &str) -> Result<i32, ExprError> {
+        let _ = (item, field);
+        Err(ExprError::Host("the host does not answer getfeederdata"))
+    }
     fn current_item(&self) -> Result<i32, ExprError> {
         Err(ExprError::Host("getcurrentitemindex"))
     }
@@ -589,6 +597,12 @@ impl<H: ExprHost> GameQueries for Queries<'_, H> {
     }
     fn item_index(&self, name: &str) -> Result<i32, ExprError> {
         self.0.item_index(name)
+    }
+    fn feeder_count(&self, item: &str) -> Result<i32, ExprError> {
+        self.0.feeder_count(item)
+    }
+    fn feeder_field(&self, item: Option<&str>, field: &str) -> Result<i32, ExprError> {
+        self.0.feeder_field(item, field)
     }
     fn current_item(&self) -> Result<i32, ExprError> {
         self.0.current_item()

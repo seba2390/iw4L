@@ -1,5 +1,6 @@
 mod animate;
 mod host;
+mod lists;
 mod runtime;
 mod script;
 mod settings;
@@ -250,6 +251,13 @@ const T5_MENU_DVARS: &[&str] = &[
     "ui_items_no_cost",
     "custom_class_mode",
     "attachmentFilter",
+    "custom_perks_allow_pro",
+    "ui_useCustomClassInfo",
+    "selected_loadout_slot",
+    "selected_group",
+    "ui_currentWeaponOptionGroup",
+    "ui_custom_name",
+    "ui_slot_count",
 ];
 
 #[derive(Default)]
@@ -621,6 +629,7 @@ pub(crate) fn update_script_menus(
         runner.menus.binding_menu = None;
     }
     handle_input(&mut runner, &input, &surface, &pressed, pointer);
+    runner.lists_frame();
     // The menu asks for a pause unless the match is online or system link
     // (`onlinegame`, `systemlink`); the server then stops only while every
     // client connected to it is this one.
@@ -720,6 +729,12 @@ pub(crate) fn update_script_menus(
         }
         .layout();
         for (index, (item, state)) in def.items.iter().zip(&mut overrides).enumerate() {
+            if let (Some(list), Some(data)) = (item.list.as_ref(), world.t5_menu) {
+                let focused = menus
+                    .input_menu()
+                    .is_some_and(|menu| menu.name == open.name && menu.focus == Some(index));
+                state.list = lists::list_view(data, def, index, list, menus, focused);
+            }
             if let Some(reason) = class_unavailable(&open.name, item, &out.dvars) {
                 if let Some(slot) = custom_class_slot(item) {
                     let name = world
@@ -913,6 +928,10 @@ pub(crate) fn update_script_menus(
             focus_rect: *focus_rect,
             focused: focused.as_deref(),
             current_item: menus.current_item,
+            item_list: &menus.item_list,
+            list_positions: &menus.list_positions,
+            current_attachment: menus.current_attachment,
+            current_option: menus.current_option,
         };
         // A shown menu blurs the world while a menu holds the input.
         if def.blur_world != 0.0
@@ -1306,17 +1325,34 @@ fn handle_input(
     if pressed.any && runner.any_key(&top) {
         return;
     }
+    if runner.list_keys(&top, pressed) {
+        return;
+    }
 
+    let item_order = ChromeAssets {
+        catalog: Some(runner.catalog),
+        localize: None,
+    }
+    .layout()
+    .is_some_and(|layout| layout.focus_in_item_order());
     if pressed.down {
-        runner.focus_nav(&top, 0, 1);
+        if item_order {
+            runner.focus_step(&top, 1, false);
+        } else {
+            runner.focus_nav(&top, 0, 1);
+        }
     }
     if pressed.up {
-        runner.focus_nav(&top, 0, -1);
+        if item_order {
+            runner.focus_step(&top, -1, false);
+        } else {
+            runner.focus_nav(&top, 0, -1);
+        }
     }
     if pressed.left || pressed.right {
         let step = if pressed.left { -1 } else { 1 };
         let focus = runner.menus.input_menu().and_then(|m| m.focus);
-        if !focus.is_some_and(|focus| runner.adjust(&top, focus, step)) {
+        if !focus.is_some_and(|focus| runner.adjust(&top, focus, step)) && !item_order {
             runner.focus_nav(&top, step, 0);
         }
         return;
@@ -1363,6 +1399,10 @@ fn handle_input(
         focus_rect: None,
         focused: Some(&top),
         current_item: runner.menus.current_item,
+        item_list: &runner.menus.item_list,
+        list_positions: &runner.menus.list_positions,
+        current_attachment: runner.menus.current_attachment,
+        current_option: runner.menus.current_option,
     };
     let rects = item_screen_rects(def, &host, surface, runner.exprs);
     let visible = runner.visible_items(&top);
@@ -1383,6 +1423,11 @@ fn handle_input(
     if input.mouse.just_pressed(MouseButton::Left)
         && let Some(index) = hit
     {
+        if let Some((_, rect)) = rects.iter().find(|(i, _)| *i == index)
+            && runner.list_click(&top, index, *rect, cursor.y)
+        {
+            return;
+        }
         if let Some((_, [x0, _, x1, _])) = rects.iter().find(|(i, _)| *i == index)
             && runner.slide(&top, index, (cursor.x - x0) / (x1 - x0))
         {

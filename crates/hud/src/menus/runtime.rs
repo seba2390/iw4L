@@ -55,6 +55,10 @@ impl Runner<'_, '_> {
             focus_rect,
             focused: self.menus.input_menu().map(|m| m.name.as_str()),
             current_item: self.menus.current_item,
+            item_list: &self.menus.item_list,
+            list_positions: &self.menus.list_positions,
+            current_attachment: self.menus.current_attachment,
+            current_option: self.menus.current_option,
         };
         match run(self.exprs, &host) {
             Ok(value) => Some(value),
@@ -219,14 +223,23 @@ impl Runner<'_, '_> {
             }
             Command::Escape(name) => self.escape(&target(&name)),
             Command::SetFocus(name) => {
-                let Some(def) = self.def(menu) else {
-                    return;
+                // The first of that name that shows, else the last.
+                let visible = self.visible_items(menu);
+                let named = |&(_, item): &(usize, &asset_game::MenuItem)| {
+                    item.name.eq_ignore_ascii_case(&name) && is_focusable(item)
                 };
-                if let Some(index) = def
-                    .items
-                    .iter()
-                    .position(|i| i.name.eq_ignore_ascii_case(&name) && is_focusable(i))
-                {
+                let items = || {
+                    self.catalog
+                        .get(menu)
+                        .into_iter()
+                        .flat_map(|d| d.items.iter().enumerate())
+                };
+                let index = items()
+                    .filter(named)
+                    .find(|(i, _)| visible.contains(i))
+                    .or_else(|| items().filter(named).last())
+                    .map(|(i, _)| i);
+                if let Some(index) = index {
                     self.set_focus(menu, index);
                 }
             }
@@ -557,6 +570,26 @@ impl Runner<'_, '_> {
                 self.open_attachment_menu(menu, &words);
                 true
             }
+            "builditemlistforslotname" => {
+                self.build_item_list(&command, &words);
+                true
+            }
+            "builditemlistforslotnameandgroup" | "builditemlistforgroupname" => {
+                self.build_item_list(&command, &words);
+                true
+            }
+            "refreshfeederselection" => {
+                self.refresh_feeder_selection(menu, words.get(1).map(String::as_str));
+                true
+            }
+            "selectfeeder" => {
+                self.select_feeder(menu, &words);
+                true
+            }
+            "focusitem" => {
+                self.focus_item(menu, words.get(1).map_or("", String::as_str));
+                true
+            }
             _ => false,
         }
     }
@@ -792,6 +825,7 @@ impl Runner<'_, '_> {
             }
             self.run_events(menu, Some(index), &item.handlers.focus);
         }
+        self.list_focused(menu, index);
     }
 
     pub(crate) fn set_hover(&mut self, menu: &str, index: Option<usize>) {
@@ -841,6 +875,24 @@ impl Runner<'_, '_> {
             (false, Some(at)) => {
                 let n = candidates.len() as i32;
                 candidates[((at as i32 + step).rem_euclid(n)) as usize]
+            }
+            // The focus has hidden: the next one on from where it is.
+            (false, None) if current.is_some() => {
+                let at = current.unwrap_or(0);
+                if step < 0 {
+                    candidates
+                        .iter()
+                        .rev()
+                        .find(|&&i| i < at)
+                        .copied()
+                        .unwrap_or(candidates[candidates.len() - 1])
+                } else {
+                    candidates
+                        .iter()
+                        .find(|&&i| i > at)
+                        .copied()
+                        .unwrap_or(candidates[0])
+                }
             }
             _ => {
                 if step < 0 {
@@ -942,6 +994,10 @@ impl Runner<'_, '_> {
             focus_rect: None,
             focused: self.menus.input_menu().map(|m| m.name.as_str()),
             current_item: self.menus.current_item,
+            item_list: &self.menus.item_list,
+            list_positions: &self.menus.list_positions,
+            current_attachment: self.menus.current_attachment,
+            current_option: self.menus.current_option,
         };
         let mut out = Vec::new();
         for (index, item) in def.items.iter().enumerate() {

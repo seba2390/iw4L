@@ -4,7 +4,7 @@ use crate::{ConsoleCommand, ConsoleLine, ConsoleRegistry, ConsoleSettings, Conso
 
 /// Black Ops' create-a-class commands, which its menus run with `execnow`:
 /// each edits a custom class in the local profile's stats.
-const COMMANDS: [(&str, Option<&str>, &str); 20] = [
+const COMMANDS: [(&str, Option<&str>, &str); 25] = [
     (
         "equipclass",
         Some("equipClass"),
@@ -84,6 +84,31 @@ const COMMANDS: [(&str, Option<&str>, &str); 20] = [
         "setcurrentitemindex",
         Some("setCurrentItemIndex"),
         "setCurrentItemIndex <itemIndex> — the item the create-a-class menus' current-item commands act on",
+    ),
+    (
+        "setcurrentattachmentindex",
+        None,
+        "setCurrentAttachmentIndex <place> — the attachment the create-a-class list has selected (the game's list sets it)",
+    ),
+    (
+        "setcurrentoptionindex",
+        None,
+        "setCurrentOptionIndex <row> — the weapon option the create-a-class list has selected (the game's list sets it)",
+    ),
+    (
+        "equipclasscurrentattachment",
+        Some("equipClassCurrentAttachment"),
+        "equipClassCurrentAttachment <customclassname> — the selected attachment on the current item, on or off",
+    ),
+    (
+        "equipclasscurrentoption",
+        Some("equipClassCurrentOption"),
+        "equipClassCurrentOption <customclassname> <optionName> — the selected weapon option on the current item",
+    ),
+    (
+        "toggleweaponoption",
+        Some("toggleWeaponOption"),
+        "toggleWeaponOption <customclassname> <optionName> — turn the current item's tag or emblem on or off",
     ),
     (
         "equipclasscurrentitem",

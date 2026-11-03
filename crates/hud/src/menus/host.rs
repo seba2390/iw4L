@@ -63,9 +63,43 @@ pub(crate) struct MenuHost<'a> {
     pub focused: Option<&'a str>,
     /// The create-a-class menus' current item.
     pub current_item: i32,
+    /// The list the create-a-class menus' builders last filled.
+    pub item_list: &'a [i32],
+    pub list_positions: &'a std::collections::HashMap<(String, usize), super::state::ListPos>,
+    /// The attachment and the weapon option the lists have selected.
+    pub current_attachment: i32,
+    pub current_option: i32,
 }
 
 impl MenuHost<'_> {
+    fn list_pos(&self, index: usize) -> super::state::ListPos {
+        self.list_positions
+            .get(&(self.menu.name.to_ascii_lowercase(), index))
+            .copied()
+            .unwrap_or_default()
+    }
+
+    fn list_count(&self, feeder: i32, index: usize) -> i32 {
+        let context = sim::FeederContext {
+            list: self.item_list,
+            current_item: self.current_item,
+            cursor: self.list_pos(index).cursor,
+            focused: false,
+        };
+        self.world
+            .t5_menu
+            .and_then(|data| data.feeder_count(feeder, &context))
+            .unwrap_or(0)
+    }
+
+    /// The menu's focused item.
+    fn focused_list(&self) -> Option<usize> {
+        self.open
+            .iter()
+            .find(|open| open.name.eq_ignore_ascii_case(&self.menu.name))
+            .and_then(|open| open.focus)
+    }
+
     fn dvar(&self, name: &str) -> String {
         if let Some(value) = self.dvars.get(name) {
             return value.to_owned();
@@ -363,7 +397,23 @@ impl ExprHost for MenuHost<'_> {
     }
     fn profile_function(&self, name: &str, args: &[Operand]) -> Result<Operand, ExprError> {
         let data = self.world.t5_menu.ok_or(NO_PROFILE_STATS)?;
-        data.call(name, &menu_keys(args))
+        let keys = menu_keys(args);
+        let context = sim::FeederContext {
+            list: self.item_list,
+            current_item: self.current_item,
+            cursor: 0,
+            focused: false,
+        };
+        data.call(name, &keys)
+            .or_else(|| {
+                data.call_current(
+                    name,
+                    &context,
+                    self.current_attachment,
+                    self.current_option,
+                    &keys,
+                )
+            })
             .map(menu_operand)
             .ok_or(ExprError::Host("the profile does not answer that function"))
     }
@@ -372,6 +422,50 @@ impl ExprHost for MenuHost<'_> {
     }
     fn current_item(&self) -> Result<i32, ExprError> {
         Ok(self.current_item)
+    }
+    fn feeder_count(&self, item: &str) -> Result<i32, ExprError> {
+        let Some(index) = self
+            .menu
+            .items
+            .iter()
+            .position(|i| i.name.eq_ignore_ascii_case(item))
+        else {
+            diag::warn!(
+                Ui,
+                "UI Expression Error: Unable to find item {item} in GetFeederCount()"
+            );
+            return Ok(0);
+        };
+        let Some(list) = self.menu.items[index].list.as_ref() else {
+            diag::warn!(
+                Ui,
+                "UI Expression Error: Item {item} is not a listbox in GetFeederCount()"
+            );
+            return Ok(0);
+        };
+        Ok(self.list_count(list.feeder, index))
+    }
+    fn feeder_field(&self, item: Option<&str>, field: &str) -> Result<i32, ExprError> {
+        let index = match item {
+            Some(name) => self
+                .menu
+                .items
+                .iter()
+                .position(|i| i.name.eq_ignore_ascii_case(name)),
+            None => self.focused_list(),
+        };
+        let Some((index, list)) =
+            index.and_then(|i| Some((i, self.menu.items.get(i)?.list.as_ref()?)))
+        else {
+            return Ok(0);
+        };
+        if field.eq_ignore_ascii_case("count") {
+            return Ok(self.list_count(list.feeder, index));
+        }
+        if field.eq_ignore_ascii_case("selection") {
+            return Ok(self.list_pos(index).cursor);
+        }
+        Ok(0)
     }
     fn static_dvar_int(&self, index: i32) -> Result<i32, ExprError> {
         self.dvar_int(self.static_name(index)?)

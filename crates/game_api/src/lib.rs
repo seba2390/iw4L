@@ -982,6 +982,11 @@ pub trait MenuLayout: Sync {
     fn paints_menu_window(&self) -> bool {
         false
     }
+    /// The arrow keys take the focus to the next or the previous item in the
+    /// menu's own order, wrapping around, instead of the nearest on screen.
+    fn focus_in_item_order(&self) -> bool {
+        false
+    }
     /// The material and virtual size of the cursor the UI draws over menus
     /// that take the mouse, centred on the mouse; `None` leaves the
     /// system's pointer.

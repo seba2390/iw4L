@@ -47,6 +47,47 @@ const T5_FN_INKILLCAM: i32 = 38;
 const T5_FN_ISDUALWIELD: i32 = 39;
 const T5_FN_ISFUELWEAPON: i32 = 40;
 const T5_FN_PLAYER: i32 = 41;
+const T5_FN_GETATTACHMENTIMAGE: i32 = 279;
+const T5_FN_GETCLANNAME: i32 = 141;
+const T5_FN_GETCURRENTITEMATTACHMENTCOST: i32 = 254;
+const T5_FN_GETCURRENTITEMATTACHMENTDESC: i32 = 258;
+const T5_FN_GETCURRENTITEMATTACHMENTNAME: i32 = 257;
+const T5_FN_GETCURRENTITEMATTACHMENTNUM: i32 = 262;
+const T5_FN_GETCURRENTITEMATTACHMENTPOINT: i32 = 263;
+const T5_FN_GETCURRENTITEMCOST: i32 = 252;
+const T5_FN_GETCURRENTITEMNUMATTACHMENTS: i32 = 259;
+const T5_FN_GETCURRENTITEMOPTION: i32 = 288;
+const T5_FN_GETFLOATASFORMATTEDSTRING: i32 = 158;
+const T5_FN_GETITEMCOST: i32 = 120;
+const T5_FN_GETITEMCOUNT: i32 = 123;
+const T5_FN_GETITEMDESC: i32 = 116;
+const T5_FN_GETITEMGROUP: i32 = 124;
+const T5_FN_GETITEMNUMATTACHMENTSEQUIPPED: i32 = 260;
+const T5_FN_GETITEMOPTIONBYNAME: i32 = 382;
+const T5_FN_GETITEMREF: i32 = 111;
+const T5_FN_GETSELFGAMERTAG: i32 = 131;
+const T5_FN_GETWEAPONOPTIONCOST: i32 = 289;
+const T5_FN_GETWEAPONOPTIONGROUPINDEX: i32 = 330;
+const T5_FN_GETWEAPONOPTIONIMAGE: i32 = 281;
+const T5_FN_GETWEAPONOPTIONNAME: i32 = 282;
+const T5_FN_GETWEAPONOPTIONUNLOCKLVL: i32 = 446;
+const T5_FN_GETWEAPONOPTIONUNLOCKPLEVEL: i32 = 447;
+const T5_FN_GETXUID: i32 = 130;
+const T5_FN_ISCURRENTITEMATTACHMENTPURCHASED: i32 = 249;
+const T5_FN_ISCURRENTITEMCLASSIFIED: i32 = 338;
+const T5_FN_ISCURRENTITEMEQUIPPEDINANYCUSTOMCLASS: i32 = 335;
+const T5_FN_ISCURRENTITEMOPTIONPURCHASED: i32 = 250;
+const T5_FN_ISCURRENTITEMPURCHASED: i32 = 248;
+const T5_FN_ISCURRENTSORTEDITEMEQUIPPED: i32 = 334;
+const T5_FN_ISITEMOPTIONPURCHASEDBYNAME: i32 = 381;
+const T5_FN_ISPROITEMVERSION: i32 = 414;
+const T5_FN_ISPROITEMVERSIONUNLOCKED: i32 = 413;
+const T5_FN_GETPROITEMVERSIONCOST: i32 = 433;
+const T5_FN_ISITEMEQUIPPED: i32 = 336;
+const T5_FN_ISATTACHMENTALLOWEDONITEMINDEX: i32 = 437;
+const T5_FN_GETNUMSORTEDITEMSEQUIPPED: i32 = 434;
+const T5_FN_GETFEEDERDATA: i32 = 147;
+const T5_FN_GETFEEDERCOUNT: i32 = 337;
 const T5_FN_TEAM: i32 = 43;
 const T5_FN_OTHERTEAM: i32 = 44;
 const T5_FN_MENUISOPEN: i32 = 47;
@@ -506,6 +547,29 @@ fn call(op: i32, stack: &mut Vec<Value>, host: &dyn GameQueries) -> Result<Opera
         T5_FN_TOUPPER => Operand::Str(
             source_string(args()?.first().ok_or(ExprError::StackUnderflow)?).to_ascii_uppercase(),
         ),
+        T5_FN_GETFEEDERCOUNT => Operand::Int(host.feeder_count(&arg_str(&args()?)?)?),
+        // `getFeederData(field)`, or with the item's name first; a third
+        // form names the menu too.
+        T5_FN_GETFEEDERDATA => {
+            let args = args()?;
+            let field = match args.as_slice() {
+                [field] => host.feeder_field(None, &source_string(field))?,
+                [item, field] => {
+                    host.feeder_field(Some(&source_string(item)), &source_string(field))?
+                }
+                [_, item, field] => {
+                    host.feeder_field(Some(&source_string(item)), &source_string(field))?
+                }
+                _ => {
+                    diag::warn!(
+                        Ui,
+                        "UI Expression Error: Expected at least 1 parameter to getFeederData()"
+                    );
+                    0
+                }
+            };
+            Operand::Int(field)
+        }
         T5_FN_TEAM => host.team_field(&arg_str(&args()?)?)?,
         T5_FN_OTHERTEAM => host.other_team_field(&arg_str(&args()?)?)?,
         T5_FN_TIMELEFT => Operand::Int(host.time_left()?),
@@ -574,7 +638,85 @@ fn call(op: i32, stack: &mut Vec<Value>, host: &dyn GameQueries) -> Result<Opera
                 host.in_game()? != 0 && host.fullscreen_menu_open()? == 0 && !menu_level,
             ))
         }
-        other => return Err(ExprError::UnsupportedOp(other)),
+        // The local profile: IW4L keeps no Live identity or clan.
+        T5_FN_GETSELFGAMERTAG => Operand::Str(host.dvar_string("name")?),
+        T5_FN_GETXUID => Operand::Str("0".to_owned()),
+        T5_FN_GETCLANNAME => Operand::Str(String::new()),
+        // `getFloatAsFormattedString(value, places)`.
+        T5_FN_GETFLOATASFORMATTEDSTRING => {
+            let args = args()?;
+            let [value, places] = args.as_slice() else {
+                diag::warn!(
+                    Ui,
+                    "UI Expression Error: Expected 2 parameters to GetFloatAsFormattedString()"
+                );
+                return Ok(Operand::Str(String::new()));
+            };
+            Operand::Str(format!(
+                "{:.*}",
+                source_int(places).max(0) as usize,
+                source_float(value)
+            ))
+        }
+        other => {
+            if let Some(name) = profile_function_name(other) {
+                host.profile_function(name, &args()?)?
+            } else if let Some(name) = current_item_function_name(other) {
+                host.profile_function(name, &[])?
+            } else {
+                return Err(ExprError::UnsupportedOp(other));
+            }
+        }
+    })
+}
+
+/// The functions the create-a-class menus answer from the local profile and
+/// their current item, by the name the host knows them under.
+fn profile_function_name(op: i32) -> Option<&'static str> {
+    Some(match op {
+        T5_FN_GETITEMREF => "getitemref",
+        T5_FN_GETITEMDESC => "getitemdesc",
+        T5_FN_GETITEMCOST => "getitemcost",
+        T5_FN_GETITEMCOUNT => "getitemcount",
+        T5_FN_GETITEMGROUP => "getitemgroup",
+        T5_FN_GETATTACHMENTIMAGE => "getattachmentimage",
+        T5_FN_GETWEAPONOPTIONIMAGE => "getweaponoptionimage",
+        T5_FN_GETWEAPONOPTIONNAME => "getweaponoptionname",
+        T5_FN_GETWEAPONOPTIONCOST => "getweaponoptioncost",
+        T5_FN_GETWEAPONOPTIONUNLOCKLVL => "getweaponoptionunlocklvl",
+        T5_FN_GETWEAPONOPTIONUNLOCKPLEVEL => "getweaponoptionunlockplevel",
+        T5_FN_GETWEAPONOPTIONGROUPINDEX => "getweaponoptiongroupindex",
+        T5_FN_GETITEMOPTIONBYNAME => "getitemoptionbyname",
+        T5_FN_GETITEMNUMATTACHMENTSEQUIPPED => "getitemnumattachmentsequipped",
+        T5_FN_ISITEMOPTIONPURCHASEDBYNAME => "isitemoptionpurchasedbyname",
+        T5_FN_ISPROITEMVERSION => "isproitemversion",
+        T5_FN_ISPROITEMVERSIONUNLOCKED => "isproitemversionunlocked",
+        T5_FN_GETPROITEMVERSIONCOST => "getproitemversioncost",
+        T5_FN_ISITEMEQUIPPED => "isitemequipped",
+        T5_FN_ISATTACHMENTALLOWEDONITEMINDEX => "isattachmentallowedonitemindex",
+        _ => return None,
+    })
+}
+
+/// The same for the functions of the current item, which take no arguments.
+fn current_item_function_name(op: i32) -> Option<&'static str> {
+    Some(match op {
+        T5_FN_ISCURRENTITEMPURCHASED => "iscurrentitempurchased",
+        T5_FN_ISCURRENTITEMATTACHMENTPURCHASED => "iscurrentitemattachmentpurchased",
+        T5_FN_ISCURRENTITEMOPTIONPURCHASED => "iscurrentitemoptionpurchased",
+        T5_FN_GETCURRENTITEMCOST => "getcurrentitemcost",
+        T5_FN_GETCURRENTITEMNUMATTACHMENTS => "getcurrentitemnumattachments",
+        T5_FN_GETCURRENTITEMATTACHMENTNAME => "getcurrentitemattachmentname",
+        T5_FN_GETCURRENTITEMATTACHMENTDESC => "getcurrentitemattachmentdesc",
+        T5_FN_GETCURRENTITEMATTACHMENTCOST => "getcurrentitemattachmentcost",
+        T5_FN_GETCURRENTITEMATTACHMENTNUM => "getcurrentitemattachmentnum",
+        T5_FN_GETCURRENTITEMATTACHMENTPOINT => "getcurrentitemattachmentpoint",
+        T5_FN_GETCURRENTITEMOPTION => "getcurrentitemoption",
+        T5_FN_ISCURRENTITEMCLASSIFIED => "iscurrentitemclassified",
+        T5_FN_ISCURRENTITEMEQUIPPEDINANYCUSTOMCLASS => "iscurrentitemequippedinanycustomclass",
+        T5_FN_ISCURRENTSORTEDITEMEQUIPPED => "iscurrentsorteditemequipped",
+        T5_FN_GETNUMSORTEDITEMSEQUIPPED => "getnumsorteditemsequipped",
+        _ => return None,
     })
 }
 

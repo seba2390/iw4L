@@ -90,8 +90,13 @@ pub(super) struct Item {
     /// Its group's position in `ITEM_GROUPS`, -1 for none.
     pub(super) group: i32,
     pub(super) name: String,
-    /// Column 9, which orders the default killstreaks.
-    order: i32,
+    /// Column 4.
+    pub(super) reference: String,
+    /// Column 9, which orders the default killstreaks and the item lists.
+    pub(super) order: i32,
+    /// Column 15: the list's unlocked items this one reads as classified
+    /// past.
+    pub(super) classified_after: i32,
     pub(super) slot: Option<usize>,
     classes: Vec<usize>,
     all_classes: bool,
@@ -172,7 +177,9 @@ pub(super) fn items(table: &StringTable) -> Vec<Item> {
                 index: n as i32,
                 group,
                 name: cell(row, 3).to_owned(),
+                reference: cell(row, 4).to_owned(),
                 order: super::iw4::atoi(cell(row, 9)),
+                classified_after: super::iw4::atoi(cell(row, 15)),
                 slot: Some(cell(row, 13))
                     .filter(|s| !s.is_empty())
                     .and_then(|s| index_in(&SLOTS, s)),

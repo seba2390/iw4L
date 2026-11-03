@@ -5,6 +5,10 @@
 //! `cacLoadouts.<class>.<slot>` in `ddl_mp/stats.ddl`; an item is a row of
 //! `mp/statsTable.csv`, an attachment one of `mp/attachmentTable.csv`.
 
+mod feeders;
+
+pub use feeders::{FeederCell, FeederContext, FeederSelection};
+
 use super::t5_classes::ITEMS as SLOTS;
 use super::t5_stats::{BUFFER_BYTES, Cursor, ROOT, leaf, read_int, set_raw_int, step_name};
 use super::t5_stats_reset::{
@@ -72,6 +76,9 @@ struct Attachment {
     id: usize,
     /// Column 3, the name its menus show.
     name: String,
+    /// Columns 6 and 7.
+    image: String,
+    description: String,
     point: usize,
     cost: i32,
     /// The attachments it goes with, by index (the last, no attachment's,
@@ -116,6 +123,8 @@ fn attachments(table: &StringTable) -> Vec<Attachment> {
             out.push(Attachment {
                 id,
                 name: cell(row, 3).to_owned(),
+                image: cell(row, 6).to_owned(),
+                description: cell(row, 7).to_owned(),
                 point,
                 cost: super::iw4::atoi(cell(row, 12)),
                 compatible,
@@ -148,6 +157,8 @@ struct Cac {
     /// The item table, by index.
     items: Vec<Item>,
     attachments: Vec<Attachment>,
+    /// The table's weapon options, by their place.
+    options: Vec<feeders::WeaponOption>,
     /// `mp/rankTable.csv`'s rows: the least and most XP of a rank, and the
     /// rank.
     ranks: Vec<[i32; 3]>,
@@ -813,6 +824,14 @@ impl Cac {
 #[derive(bevy_ecs::prelude::Resource, Default)]
 struct CurrentItem(i32);
 
+/// The attachment place the attachment list has selected.
+#[derive(bevy_ecs::prelude::Resource, Default)]
+struct CurrentAttachment(i32);
+
+/// The row the weapon option lists have selected.
+#[derive(bevy_ecs::prelude::Resource, Default)]
+struct CurrentOption(i32);
+
 /// The face paint slots, whose items are written as their place in the
 /// face paint lists.
 const FACE_PAINT_SLOTS: [usize; 2] = [33, 34];
@@ -847,8 +866,13 @@ pub(crate) fn run(
             | "statsetbyname"
             | "uploadstats"
             | "setcurrentitemindex"
+            | "setcurrentattachmentindex"
+            | "setcurrentoptionindex"
             | "equipclasscurrentitem"
             | "equipclasscurrentglobalitem"
+            | "equipclasscurrentattachment"
+            | "equipclasscurrentoption"
+            | "toggleweaponoption"
             | "equipiteminslotsorted"
             | "equipglobaliteminslotsorted"
     ) {
@@ -861,6 +885,16 @@ pub(crate) fn run(
             ]));
         }
         world.insert_resource(CurrentItem(super::iw4::atoi(arg(args, 0))));
+        return Some(Ok(Vec::new()));
+    }
+    // The menus' list boxes set these globals as they select a row; a menu
+    // has no other way to reach the console's class commands.
+    if name == "setcurrentattachmentindex" {
+        world.insert_resource(CurrentAttachment(super::iw4::atoi(arg(args, 0))));
+        return Some(Ok(Vec::new()));
+    }
+    if name == "setcurrentoptionindex" {
+        world.insert_resource(CurrentOption(super::iw4::atoi(arg(args, 0))));
         return Some(Ok(Vec::new()));
     }
     Some(run_command(world, name, args))
@@ -894,6 +928,7 @@ fn build(world: &mut World) -> Result<Cac, String> {
         layout,
         items: table(STATS_TABLE).map(items).unwrap_or_else(Vec::new),
         attachments: table(ATTACHMENT_TABLE).map_or_else(Vec::new, attachments),
+        options: table(ATTACHMENT_TABLE).map_or_else(Vec::new, feeders::weapon_options),
         ranks,
         dvars: world.resource::<MatchScript>().dvars.clone(),
         messages: RefCell::new(Vec::new()),
@@ -913,6 +948,26 @@ fn run_on(world: &mut World, cac: &mut Cac, name: &str, args: &[String]) {
             let class = (name == "equipclasscurrentitem").then(|| arg(args, 0));
             cac.equip_current(class, current);
         }
+        "equipclasscurrentattachment" if args.is_empty() => cac.say(
+            "equipclasscurrentattachment usage: equipclasscurrentattachment <customclassname>"
+                .into(),
+        ),
+        "equipclasscurrentattachment" => {
+            let attachment = world.get_resource::<CurrentAttachment>().map_or(0, |c| c.0);
+            cac.equip_current_attachment(arg(args, 0), current, attachment);
+        }
+        "equipclasscurrentoption" if args.len() < 2 => cac.say(
+            "equipclasscurrentoption usage: equipclasscurrentoption <customclassname> <optionname>"
+                .into(),
+        ),
+        "equipclasscurrentoption" => {
+            let option = world.get_resource::<CurrentOption>().map_or(0, |c| c.0);
+            cac.equip_current_option(arg(args, 0), current, option, arg(args, 1));
+        }
+        "toggleweaponoption" if args.len() < 2 => cac.say(
+            "toggleweaponoption usage: toggleweaponoption <customclassname> <optionname>".into(),
+        ),
+        "toggleweaponoption" => cac.toggle_option(arg(args, 0), current, arg(args, 1)),
         "equipiteminslotsorted" if args.len() < 4 => cac.say(
             "equipItemInSlotSorted usage: equipItemInSlotSorted <customclassname> <groupItemCount> <groupName> <numItemsOfSameAttributeAllowed>"
                 .into(),
@@ -1317,6 +1372,127 @@ impl T5MenuData {
             "getitemequippedattachment" => {
                 MenuStat::Int(self.equipped_attachment(&text(0), int(1), int(2)))
             }
+            "getitemref" => MenuStat::Text(
+                self.cac
+                    .item(int(0))
+                    .map_or_else(String::new, |item| item.reference.clone()),
+            ),
+            "getitemdesc" => MenuStat::Text(
+                self.cac
+                    .item(int(0))
+                    .map_or_else(String::new, |item| item.body_group.clone()),
+            ),
+            "getitemcost" => MenuStat::Int(self.cac.item(int(0)).map_or(0, |item| item.cost)),
+            "getitemcount" => MenuStat::Int(self.cac.item(int(0)).map_or(0, |item| item.attribute)),
+            "getitemgroup" => MenuStat::Text(
+                self.cac
+                    .item(int(0))
+                    .and_then(|item| usize::try_from(item.group).ok())
+                    .and_then(|group| super::t5_stats_reset::ITEM_GROUPS.get(group))
+                    .map_or_else(String::new, |name| (*name).to_owned()),
+            ),
+            "getattachmentimage" => MenuStat::Text(
+                usize::try_from(int(0))
+                    .ok()
+                    .and_then(|id| self.cac.attachment(id))
+                    .map_or_else(String::new, |(_, attachment)| attachment.image.clone()),
+            ),
+            // The option's picture, name, cost and unlocks; none past the table.
+            "getweaponoptionimage" => MenuStat::Text(
+                self.option(int(0))
+                    .map_or_else(String::new, |option| option.image.clone()),
+            ),
+            "getweaponoptionname" => MenuStat::Text(
+                self.option(int(0))
+                    .map_or_else(String::new, |option| option.name.clone()),
+            ),
+            "getweaponoptioncost" => {
+                MenuStat::Int(self.option(int(0)).map_or(0, |option| option.cost))
+            }
+            "getweaponoptionunlocklvl" => {
+                MenuStat::Int(self.option(int(0)).map_or(0, |option| option.unlock_rank))
+            }
+            "getweaponoptionunlockplevel" => MenuStat::Int(
+                self.option(int(0))
+                    .map_or(0, |option| option.unlock_prestige),
+            ),
+            // `(row, group)`: the option's place in the table, -1 past the group.
+            "getweaponoptiongroupindex" if args.len() != 2 => {
+                self.cac
+                    .say("Expected 2 parameters to GetWeaponOptionGroupIndex()".into());
+                MenuStat::Int(0)
+            }
+            "getweaponoptiongroupindex" => MenuStat::Int(
+                usize::try_from(int(1))
+                    .ok()
+                    .and_then(|group| self.cac.option_in_group(group, int(0)))
+                    .map_or(-1, |place| place as i32),
+            ),
+            // The option whose reference (column 4) is that name, -1 for none.
+            "getitemoptionbyname" => MenuStat::Int(self.option_by_name(&text(0))),
+            // `(class, item)`: the attachments the class has on the item.
+            "getitemnumattachmentsequipped" if args.len() != 2 => {
+                self.cac
+                    .say("Expected 2 parameters to GetCurrentItemNumAttachmentsEquipped()".into());
+                MenuStat::Int(0)
+            }
+            "getitemnumattachmentsequipped" => {
+                MenuStat::Int(self.attachments_equipped(&text(0), int(1)))
+            }
+            "isproitemversion" => MenuStat::Int(i32::from(self.cac.pro_version(int(0)) == int(0))),
+            "isproitemversionunlocked" => MenuStat::Int(i32::from(self.cac.pro_unlocked(int(0)))),
+            "getproitemversioncost" => MenuStat::Int(
+                self.cac
+                    .get(self.cac.pro_version(int(0)))
+                    .map_or(0, |item| item.cost),
+            ),
+            "getnumsorteditemsequipped" => {
+                let group = self
+                    .cac
+                    .dvars
+                    .get("selected_group")
+                    .map_or("", String::as_str);
+                let count = self.cac.dvar("ui_slot_count", 0);
+                MenuStat::Int(
+                    (1..=count)
+                        .filter(|k| {
+                            let n = self.cac.read_slot(None, &format!("{group}{k}")) as i32;
+                            self.cac.get(n).is_some_and(|item| !item.null)
+                        })
+                        .count() as i32,
+                )
+            }
+            // `(item, class)`: the class's slot holds the item.
+            "isitemequipped" if args.len() != 2 => {
+                self.cac
+                    .say("UI Expression Error: Expected 2 parameters to IsItemEquipped()".into());
+                MenuStat::Int(0)
+            }
+            "isitemequipped" => {
+                let on = self
+                    .cac
+                    .get(int(0))
+                    .and_then(|item| item.slot)
+                    .and_then(|slot| SLOTS.get(slot))
+                    .is_some_and(|slot| self.cac.read_slot(Some(&text(1)), slot) as i32 == int(0));
+                MenuStat::Int(i32::from(on))
+            }
+            // `(item, name)`: the item lists an attachment of that name.
+            "isattachmentallowedonitemindex" if args.len() != 2 => {
+                self.cac
+                    .say("Expected 2 parameters to IsAttachmentAllowedOnItemIndex()".into());
+                MenuStat::Int(0)
+            }
+            "isattachmentallowedonitemindex" => {
+                let on = self.cac.get(int(0)).is_some_and(|item| {
+                    item.attachments.iter().skip(1).any(|&id| {
+                        ATTACHMENTS
+                            .get(id)
+                            .is_some_and(|a| a.eq_ignore_ascii_case(&text(1)))
+                    })
+                });
+                MenuStat::Int(i32::from(on))
+            }
             // The attachment table's name of attachment `id`.
             "getattachmentname" => MenuStat::Text(
                 usize::try_from(int(0))
@@ -1343,6 +1519,114 @@ impl T5MenuData {
                         .any(|item| item.group == group as i32 && self.cac.is_new(item.index)),
                 };
                 MenuStat::Int(i32::from(new))
+            }
+            _ => return None,
+        })
+    }
+
+    fn option(&self, place: i32) -> Option<&feeders::WeaponOption> {
+        self.cac.options.get(usize::try_from(place).ok()?)
+    }
+
+    fn option_by_name(&self, name: &str) -> i32 {
+        self.cac
+            .options
+            .iter()
+            .position(|option| option.reference.eq_ignore_ascii_case(name))
+            .map_or(-1, |place| place as i32)
+    }
+
+    fn attachments_equipped(&self, class: &str, n: i32) -> i32 {
+        let Some(item) = self.cac.get(n).filter(|item| !item.null) else {
+            return 0;
+        };
+        let Some(slot) = item.slot.and_then(|slot| SLOTS.get(slot)) else {
+            return 0;
+        };
+        (1..5)
+            .filter(|&point| {
+                let key = format!("{slot}attachment{}", point_name(point));
+                let place = self.cac.read_slot(Some(class), &key) as usize;
+                item.attachments.get(place).is_some_and(|&id| id != 0)
+            })
+            .count() as i32
+    }
+
+    /// A function of the create-a-class menus' current item, attachment and
+    /// option by its lowercased name; `None` for another name.
+    pub fn call_current(
+        &self,
+        name: &str,
+        current: &feeders::FeederContext<'_>,
+        attachment: i32,
+        option_row: i32,
+        args: &[MenuStatKey<'_>],
+    ) -> Option<MenuStat> {
+        let cac = &self.cac;
+        let n = current.current_item;
+        let attachment_id = cac
+            .get(n)
+            .and_then(|item| item.attachments.get(attachment as usize))
+            .copied()
+            .unwrap_or(0);
+        let option = cac
+            .option_in_group(self.current_option_group(), option_row)
+            .map_or(-1, |place| place as i32);
+        let text = |k: usize| match args.get(k) {
+            Some(MenuStatKey::Name(text)) => (*text).to_owned(),
+            Some(MenuStatKey::Index(k)) => k.to_string(),
+            None => String::new(),
+        };
+        Some(match name {
+            "iscurrentitempurchased" => MenuStat::Int(i32::from(cac.unlocked(n))),
+            "iscurrentitemattachmentpurchased" => {
+                MenuStat::Int(i32::from(cac.attachment_unlocked(n, attachment as usize)))
+            }
+            "iscurrentitemoptionpurchased" => MenuStat::Int(i32::from(
+                usize::try_from(option).is_ok_and(|place| cac.option_unlocked(n, place)),
+            )),
+            "isitemoptionpurchasedbyname" => {
+                let by_name = self.option_by_name(&text(0));
+                MenuStat::Int(i32::from(
+                    usize::try_from(by_name).is_ok_and(|place| cac.option_unlocked(n, place)),
+                ))
+            }
+            "getcurrentitemcost" => MenuStat::Int(cac.get(n).map_or(0, |item| item.cost)),
+            "getcurrentitemnumattachments" => MenuStat::Int(self.item_attachment_count(n)),
+            "getcurrentitemattachmentname" => MenuStat::Text(
+                cac.attachment(attachment_id)
+                    .map_or_else(String::new, |(_, a)| a.name.clone()),
+            ),
+            "getcurrentitemattachmentdesc" => MenuStat::Text(
+                cac.attachment(attachment_id)
+                    .map_or_else(String::new, |(_, a)| a.description.clone()),
+            ),
+            "getcurrentitemattachmentcost" => {
+                MenuStat::Int(cac.attachment(attachment_id).map_or(0, |(_, a)| a.cost))
+            }
+            "getcurrentitemattachmentnum" => MenuStat::Int(attachment),
+            "getcurrentitemattachmentpoint" => MenuStat::Int(cac.point_of(attachment_id) as i32),
+            "getcurrentitemoption" => MenuStat::Int(option),
+            "iscurrentitemoptionclassified" => MenuStat::Int(0),
+            // Past the list's unlocked count; nothing once the items are free.
+            "iscurrentitemclassified" => MenuStat::Int(i32::from(
+                cac.dvar("ui_useCustomClassInfo", 0) == 0 && cac.classified(n, current.list),
+            )),
+            "iscurrentitemequippedinanycustomclass" => {
+                let on = COPY_CLASSES.iter().any(|class| {
+                    cac.get(n)
+                        .and_then(|item| item.slot)
+                        .and_then(|slot| SLOTS.get(slot))
+                        .is_some_and(|slot| cac.read_slot(Some(class), slot) as i32 == n)
+                });
+                MenuStat::Int(i32::from(on))
+            }
+            "iscurrentsorteditemequipped" => {
+                let group = cac.dvars.get("selected_group").map_or("", String::as_str);
+                let count = cac.dvar("ui_slot_count", 0);
+                let on =
+                    (1..=count).any(|k| cac.read_slot(None, &format!("{group}{k}")) as i32 == n);
+                MenuStat::Int(i32::from(on))
             }
             _ => return None,
         })

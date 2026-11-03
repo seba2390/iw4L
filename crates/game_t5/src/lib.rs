@@ -953,6 +953,10 @@ fn round_half_up(value: f32) -> f32 {
 }
 
 impl game_api::MenuLayout for MenuLayout {
+    fn focus_in_item_order(&self) -> bool {
+        true
+    }
+
     /// `Menu_Paint` draws a fullscreen menu's background over the 640×480
     /// screen in the menu's alignment, then `Window_Paint`s the menu window.
     fn paints_menu_window(&self) -> bool {
