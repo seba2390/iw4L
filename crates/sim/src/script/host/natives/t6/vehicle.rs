@@ -386,9 +386,12 @@ fn set_speed(world: &mut World, receiver: &Value, args: &[Value]) -> Result<(u64
     let acceleration = number(args, 1).map_or(had.0, |rate| rate * MPH);
     let deceleration = number(args, 2).map_or(acceleration * 0.5, |rate| rate * MPH);
     if acceleration <= 0.0 || deceleration <= 0.0 {
-        return Err("Acceleration and Deceleration must be greater than zero".into());
+        return Err("Acceleration/deceleration must be > 0".into());
     }
-    let speed = (mph * MPH).max(0.0);
+    if mph < 0.0 {
+        return Err("Cannot set negative speed on vehicle".into());
+    }
+    let speed = mph * MPH;
     vehicles.held.insert(id, speed);
     vehicles.resuming.remove(&id);
     vehicles.rates.insert(id, (acceleration, deceleration));
@@ -857,7 +860,7 @@ pub(super) fn register(registry: &mut NativeRegistry) {
             .filter(|rate| *rate > 0.0)
             .map(|rate| rate * MPH);
         let Some(acceleration) = acceleration else {
-            return Err("acceleration must be greater than zero".into());
+            return Err("Cannot set negative or zero acceleration on vehicle".into());
         };
         let mut vehicles = world.get_resource_or_insert_with(PathVehicles::default);
         vehicles.held.remove(&id);
