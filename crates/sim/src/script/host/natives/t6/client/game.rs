@@ -160,8 +160,8 @@ pub(crate) fn set_of_type(etype: i32) -> Option<&'static str> {
 }
 
 /// The server's entities the local client's snapshot carries, with their
-/// type: players, corpses, missiles, script movers, vehicles, actors and
-/// barriers. Triggers, spawners, nodes and other server-only entities are not
+/// type: players, corpses, missiles, script movers, turrets, vehicles, actors
+/// and barriers. Triggers, spawners, nodes and other server-only entities are not
 /// sent.
 fn snapshot(server: &mut World) -> Vec<SnapshotEntity> {
     let listed: Vec<(u64, i32, i32)> = server
@@ -185,6 +185,11 @@ fn snapshot(server: &mut World) -> Vec<SnapshotEntity> {
                     if SCRIPT_MOVERS.contains(&&*entity.classname) =>
                 {
                     6
+                }
+                EntityKind::Map | EntityKind::Spawned
+                    if matches!(&*entity.classname, "misc_turret" | "auto_turret") =>
+                {
+                    11
                 }
                 _ => return None,
             };
