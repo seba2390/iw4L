@@ -499,6 +499,12 @@ fn node_links(world: &mut World) -> std::sync::Arc<NodeLinks> {
             (node, value)
         })
         .collect();
+    diag::debug!(
+        Sim,
+        "vehicle nodes: {}, {} with their own tension",
+        nodes.len(),
+        own.len()
+    );
     let links = std::sync::Arc::new(NodeLinks {
         next,
         prev,
@@ -538,7 +544,8 @@ fn drive(world: &mut World) {
         };
         let speed = ease(&mut world.resource_mut::<PathVehicles>(), id, seconds);
         if super::super::super::players::now_ms(world) % 1000 < i64::from(crate::MATCH_TICK_MS) {
-            diag::debug!(Sim, "vehicle {id}: speed {speed:.0}");
+            let at = origin(world, id);
+            diag::debug!(Sim, "vehicle {id}: speed {speed:.0} at {at:.0?}");
         }
         // The engine's step: along the path by what is left of the frame's
         // distance, measured back along the curve, a few times over.
