@@ -268,8 +268,8 @@ pub(crate) fn parse(script: &str, exec_takes_statement: bool) -> Vec<Command> {
             continue;
         }
         let (command, used) = match name.as_str() {
-            "open" | "ingameopen" => (Command::Open(arg(i + 1)), 2),
-            "close" | "ingameclose" => (Command::Close(arg(i + 1)), 2),
+            "open" | "ingameopen" | "openimmediate" => (Command::Open(arg(i + 1)), 2),
+            "close" | "ingameclose" | "closeimmediate" => (Command::Close(arg(i + 1)), 2),
             "escape" => (Command::Escape(arg(i + 1)), 2),
             "setfocus" => (Command::SetFocus(arg(i + 1)), 2),
             "focusfirst" => (Command::FocusFirst, 1),

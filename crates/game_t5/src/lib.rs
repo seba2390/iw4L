@@ -773,7 +773,7 @@ impl game_api::GameMenus for T5 {
 /// 3, `snd_menu_music` for 1, `snd_menu_voice` for 2. `snd_menu_cinematic`
 /// is the cinematics' (docs/fidelity/t5.md). `snd_menu_speaker_setup` and
 /// `snd_menu_listen_level` pick the sound driver's master preset.
-const MENU_DVARS: [game_api::MenuDvar; 40] = {
+const MENU_DVARS: [game_api::MenuDvar; 50] = {
     use game_api::{MenuDvar, MenuSetting};
     const fn shown(name: &'static str, default: &'static str) -> MenuDvar {
         MenuDvar {
@@ -844,6 +844,18 @@ const MENU_DVARS: [game_api::MenuDvar; 40] = {
             default: "1",
             setting: Some(MenuSetting::VerticalSync),
         },
+        // The class names default to their localized strings
+        // until the profile renames them.
+        shown("customclass1", "@CLASS_SLOT1_CAPS"),
+        shown("customclass2", "@CLASS_SLOT2_CAPS"),
+        shown("customclass3", "@CLASS_SLOT3_CAPS"),
+        shown("customclass4", "@CLASS_SLOT4_CAPS"),
+        shown("customclass5", "@CLASS_SLOT5_CAPS"),
+        shown("prestigeclass1", "@CLASS_PRESTIGE1"),
+        shown("prestigeclass2", "@CLASS_PRESTIGE2"),
+        shown("prestigeclass3", "@CLASS_PRESTIGE3"),
+        shown("prestigeclass4", "@CLASS_PRESTIGE4"),
+        shown("prestigeclass5", "@CLASS_PRESTIGE5"),
         shown("r_aaSamples", "1"),
         shown("r_aspectRatio", "auto"),
         shown("r_picmip", "0"),

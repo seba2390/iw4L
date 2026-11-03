@@ -55,7 +55,7 @@ impl<'a> Runner<'a, '_> {
             .list_positions
             .get(&list_key(menu, index))
             .copied()
-            .unwrap_or_default()
+            .unwrap_or_else(ListPos::default)
     }
 
     fn feeder_context(&self, cursor: i32) -> sim::FeederContext<'_> {
@@ -133,7 +133,7 @@ impl<'a> Runner<'a, '_> {
             if row >= 0 && row < pos.top {
                 pos.top = row;
             }
-        } else if row != last && row <= most + shown - 1 && pos.top + shown - 1 < row {
+        } else if row != last && row < most + shown && pos.top + shown <= row {
             pos.top = row - shown + 1;
         }
         self.menus.list_positions.insert(list_key(menu, index), pos);
@@ -476,7 +476,7 @@ pub(super) fn list_view(
         .list_positions
         .get(&list_key(&def.name, index))
         .copied()
-        .unwrap_or_default();
+        .unwrap_or_else(ListPos::default);
     let context = sim::FeederContext {
         list: &menus.item_list,
         current_item: menus.current_item,

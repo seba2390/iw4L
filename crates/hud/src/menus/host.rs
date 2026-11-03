@@ -76,7 +76,7 @@ impl MenuHost<'_> {
         self.list_positions
             .get(&(self.menu.name.to_ascii_lowercase(), index))
             .copied()
-            .unwrap_or_default()
+            .unwrap_or_else(super::state::ListPos::default)
     }
 
     fn list_count(&self, feeder: i32, index: usize) -> i32 {
