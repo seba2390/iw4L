@@ -19,6 +19,11 @@ use render_scene::{
 
 pub const MISSILE_LIGHTING_Z_OFS: f32 = 4.0;
 
+/// A missile's speed squared at or below this has come to rest.
+const MISSILE_REST_SPEED_SQ: f64 = 1e-6;
+/// The weapon's world model a resting retrievable missile can draw with.
+const RETRIEVABLE_MODEL_SLOT: usize = 2;
+
 #[derive(Resource, Default)]
 pub struct MissileOccupancy {
     pub rows: Vec<OccupiedMissile>,
@@ -161,6 +166,8 @@ fn occupy_missile_scene_ents(
     cg_clock: Option<Res<net::FrameClock>>,
     local: Option<Res<net::LocalPresentClient>>,
     script_models: Query<(Entity, &WorldScriptModelInstance, &Transform, &Visibility)>,
+    mode: Option<Res<game_api::ModeRules>>,
+    mut rested_since: Local<HashMap<u32, i32>>,
 ) {
     occupancy.rows.clear();
     let Some(snapshot) = presented.as_ref() else {
@@ -184,6 +191,21 @@ fn occupy_missile_scene_ents(
     let Some(catalog) = catalog else {
         return;
     };
+    let retrievable_rule = match mode.as_deref().map(|mode| mode.hud.code_hud) {
+        Some(game_api::Rule::Known(game_api::hud::CodeHud::Game(hud))) => hud.retrievable_model,
+        _ => None,
+    };
+    let viewer = local.as_ref().and_then(|local| {
+        let player = snapshot
+            .player(local.0)?
+            .move_player(local.0.0 as i32, false);
+        let dvars = snapshot.snapshot()?.meta.script_dvars(local.0);
+        Some((player, dvars))
+    });
+    rested_since.retain(|id, _| {
+        rows.iter()
+            .any(|row| row.authoritative_id().is_some_and(|row| row.0 == *id))
+    });
     let piloted = local
         .and_then(|local| {
             snapshot
@@ -205,6 +227,35 @@ fn occupy_missile_scene_ents(
         else {
             continue;
         };
+        let stuck =
+            matches!(row, net::PresentedProjectile::Authoritative(p) if p.attached_to.is_some());
+        let resting_ms = row.authoritative_id().and_then(|id| {
+            let [dx, dy, dz] = row.pos().tr_delta;
+            if stuck || f64::from(dx * dx + dy * dy + dz * dz) <= MISSILE_REST_SPEED_SQ {
+                rested_since.entry(id.0).or_insert(at_time);
+            }
+            rested_since.get(&id.0).map(|since| at_time - since)
+        });
+        let retrievable = retrievable_rule
+            .zip(viewer.as_ref())
+            .zip(weapons_reg)
+            .and_then(|((rule, (player, dvars)), reg)| {
+                let hud = reg.bind_published_row(row.weapon()).ok()?.hud_facts()?;
+                let dvar = |name: &str| dvars.float(name);
+                rule(&game_api::hud::RetrievableView {
+                    player,
+                    weapon: row.weapon(),
+                    ammo_index: hud.ammo_index,
+                    clip_index: hud.clip_index,
+                    resting_ms,
+                    stuck,
+                    dvar: &dvar,
+                })
+                .then(|| reg.alternate_world_model_of(row.weapon(), RETRIEVABLE_MODEL_SLOT))
+                .flatten()
+            })
+            .filter(|(ns, name)| catalog.get(*ns, name).is_some());
+        let (ns, name) = retrievable.unwrap_or((ns, name));
         let Some(entry) = catalog.get(ns, name) else {
             continue;
         };

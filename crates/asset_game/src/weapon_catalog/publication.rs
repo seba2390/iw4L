@@ -412,6 +412,7 @@ impl WeaponBuild {
                 camo_world_edges: Vec::new(),
                 attachment_world_model_edges: Vec::new(),
                 attachment_world_mounts: Vec::new(),
+                alternate_world_models: entry.alternate_world_models,
                 projectile_model: entry.projectile_model,
                 projectile_model_edge: AssetEdge::Absent,
                 rocket_model: entry.rocket_model,

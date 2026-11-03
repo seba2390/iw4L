@@ -143,6 +143,7 @@ impl WeaponCatalog {
             world_model,
             camo_models,
             skin_parent: None,
+            alternate_world_models: Default::default(),
             projectile_model,
             rocket_model,
             knife_xmodel: None,

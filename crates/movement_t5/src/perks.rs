@@ -52,6 +52,7 @@ pub mod mp {
     pub const LONGER_SPRINT: u32 = 30;
     pub const PIN_BACK: u32 = 36;
     pub const QUIETER: u32 = 38;
+    pub const TWO_GRENADES: u32 = 49;
     pub const SPRINT_RECOVERY: u32 = 46;
     pub const UNLIMITED_SPRINT: u32 = 51;
 
