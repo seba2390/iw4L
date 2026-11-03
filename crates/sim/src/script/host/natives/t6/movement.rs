@@ -40,10 +40,19 @@ const PROBE_HEIGHT: f32 = 48.0;
 const PROBE_MASK: u32 = 0xa000;
 const MAX_DROP: f32 = 32.0;
 const ANIMSCRIPTS: &str = "maps/mp/animscripts";
+/// The engine's arrival: an actor within a quarter second of its path's end
+/// (at its speed; 0.25² here) has 500 ms left to reach it, taking the share
+/// of what is left that a 50 ms frame gives, and its choice runs the stop
+/// script for the last 200.
+const ARRIVAL_SPEED_SQ: f32 = 0.0625;
+const ARRIVAL_MS: i64 = 500;
+const ARRIVAL_STOP_MS: i64 = 200;
+const FRAME_MS: f32 = 50.0;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(super) enum Script {
     Move,
+    Stop,
     Combat,
     /// The traversal its negotiation begin node names.
     Traverse(u16),
@@ -79,7 +88,6 @@ struct Traversal {
 #[derive(Clone, Debug, Default)]
 struct Movement {
     goal: Option<[f32; 3]>,
-    goal_sent: bool,
     /// The path to the goal; planned again when the goal changes.
     planned: bool,
     path: Vec<Waypoint>,
@@ -91,6 +99,10 @@ struct Movement {
     falling: f32,
     /// The walk made no headway on its last frame.
     stalled: bool,
+    /// How fast the last walk moved it across, in units a second.
+    speed: f32,
+    /// When its arrival ends; held until then or until it moves off anew.
+    arrival: Option<i64>,
     traverse_mode: TraverseMode,
     traversal: Option<Traversal>,
     /// The pain script while it runs; the engine's choice waits for it.
@@ -408,6 +420,7 @@ pub(super) fn set_script(
     movement(world, id).script = Some(script);
     let state_name = match script {
         Script::Move => "move",
+        Script::Stop => "stop",
         Script::Combat => "combat",
         Script::Pain => "pain",
         Script::Death => "death",
@@ -426,6 +439,7 @@ pub(super) fn set_script(
     };
     let main = match script {
         Script::Move => format!("{ANIMSCRIPTS}/{prefix}move::main"),
+        Script::Stop => format!("{ANIMSCRIPTS}/{prefix}stop::main"),
         Script::Combat => format!("{ANIMSCRIPTS}/{prefix}combat::main"),
         Script::Pain => format!("{ANIMSCRIPTS}/{prefix}pain::main"),
         Script::Death => format!("{ANIMSCRIPTS}/{prefix}death::main"),
@@ -570,8 +584,12 @@ fn walk(world: &mut World, id: u64, from: [f32; 3]) {
         state.follow = Some(follow);
         sync_path(state);
     }
+    let at = arrive(world, id, from).unwrap_or(at);
     let landed = step(world, id, from, at);
-    movement(world, id).stalled = flat_distance(from, landed) < 0.1;
+    let moved = flat_distance(from, landed);
+    let state = movement(world, id);
+    state.stalled = moved < 0.1;
+    state.speed = moved * 1000.0 / FRAME_MS;
     {
         let look = movement(world, id).look;
         let mut runtime = world.resource_mut::<RoundScript>();
@@ -587,6 +605,45 @@ fn walk(world: &mut World, id: u64, from: [f32; 3]) {
     {
         set_yaw(world, id, yaw);
     }
+}
+
+/// The engine's arrival, after the frame's lookahead: where the actor steps
+/// instead of along its lookahead while its timer runs. The timer starts when
+/// the lookahead has reached the path's end, with no traversal ahead and the
+/// end a quarter second away; when it runs out the actor takes all that is
+/// left and its path is cleared.
+fn arrive(world: &mut World, id: u64, from: [f32; 3]) -> Option<[f32; 3]> {
+    let now = super::super::super::players::now_ms(world);
+    let state = movement(world, id);
+    let follow = state.follow.as_ref()?;
+    let point = follow.next_point();
+    let left = [point[0] - from[0], point[1] - from[1]];
+    let end = match state.arrival {
+        Some(end) => end,
+        None => {
+            let far =
+                state.speed * state.speed * ARRIVAL_SPEED_SQ < left[0].powi(2) + left[1].powi(2);
+            if !follow.arriving() || far {
+                return None;
+            }
+            now + ARRIVAL_MS
+        }
+    };
+    let time = end - now;
+    if time < 1 {
+        state.arrival = None;
+        state.path.clear();
+        state.follow = None;
+        return Some([point[0], point[1], from[2]]);
+    }
+    state.arrival = Some(end);
+    let frame = FRAME_MS / time as f32;
+    let share = (2.0 - frame) * frame;
+    Some([
+        from[0] + left[0] * share,
+        from[1] + left[1] * share,
+        from[2],
+    ])
 }
 
 /// `maymovetopoint`: the point grounded within 48 units, not starting in
@@ -898,18 +955,37 @@ fn think_one(world: &mut World, id: u64) -> Result<(), String> {
     let stalled = movement(world, id).stalled;
     // The engine's exposed state runs combat for an actor with no path, or
     // with one while it is not safe to change its script, enemy or not;
-    // with a path its move choice runs (here a traversal or move: the
-    // choice's arrivals and slow-actor stop are `t6.actors.script_choice`).
+    // with a path its move choice runs: a traversal, the stop script late in
+    // an arrival (the last 200 ms when farther from the goal than `walkdist`,
+    // just under that when not), or move.
     let safe = !matches!(field(world, id, "safetochangescript"), Value::Int(0));
     let crossing = negotiation(world, &path, 0).filter(|_| {
         let gap = flat_distance(at, path[0].at);
         safe && (gap <= 1.0 || stalled && gap <= POINT_REACHED)
     });
+    let now_ms = super::super::super::players::now_ms(world);
+    let walkdist = number(world, id, "walkdist", 0.0);
+    let far = (0..3).map(|i| (at[i] - goal[i]).powi(2)).sum::<f32>() > walkdist * walkdist;
+    let stopping = movement(world, id).arrival.is_some_and(|end| {
+        let time = end - now_ms;
+        if far {
+            time <= ARRIVAL_STOP_MS
+        } else {
+            time < ARRIVAL_STOP_MS
+        }
+    });
     let script = match crossing {
         _ if path.is_empty() || !safe => Script::Combat,
         Some((begin, _)) => Script::Traverse(begin),
+        None if stopping => Script::Stop,
         None => Script::Move,
     };
+    if script == Script::Move && movement(world, id).script != Some(Script::Move) {
+        movement(world, id).arrival = None;
+    }
+    if !matches!(script, Script::Move | Script::Stop) {
+        movement(world, id).speed = 0.0;
+    }
     if let Some((begin, end)) = crossing {
         movement(world, id).traversal = Some(Traversal {
             begin,
@@ -927,7 +1003,7 @@ fn think_one(world: &mut World, id: u64) -> Result<(), String> {
                 _ => state.traversal = None,
             }
         }
-        Script::Move => walk(world, id, at),
+        Script::Move | Script::Stop => walk(world, id, at),
         Script::Combat => face(world, id, at, enemy.as_ref()),
         Script::Pain | Script::Death => {}
     }
@@ -939,12 +1015,9 @@ fn think_one(world: &mut World, id: u64) -> Result<(), String> {
         update_pitch_orient(world, id);
     }
     let now = origin_of(world, id);
-    if in_goal(world, id, now, goal) && !movement(world, id).goal_sent {
-        let state = movement(world, id);
-        state.goal_sent = true;
-        state.path.clear();
-        state.follow = None;
-        diag::debug!(Sim, "actor {id}: reached its goal at {now:?}");
+    // The engine notifies every frame the actor is in its goal, and its path
+    // runs on to the end (its arrival).
+    if in_goal(world, id, now, goal) {
         raise(world, Value::Object(id), "goal", Vec::new());
     }
     Ok(())
@@ -995,7 +1068,6 @@ fn set_goal(world: &mut World, id: u64, goal: [f32; 3]) {
         return;
     }
     state.goal = Some(goal);
-    state.goal_sent = false;
     state.planned = false;
 }
 
