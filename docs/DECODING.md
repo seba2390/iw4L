@@ -28,8 +28,8 @@ start, every string reference falls inside an operand.
 **Engine rules** (movement, weapon timing, what an opcode does) live in the
 game's executable. Its code is studied in the owner's copy only: on disk, or —
 where the executable only becomes readable once it runs — from the running
-game in a local Windows VM on the owner's machine (Parallels, driven with
-`prlctl`), with the image kept on that machine. Disassembly is Capstone
+game in a local Windows VM on the owner's machine (UTM, driven with `utmctl`),
+with the image kept on that machine. Disassembly is Capstone
 (Python, with `pefile`) or Ghidra. A value from code is cross-checked against
 the game's own data before it lands, e.g. Black Ops 2's opcode operand layouts
 against all 9 044 zombies functions.
@@ -40,7 +40,7 @@ only from the game itself ([`CONTEXT.md`](../CONTEXT.md), glossary).
 
 **Tools.** Steam / `steamcmd` for the owner's install; throwaway Rust probes
 and Python scripts outside the tree (an artifact under `context/` keeps them);
-Capstone, `pefile`, Ghidra; Parallels for the Windows-only games.
+Capstone, `pefile`, Ghidra; a UTM VM for the Windows-only games.
 
 **Port graph.** `cargo xtask port-graph <cmd>` (`scripts/port_graph.py`) is one
 SQLite index of a builtin's catalog rows, the native that serves it per game,
