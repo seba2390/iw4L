@@ -1493,6 +1493,35 @@ impl T5MenuData {
                 });
                 MenuStat::Int(i32::from(on))
             }
+            // `(class, slot)`: a default class's item in that slot, else the
+            // slot's default.
+            "getdefaultclassslot" if args.len() != 2 => {
+                self.cac
+                    .say("Expected 2 parameters to GetDefaultClassSlot()".into());
+                MenuStat::Int(0)
+            }
+            "getdefaultclassslot" => {
+                let class = DEFAULT_CLASSES
+                    .iter()
+                    .position(|name| name.eq_ignore_ascii_case(&text(0)));
+                let slot = SLOTS
+                    .iter()
+                    .position(|name| name.eq_ignore_ascii_case(&text(1)));
+                let table = self.cac.default_table();
+                let at = match (class, slot) {
+                    (Some(class), Some(slot)) if slot < CLASS_SLOTS => {
+                        table.get(class * CLASS_SLOTS + slot).copied()
+                    }
+                    (Some(_), Some(slot)) => table
+                        .get(DEFAULT_CLASSES.len() * CLASS_SLOTS + slot - CLASS_SLOTS)
+                        .copied(),
+                    _ => None,
+                }
+                .filter(|&item| item != -1);
+                MenuStat::Int(
+                    at.unwrap_or_else(|| slot.map_or(0, |slot| self.cac.slot_default(slot) as i32)),
+                )
+            }
             // The attachment table's name of attachment `id`.
             "getattachmentname" => MenuStat::Text(
                 usize::try_from(int(0))
