@@ -369,6 +369,13 @@ pub enum AiEvent {
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum AiPointEvent {
+    /// Event 2: `footstep` (`ai_eventDistFootstep` 512), a player's running
+    /// step, jump or landing; an actor that hears it knows where the player
+    /// is.
+    Footstep,
+    /// Event 3: `footsteplite` (`ai_eventDistFootstepLite` 256), a walking
+    /// step.
+    FootstepLite,
     /// Event 8: `explosion` (`ai_eventDistExplosion` 1024).
     Explosion,
     /// Event 9: `grenade_ping` (`ai_eventDistGrenadePing` 512, `"grenade danger"`).

@@ -706,6 +706,7 @@ fn sentient_team_bits(world: &World, id: u64) -> Option<(u8, u8)> {
         "axis" => Some((1 << 1, 1 << 2)),
         "allies" => Some((1 << 2, 1 << 1)),
         "neutral" => Some((1 << 3, 0)),
+        "free" => Some((1 << 0, 0)),
         _ => None,
     }
 }
@@ -745,6 +746,13 @@ pub(crate) fn broadcast_ai_event(
     let teams = match event {
         AiEvent::Point { teams, .. } | AiEvent::Line { teams, .. } => teams,
     };
+    let steps = matches!(
+        event,
+        AiEvent::Point {
+            kind: AiPointEvent::Footstep | AiPointEvent::FootstepLite,
+            ..
+        }
+    );
     let team_mask = match teams {
         Some(mask) => mask,
         None => {
@@ -768,6 +776,9 @@ pub(crate) fn broadcast_ai_event(
             ) && is_player
             {
                 own | opp
+            } else if opp == 0 && steps {
+                // Free for all: the free team's other AI hear a step.
+                own
             } else {
                 opp
             }
@@ -815,6 +826,16 @@ pub(crate) fn broadcast_ai_event(
     match event {
         AiEvent::Point { kind, origin, .. } => {
             let (bit, name, dist) = match kind {
+                AiPointEvent::Footstep => (
+                    1u32 << 2,
+                    "footstep",
+                    ai_event_dist(world, "ai_eventDistFootstep", 512.0),
+                ),
+                AiPointEvent::FootstepLite => (
+                    1u32 << 3,
+                    "footsteplite",
+                    ai_event_dist(world, "ai_eventDistFootstepLite", 256.0),
+                ),
                 AiPointEvent::Explosion => (
                     1u32 << 8,
                     "explosion",
@@ -908,6 +929,16 @@ pub(crate) fn broadcast_ai_event(
                         }
                     }
                     AiPointEvent::Gunshot | AiPointEvent::SilencedShot => {}
+                    AiPointEvent::Footstep | AiPointEvent::FootstepLite => {
+                        // A dog does not listen for its owner.
+                        let Some(player) = originator else { continue };
+                        let owner = world
+                            .resource_mut::<RoundScript>()
+                            .object_field(actor, "script_owner");
+                        if !matches!(owner, Value::Object(owner) if owner == player) {
+                            super::actor_brain::hear(world, actor, player);
+                        }
+                    }
                     AiPointEvent::Pain | AiPointEvent::Death => {
                         if let Some(attacker) = attacker {
                             super::actor_brain::hear(world, actor, attacker);

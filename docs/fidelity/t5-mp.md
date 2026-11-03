@@ -202,8 +202,7 @@ Each open section names the issue that works it.
       that model swap is not ported for anyone); `_pin_back` (Flak Jacket
       Pro: a thrown-back grenade keeps at least
       `perk_grenadeTossBackTimer`, 2500 ms, of fuse; no throwback is
-      ported); `_quieter` (Ninja: the server's footsteps raise no AI sound
-      event, and no AI hears here). No perk row
+      ported). No perk row
       of Black Ops' stats table and no script gives `_grenadepulldeath`
       (a grenade of `perk_grenadeDeath` dropped when a downed player
       dies) or `_reconnaissance` (compass marks), so a match never sets
