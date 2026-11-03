@@ -1836,6 +1836,10 @@ fn encode_client_screen(out: &mut WireWriter, screen: &sim::ClientScreen) {
             out.put_f32(poison.amount);
             out.put_f32(poison.pulse);
             out.put_f32(poison.dvision_x);
+            out.put_f32(poison.warp[0]);
+            out.put_f32(poison.warp[1]);
+            out.put_f32(poison.dvision_a);
+            out.put_f32(poison.dvision_y);
             out.put_f32(poison.blur_min);
             out.put_f32(poison.blur_max);
         }
@@ -2016,6 +2020,9 @@ fn decode_client_screen(input: &mut WireReader<'_>) -> Result<sim::ClientScreen,
                 amount: input.get_f32()?,
                 pulse: input.get_f32()?,
                 dvision_x: input.get_f32()?,
+                warp: [input.get_f32()?, input.get_f32()?],
+                dvision_a: input.get_f32()?,
+                dvision_y: input.get_f32()?,
                 blur_min: input.get_f32()?,
                 blur_max: input.get_f32()?,
             }),

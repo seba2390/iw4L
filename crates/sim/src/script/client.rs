@@ -1087,6 +1087,7 @@ pub(crate) fn advance_client_scripts(server: &mut World) {
             // Its screen overlays past their time stop and fade, and fades
             // past their time end.
             super::host::natives::t6::flame_overlay::frame(server, 0);
+            super::host::natives::t5_poison::frame(server, 0);
             publish_client_lights(server, &client.world);
             present::present(server, &mut client);
             deliver_tag_effects(server, &mut client);

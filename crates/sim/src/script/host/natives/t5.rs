@@ -1258,28 +1258,22 @@ fn register_player(registry: &mut NativeRegistry) {
         t5(world).dstats.insert((client, path), value.clone());
         Ok(Value::Undefined)
     });
-    macro_rules! status {
-        ($($name:literal => $status:literal = $on:literal),* $(,)?) => {$(
-            registry.register(Method, $name, |world, receiver, _| {
-                let client = player_id(world, receiver)?;
-                let statuses = &mut t5(world).statuses;
-                if $on {
-                    statuses.insert((client, $status));
-                } else {
-                    statuses.remove(&(client, $status));
-                }
-                Ok(Value::Undefined)
-            });
-        )*};
-    }
-    status!(
-        "startpoisoning" => "poisoned" = true,
-        "stoppoisoning" => "poisoned" = false,
-    );
+    // The player's poisoned word, which the client's poison overlay
+    // follows (`t5_poison`).
+    registry.register(Method, "startpoisoning", |world, receiver, _| {
+        let client = player_id(world, receiver)?;
+        super::t6::poison_overlay::set_poisoned(world, client, true);
+        Ok(Value::Undefined)
+    });
+    registry.register(Method, "stoppoisoning", |world, receiver, _| {
+        let client = player_id(world, receiver)?;
+        super::t6::poison_overlay::set_poisoned(world, client, false);
+        Ok(Value::Undefined)
+    });
     registry.register(Method, "ispoisoned", |world, receiver, _| {
         let client = player_id(world, receiver)?;
         Ok(Value::Int(
-            t5(world).statuses.contains(&(client, "poisoned")).into(),
+            super::t6::poison_overlay::poisoned(world, client).into(),
         ))
     });
     macro_rules! presented {
