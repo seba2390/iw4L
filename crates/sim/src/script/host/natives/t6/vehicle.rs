@@ -55,6 +55,12 @@ struct PathVehicles {
     speed: BTreeMap<u64, f32>,
     /// A speed the script set (`setspeed`), over the nodes'.
     held: BTreeMap<u64, f32>,
+    /// The speed it has eased to, in units a second.
+    current: BTreeMap<u64, f32>,
+    /// Its acceleration and deceleration, in units a second each second.
+    rates: BTreeMap<u64, (f32, f32)>,
+    /// `resumespeed`: easing back to the nodes' speed.
+    resuming: std::collections::BTreeSet<u64>,
     /// `setvehmaxspeed`.
     max: BTreeMap<u64, f32>,
     /// Moving platforms (`setmovingplatformenabled`).
@@ -92,12 +98,7 @@ pub(super) fn velocity(world: &mut World, id: u64) -> Option<[f32; 3]> {
     let (drive, speed) = {
         let vehicles = world.get_resource::<PathVehicles>()?;
         let drive = *vehicles.driving.get(&id)?;
-        let speed = vehicles
-            .held
-            .get(&id)
-            .or_else(|| vehicles.speed.get(&id))
-            .copied()
-            .unwrap_or(0.0);
+        let speed = vehicles.current.get(&id).copied().unwrap_or(0.0);
         (drive, speed)
     };
     if speed <= 0.0 {
@@ -331,12 +332,67 @@ fn current_speed(world: &mut World, id: u64) -> f32 {
     if !vehicles.driving.contains_key(&id) {
         return 0.0;
     }
-    vehicles
+    vehicles.current.get(&id).copied().unwrap_or(0.0)
+}
+
+/// The speed a vehicle eases to this tick: toward the script's by its
+/// acceleration, either way, and back to the nodes' under `resumespeed`
+/// (at the node's speed at once when no script set one: the definition holding
+/// that acceleration is not read, `t6.vehicles.definitions`).
+fn ease(vehicles: &mut PathVehicles, id: u64, seconds: f32) -> f32 {
+    let target = vehicles
         .held
         .get(&id)
         .or_else(|| vehicles.speed.get(&id))
         .copied()
-        .unwrap_or(DEFAULT_MPH * MPH)
+        .unwrap_or(DEFAULT_MPH * MPH);
+    let target = vehicles.max.get(&id).map_or(target, |max| target.min(*max));
+    let eases = vehicles.held.contains_key(&id) || vehicles.resuming.contains(&id);
+    let current = vehicles.current.get(&id).copied();
+    let speed = match (current, vehicles.rates.get(&id)) {
+        (Some(current), Some(&(acceleration, _))) if eases => {
+            let change = acceleration * seconds;
+            if target <= current {
+                (current - change).max(target)
+            } else {
+                (current + change).min(target)
+            }
+        }
+        _ => target,
+    };
+    if speed == target {
+        vehicles.resuming.remove(&id);
+    }
+    vehicles.current.insert(id, speed);
+    speed
+}
+
+fn number(args: &[Value], index: usize) -> Option<f32> {
+    match args.get(index) {
+        Some(Value::Int(n)) => Some(*n as f32),
+        Some(Value::Float(f)) => Some(*f),
+        _ => None,
+    }
+}
+
+/// `setspeed`'s arguments, kept; a rate at or under zero is the engine's
+/// error, and a call that gave none keeps the rate it had. Answers the vehicle
+/// and the speed in units a second.
+fn set_speed(world: &mut World, receiver: &Value, args: &[Value]) -> Result<(u64, f32), String> {
+    let id = vehicle(world, receiver)?;
+    let mph = number(args, 0).ok_or("setspeed expects a speed")?;
+    let mut vehicles = world.get_resource_or_insert_with(PathVehicles::default);
+    let had = vehicles.rates.get(&id).copied().unwrap_or((MPH, MPH * 0.5));
+    let acceleration = number(args, 1).map_or(had.0, |rate| rate * MPH);
+    let deceleration = number(args, 2).map_or(acceleration * 0.5, |rate| rate * MPH);
+    if acceleration <= 0.0 || deceleration <= 0.0 {
+        return Err("Acceleration and Deceleration must be greater than zero".into());
+    }
+    let speed = (mph * MPH).max(0.0);
+    vehicles.held.insert(id, speed);
+    vehicles.resuming.remove(&id);
+    vehicles.rates.insert(id, (acceleration, deceleration));
+    Ok((id, speed))
 }
 
 /// Each tick: the vehicles on their paths drive on.
@@ -355,16 +411,7 @@ fn drive(world: &mut World) {
         let Some(mut path) = world.resource::<PathVehicles>().driving.get(&id).copied() else {
             continue;
         };
-        let speed = {
-            let vehicles = world.resource::<PathVehicles>();
-            let speed = vehicles
-                .held
-                .get(&id)
-                .or_else(|| vehicles.speed.get(&id))
-                .copied()
-                .unwrap_or(DEFAULT_MPH * MPH);
-            vehicles.max.get(&id).map_or(speed, |max| speed.min(*max))
-        };
+        let speed = ease(&mut world.resource_mut::<PathVehicles>(), id, seconds);
         let mut step = speed * seconds;
         let mut at = origin(world, id);
         let mut reached = Vec::new();
@@ -789,29 +836,34 @@ pub(super) fn register(registry: &mut NativeRegistry) {
         }
         Ok(Value::Undefined)
     });
-    // `setspeed(mph, ...)` and `setspeedimmediate(mph, ...)`: the script's
-    // speed over the nodes' (`resumespeed` hands it back).
-    for name in ["setspeed", "setspeedimmediate"] {
-        registry.register(Method, name, |world, receiver, args| {
-            let id = vehicle(world, receiver)?;
-            let mph = match args.first() {
-                Some(Value::Int(n)) => *n as f32,
-                Some(Value::Float(f)) => *f,
-                _ => return Err("setspeed expects a speed".into()),
-            };
-            world
-                .get_resource_or_insert_with(PathVehicles::default)
-                .held
-                .insert(id, mph * MPH);
-            Ok(Value::Undefined)
-        });
-    }
-    registry.register(Method, "resumespeed", |world, receiver, _| {
-        let id = vehicle(world, receiver)?;
+    // `setspeed(mph, [acceleration, [deceleration]])`: the script's speed over
+    // the nodes' (`resumespeed` hands it back); the rates are miles per hour a
+    // second, the deceleration half the acceleration unless given.
+    // `setspeedimmediate` is at that speed at once.
+    registry.register(Method, "setspeed", |world, receiver, args| {
+        set_speed(world, receiver, args).map(|_| Value::Undefined)
+    });
+    registry.register(Method, "setspeedimmediate", |world, receiver, args| {
+        let (id, speed) = set_speed(world, receiver, args)?;
         world
             .get_resource_or_insert_with(PathVehicles::default)
-            .held
-            .remove(&id);
+            .current
+            .insert(id, speed);
+        Ok(Value::Undefined)
+    });
+    registry.register(Method, "resumespeed", |world, receiver, args| {
+        let id = vehicle(world, receiver)?;
+        let acceleration = number(args, 0)
+            .filter(|rate| *rate > 0.0)
+            .map(|rate| rate * MPH);
+        let Some(acceleration) = acceleration else {
+            return Err("acceleration must be greater than zero".into());
+        };
+        let mut vehicles = world.get_resource_or_insert_with(PathVehicles::default);
+        vehicles.held.remove(&id);
+        vehicles.resuming.insert(id);
+        let decel = vehicles.rates.get(&id).map_or(0.0, |rates| rates.1);
+        vehicles.rates.insert(id, (acceleration, decel));
         Ok(Value::Undefined)
     });
     registry.register(Method, "getspeed", |world, receiver, _| {
