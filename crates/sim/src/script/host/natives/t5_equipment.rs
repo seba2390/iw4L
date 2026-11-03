@@ -48,7 +48,35 @@ fn timed_fx_unknown() -> &'static Unknown {
     )
 }
 
+/// The clients whose camera spike view is toggled on (`setCameraSpikeActive`).
+#[derive(bevy_ecs::prelude::Resource, Default)]
+struct CameraSpikeToggles(std::collections::BTreeSet<u32>);
+
+/// Whether the server has the client's camera spike toggled on.
+pub(crate) fn camera_spike_toggled(world: &World, client: u32) -> bool {
+    world
+        .get_resource::<CameraSpikeToggles>()
+        .is_some_and(|toggles| toggles.0.contains(&client))
+}
+
 pub(crate) fn register(registry: &mut NativeRegistry) {
+    // `setCameraSpikeActive(toggle)`: the player's camera spike view, unless
+    // the weapon is a scoped one held at aim.
+    registry.register(Method, "setcameraspikeactive", |world, receiver, args| {
+        let client = super::player::client_of(world, receiver)
+            .map_err(|_| String::from("USAGE: Must be called on a client"))?;
+        if args.is_empty() {
+            return Err("USAGE: <toggle> not specified".into());
+        }
+        let on = int(args, 0)? != 0;
+        let mut toggles = world.get_resource_or_insert_with(CameraSpikeToggles::default);
+        if on {
+            toggles.0.insert(client.0);
+        } else {
+            toggles.0.remove(&client.0);
+        }
+        Ok(Value::Undefined)
+    });
     // `launch(velocity[, spin])` on a missile: it falls again from where it is.
     registry.register(Method, "launch", |world, receiver, args| {
         let id = super::engine::entity_id(world, receiver)?;

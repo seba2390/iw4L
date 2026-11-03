@@ -1773,6 +1773,14 @@ const EXTRA_CAMERA_FOV: f32 = 65.0;
 /// reads the camera entity's lerp origin and angles each frame) and the
 /// field of view.
 pub(crate) fn extra_camera(world: &mut World) -> Option<game_api::ExtraCamera> {
+    let (active, origin, angles) = world.resource::<ClientOutput>().spike_camera;
+    if active {
+        return Some(game_api::ExtraCamera {
+            origin,
+            angles,
+            fov: SPIKE_CAMERA_FOV,
+        });
+    }
     let (id, fov) = world.resource::<ClientOutput>().extra_camera?;
     Some(game_api::ExtraCamera {
         origin: entity_vector(world, id, "origin"),
@@ -1784,6 +1792,9 @@ pub(crate) fn extra_camera(world: &mut World) -> Option<game_api::ExtraCamera> {
 /// Black Ops' extra camera: one client entity whose view the renderer draws
 /// for the materials that show it. Each native takes its arguments in the
 /// game's order: the count, then the local client.
+/// The camera spike's field of view, which its scripts do not set.
+const SPIKE_CAMERA_FOV: f32 = 65.0;
+
 /// The `AnimateUI` moves already reported as not ported.
 #[derive(bevy_ecs::prelude::Resource, Default)]
 struct AnimateUiAsked(std::collections::BTreeSet<(String, String, String)>);
@@ -1885,9 +1896,13 @@ fn register_extra_camera(registry: &mut NativeRegistry) {
     // Black Ops multiplayer's extra camera (the camera spike's view): its
     // client keeps the entity, the active and static flags, and an origin
     // and angles, checking only the parameter count and the local client
-    // (`active` and `static` only with fewer than two local clients). The
-    // view it draws from them is not ported: turning it on logs
-    // `t5.csc.extra_camera`.
+    // (`active` and `static` only with fewer than two local clients).
+    registry.register(Function, "iscameraspiketoggled", |world, _, args| {
+        local_index(args)?;
+        Ok(Value::Int(
+            world.resource::<ClientOutput>().spike_toggled.into(),
+        ))
+    });
     registry.register(Function, "setextracamentity", |world, _, args| {
         if args.len() != 2 {
             return Err("Incorrect number of parameters passed to SetExtraCamEntity()\nUSAGE: SetExtraCam( <localClientNum>, <entity> )\n".into());
@@ -1898,17 +1913,12 @@ fn register_extra_camera(registry: &mut NativeRegistry) {
         }
         Ok(Value::Undefined)
     });
-    registry.register(Function, "setextracamactive", |_, _, args| {
+    registry.register(Function, "setextracamactive", |world, _, args| {
         if args.len() != 2 {
-            return Err("Incorrect number of parameters passed to SetExtraCamActive()\nUSAGE: SetExtraCam( <localClientNum>, <active> )\n".into());
+            return Err("Incorrect number of parameters passed to SetExtraCamActive()\nUSAGE: SetExtraCamActive( localClientNum, active )".into());
         }
         local_index(args)?;
-        if int(args, 1)? != 0 {
-            diag::warn!(
-                Sim,
-                "t5.csc.extra_camera: the client scripts turned on Black Ops' extra camera (the camera spike's view), which is not drawn"
-            );
-        }
+        world.resource_mut::<ClientOutput>().spike_camera.0 = int(args, 1)? != 0;
         Ok(Value::Undefined)
     });
     registry.register(Function, "setextracamstatic", |_, _, args| {
@@ -1919,20 +1929,20 @@ fn register_extra_camera(registry: &mut NativeRegistry) {
         int(args, 1)?;
         Ok(Value::Undefined)
     });
-    registry.register(Function, "setextracamorigin", |_, _, args| {
+    registry.register(Function, "setextracamorigin", |world, _, args| {
         if args.len() != 2 {
             return Err("Incorrect number of parameters passed to SetExtraCamOrigin()\nUSAGE: SetExtraCamOrigin( <localClientNum>, <origin> )\n".into());
         }
         local_index(args)?;
-        vector(args, 1)?;
+        world.resource_mut::<ClientOutput>().spike_camera.1 = vector(args, 1)?;
         Ok(Value::Undefined)
     });
-    registry.register(Function, "setextracamangles", |_, _, args| {
+    registry.register(Function, "setextracamangles", |world, _, args| {
         if args.len() != 2 {
             return Err("Incorrect number of parameters passed to SetExtraCamAngles()\nUSAGE: SetExtraCamAngles( <localClientNum>, <angles> )\n".into());
         }
         local_index(args)?;
-        vector(args, 1)?;
+        world.resource_mut::<ClientOutput>().spike_camera.2 = vector(args, 1)?;
         Ok(Value::Undefined)
     });
     // The client's `HasCollectible(n)` reads the same dvar as the server's.
