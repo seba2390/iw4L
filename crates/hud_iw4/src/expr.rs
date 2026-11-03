@@ -247,6 +247,18 @@ pub trait ExprHost {
     fn server_time(&self) -> Result<i32, ExprError> {
         Err(ExprError::Host("gettime"))
     }
+    fn profile_stat(&self, path: &[Operand]) -> Result<Operand, ExprError> {
+        let _ = path;
+        Err(ExprError::Host("getdstat"))
+    }
+    fn item_index(&self, name: &str) -> Result<i32, ExprError> {
+        let _ = name;
+        Err(ExprError::Host("getitemindex"))
+    }
+    fn profile_function(&self, name: &str, args: &[Operand]) -> Result<Operand, ExprError> {
+        let _ = (name, args);
+        Err(ExprError::Host("profile functions"))
+    }
 
     fn splash_text(&self, slot: i32) -> Result<Operand, ExprError> {
         let _ = slot;
@@ -568,6 +580,26 @@ impl<H: ExprHost> GameQueries for Queries<'_, H> {
     }
     fn server_time(&self) -> Result<i32, ExprError> {
         self.0.server_time()
+    }
+    fn profile_stat(&self, path: &[Operand]) -> Result<Operand, ExprError> {
+        self.0.profile_stat(path)
+    }
+    fn item_index(&self, name: &str) -> Result<i32, ExprError> {
+        self.0.item_index(name)
+    }
+    fn profile_function(&self, name: &str, args: &[Operand]) -> Result<Operand, ExprError> {
+        self.0.profile_function(name, args)
+    }
+    fn table_lookup(
+        &self,
+        table: &str,
+        column: i32,
+        value: &str,
+        result: i32,
+    ) -> Result<String, ExprError> {
+        Ok(source_str(
+            &self.0.table_lookup(table, column, value, result)?,
+        ))
     }
     fn gametype_name(&self) -> Result<Operand, ExprError> {
         self.0.gametype_name()

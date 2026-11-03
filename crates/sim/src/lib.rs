@@ -42,6 +42,7 @@ pub use persistent_defaults::PlayerDataDefaults;
 mod presence;
 mod profile_stats;
 pub use profile_stats::ProfileStats;
+pub use script::host::natives::t5_cac::{MenuStat, MenuStatKey, T5MenuData};
 mod remote_missile;
 mod save_game;
 pub mod script;

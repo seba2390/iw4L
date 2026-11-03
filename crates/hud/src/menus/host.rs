@@ -25,9 +25,31 @@ pub(crate) struct MenuWorld<'a> {
     pub radar_blocked: bool,
     /// Real pixels per virtual pixel, for picking a font by its real size.
     pub virtual_to_real: f32,
+    /// What Black Ops' menus read of the local profile (its stats, items
+    /// and the level's tables), on the host.
+    pub t5_menu: Option<&'a sim::T5MenuData>,
 }
 
 const GAMETYPES_TABLE: &str = "mp/gametypestable.csv";
+
+fn menu_keys(args: &[Operand]) -> Vec<sim::MenuStatKey<'_>> {
+    args.iter()
+        .map(|key| match key {
+            Operand::Str(name) => sim::MenuStatKey::Name(name),
+            Operand::Int(n) => sim::MenuStatKey::Index(*n),
+            Operand::Float(n) => sim::MenuStatKey::Index(*n as i32),
+        })
+        .collect()
+}
+
+fn menu_operand(stat: sim::MenuStat) -> Operand {
+    match stat {
+        sim::MenuStat::Int(n) => Operand::Int(n),
+        sim::MenuStat::Text(text) => Operand::Str(text),
+    }
+}
+/// A client that is not the host has no profile stats to read here.
+const NO_PROFILE_STATS: ExprError = ExprError::Host("no profile stats on this client");
 const CUSTOM_CLASS_SLOTS: usize = 10;
 
 pub(crate) struct MenuHost<'a> {
@@ -326,6 +348,26 @@ impl ExprHost for MenuHost<'_> {
     fn milliseconds(&self) -> i32 {
         self.world.ms
     }
+    fn profile_stat(&self, path: &[Operand]) -> Result<Operand, ExprError> {
+        let data = self.world.t5_menu.ok_or(NO_PROFILE_STATS)?;
+        match data.stat(&menu_keys(path)) {
+            Ok(stat) => Ok(menu_operand(stat)),
+            // Black Ops answers 0 for a path its stats do not hold.
+            Err(error) => {
+                diag::debug!(Ui, "{error}");
+                Ok(Operand::Int(0))
+            }
+        }
+    }
+    fn profile_function(&self, name: &str, args: &[Operand]) -> Result<Operand, ExprError> {
+        let data = self.world.t5_menu.ok_or(NO_PROFILE_STATS)?;
+        data.call(name, &menu_keys(args))
+            .map(menu_operand)
+            .ok_or(ExprError::Host("the profile does not answer that function"))
+    }
+    fn item_index(&self, name: &str) -> Result<i32, ExprError> {
+        Ok(self.world.t5_menu.ok_or(NO_PROFILE_STATS)?.item_index(name))
+    }
     fn static_dvar_int(&self, index: i32) -> Result<i32, ExprError> {
         self.dvar_int(self.static_name(index)?)
     }
@@ -449,6 +491,11 @@ impl ExprHost for MenuHost<'_> {
             .and_then(|data| data.table_lookup(table, col0, key, result_col))
         {
             return Ok(Operand::Str(value.into()));
+        }
+        if let Some(data) = self.world.t5_menu {
+            return Ok(Operand::Str(
+                data.table_lookup(table, col0, key, result_col),
+            ));
         }
         if let Some(value) = self.weapon_table_field(table, col0, key, result_col) {
             return Ok(Operand::Str(value));

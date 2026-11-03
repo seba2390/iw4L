@@ -454,6 +454,12 @@ impl SimWorld {
         *self.ecs.resource::<crate::LocalPlayerProfile>()
     }
 
+    /// What Black Ops' menus read of the local profile on this level.
+    /// `dvars` are the menus' own, over the match's.
+    pub fn t5_menu_data(&mut self, dvars: &[(String, String)]) -> Option<crate::T5MenuData> {
+        crate::script::host::natives::t5_cac::menu_data(&mut self.ecs, dvars)
+    }
+
     pub fn profile_stats(&self) -> &crate::ProfileStats {
         self.ecs.resource::<crate::ProfileStats>()
     }

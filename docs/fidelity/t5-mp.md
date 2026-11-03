@@ -643,14 +643,24 @@ Each open section names the issue that works it.
       that calls a function is not evaluated (the line is dropped with a
       warning), and the border colour and the two other animated window
       fields are not moved. WAGER MATCH stays hidden: nothing sets
-      `ui_mpWagerMatchEnabled`. Open: the menus' expressions call functions not
-      answered yet, so the items they gate do not draw: `tablelookup` (the
-      lobby's map name), `inlobby`, `isPartyReady`, `getitemindex` (CREATE
-      A CLASS and KILLSTREAKS rows), `getfeedercount`, `getDStat` (PLAY
-      opens `live_flyout` as if the class reset warning had been shown);
-      the news ticker owner draws (`tickerHeaderText`, `ticker`) and the
-      main menu's two fading background layers (their alpha expressions)
-      do not draw.
+      `ui_mpWagerMatchEnabled`. The menus read the local profile's stats as the create-a-class
+      commands keep them (`getDStat`, `getCACItemIndex`, `getStatByName`,
+      `isItemLocked`, `isItemNew`, `isItemGroupNew`, `getItemName`,
+      `getItemImage`, `getItemEquippedAttachment`, `getItemIndex`,
+      `getAttachmentName`, `tableLookup`), and `statWriteDDL`,
+      `statSetByName` and `uploadStats` write them, so PLAY on a fresh
+      profile shows the class reset notice and the lobby's CREATE A CLASS
+      unlocks by rank. Open: a client that is not the host reads no
+      profile stats; the UI level's client does not join, so its menus'
+      server dvars wait in a full action queue; `inlobby`,
+      `getfeedercount`, `GetCurrentItemMultiText`, `GetWeaponOptionImage`,
+      `getselfgamertag`, `getclanname` and `getxuid` are not answered;
+      `cac_main`'s class rows show no names; the news ticker owner draws
+      (`tickerHeaderText`, `ticker`) and the main menu's two fading
+      background layers (their alpha expressions) do not draw.
+- [ ] **V** `t5.hud.custom_class_info`: with `ui_useCustomClassInfo` set,
+      `getCACItemIndex` reads the custom game mode's class table, which is
+      not read (the dvar is registered 0).
 
 ## Bots (#652, #709)
 

@@ -88,6 +88,37 @@ pub trait GameQueries {
         let _ = team;
         Err(ExprError::Host("the host does not answer playersalive"))
     }
+    /// A stat of the local profile by its path (Black Ops' `getDStat`).
+    fn profile_stat(&self, path: &[Operand]) -> Result<Operand, ExprError> {
+        let _ = path;
+        Err(ExprError::Host("the host does not answer getdstat"))
+    }
+    /// A function the game answers from the local profile's items and
+    /// stats, by its lowercased name.
+    fn profile_function(&self, name: &str, args: &[Operand]) -> Result<Operand, ExprError> {
+        let _ = (name, args);
+        Err(ExprError::Host(
+            "the host does not answer the profile's functions",
+        ))
+    }
+    /// The create-a-class item of that name, -1 for none (Black Ops'
+    /// `getItemIndex`).
+    fn item_index(&self, name: &str) -> Result<i32, ExprError> {
+        let _ = name;
+        Err(ExprError::Host("the host does not answer getitemindex"))
+    }
+    /// A string table's cell: the `result` column of the first row whose
+    /// `column` holds `value` (`tableLookup`).
+    fn table_lookup(
+        &self,
+        table: &str,
+        column: i32,
+        value: &str,
+        result: i32,
+    ) -> Result<String, ExprError> {
+        let _ = (table, column, value, result);
+        Err(ExprError::Host("the host does not answer tablelookup"))
+    }
     /// The UI's clock in milliseconds (`milliseconds`).
     fn milliseconds(&self) -> Result<i32, ExprError> {
         Err(ExprError::Host("the host does not answer milliseconds"))

@@ -228,7 +228,29 @@ pub(crate) struct MenuInputs<'w, 's> {
     /// The match's game's own menus, when its zones ship them.
     game_menus: Option<Res<'w, asset_game::SessionHudMenus>>,
     player_data: Option<Res<'w, sim::LocalPlayerData>>,
+    authority: Option<ResMut<'w, net::AuthorityWorld>>,
+    t5_menu: Local<'s, T5MenuCache>,
 }
+
+/// What Black Ops' menus read of the local profile, taken from the host's
+/// match when the profile's stats or the level change.
+#[derive(Default)]
+pub(crate) struct T5MenuCache {
+    data: Option<sim::T5MenuData>,
+    taken_at: Option<(u64, Option<String>, Vec<(String, String)>)>,
+}
+
+/// The dvars Black Ops' create-a-class rules read (free items in a hosted
+/// private match, numbered classes, the attachment filter).
+const T5_MENU_DVARS: &[&str] = &[
+    "onlinegame",
+    "xblive_privatematch",
+    "xblive_basictraining",
+    "xblive_theater",
+    "ui_items_no_cost",
+    "custom_class_mode",
+    "attachmentFilter",
+];
 
 #[derive(Default)]
 struct Pressed {
@@ -387,7 +409,35 @@ pub(crate) fn update_script_menus(
     } else {
         input.frontend_strings.as_deref()
     };
+    if in_game {
+        // The dvars the create-a-class rules read, as the menus set them.
+        let dvars: Vec<(String, String)> = T5_MENU_DVARS
+            .iter()
+            .filter_map(|name| {
+                out.dvars
+                    .get(name)
+                    .map(|value| ((*name).to_owned(), value.to_owned()))
+            })
+            .collect();
+        let at = (
+            input
+                .authority
+                .as_ref()
+                .map_or(0, |authority| authority.0.profile_stats().revision),
+            input.map_identity.as_ref().map(|map| map.zone.clone()),
+            dvars.clone(),
+        );
+        if input.t5_menu.taken_at.as_ref() != Some(&at)
+            && let Some(authority) = input.authority.as_mut()
+        {
+            input.t5_menu.data = authority.0.t5_menu_data(&dvars);
+            input.t5_menu.taken_at = Some(at);
+        }
+    } else {
+        *input.t5_menu = T5MenuCache::default();
+    }
     let world = MenuWorld {
+        t5_menu: input.t5_menu.data.as_ref(),
         virtual_to_real: surface.scale_virtual_to_real()[1],
         player_data: input.player_data.as_deref(),
         ms: crate::scorebar::milliseconds() as i32,
