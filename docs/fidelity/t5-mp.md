@@ -252,14 +252,16 @@ Each open section names the issue that works it.
       `setCurrentItemIndex`, `equipClassCurrentItem`,
       `equipClassCurrentGlobalItem`, `equipItemInSlotSorted`,
       `equipGlobalItemInSlotSorted` and `openAttachmentMenuForCurrentItem`
-      act on the menus' current item (Closed). Open (#837): the item lists
-      (`buildItemListFor*`, `GetFeederCount`, `getFeederData`) feed
-      listboxes, and nothing reads Black Ops' listboxes yet, so the
-      menus' weapon, attachment and option lists do not draw and picking
-      from them does not set the current item; `equipClassCurrentAttachment`,
-      `equipClassCurrentOption` and `ToggleWeaponOption` read the current
-      attachment and weapon option those lists select, and the weapon
-      option table. `unknown!t5.mp.cac_face_paint`: a face paint item
+      act on the menus' current item, and the create-a-class list boxes
+      draw and take the keys and the mouse, their rows from the lists
+      `buildItemListFor*` fill (`GetFeederCount`, `getFeederData`), selecting
+      the current item, attachment and weapon option for
+      `equipClassCurrentAttachment`, `equipClassCurrentOption` and
+      `ToggleWeaponOption` (Closed). Open: `unknown!t5.mp.menu_feeder`: the
+      other list boxes' feeders (maps, game modes, players, leaderboards,
+      challenges) answer no rows. `buildItemListForChallengesPerks` builds
+      nothing yet. The dual wield rows' second cost, the Pro perk's changed
+      mark and a list box's `selectIcon` are not drawn. `unknown!t5.mp.cac_face_paint`: a face paint item
       goes in as its place in Black Ops' face paint lists, which are not
       read, so `equipClassCurrentItem` leaves it out (with a warning). The
       `purchase*`, `sellcurrentitem` and `PurchaseWeaponOption` commands
@@ -674,8 +676,9 @@ Each open section names the issue that works it.
       unlocks by rank. Open: a client that is not the host reads no
       profile stats; the UI level's client does not join, so its menus'
       server dvars wait in a full action queue; `inlobby`,
-      `getfeedercount` (it counts a listbox's rows), `GetCurrentItemMultiText`, `GetWeaponOptionImage`,
-      `getselfgamertag`, `getclanname` and `getxuid` are not answered;
+      `GetCurrentItemMultiText` is not answered; `getselfgamertag` answers
+      the `name` dvar and `getclanname` and `getxuid` nothing (no Live
+      identity or clan);
       `cac_main`'s class rows show no names; the news ticker owner draws
       (`tickerHeaderText`, `ticker`) and the main menu's two fading
       background layers (their alpha expressions) do not draw.

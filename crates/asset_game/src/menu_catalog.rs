@@ -107,6 +107,10 @@ pub struct ItemHandlers {
     pub leave_focus: Vec<MenuEvent>,
     /// Black Ops handlers for the keys their `onKey` names.
     pub keys: Vec<(i32, Vec<MenuEvent>)>,
+    /// A list box's activated row.
+    pub double_click: Vec<MenuEvent>,
+    /// A list box's cursor moved.
+    pub selection_change: Vec<MenuEvent>,
 }
 
 #[derive(Clone, Debug, serde::Deserialize, serde::Serialize)]
@@ -207,6 +211,44 @@ pub struct MenuItem {
     /// Black Ops' animation states (`ui_animate`, `AnimateUI`) the item can
     /// be moved to.
     pub anim_states: Vec<MenuAnimState>,
+    /// A Black Ops list box's rows and looks.
+    pub list: Option<MenuList>,
+}
+
+/// A list box: its rows come from `feeder`, a number the game answers.
+#[derive(Clone, Debug, Default, serde::Deserialize, serde::Serialize)]
+#[serde(default, deny_unknown_fields)]
+pub struct MenuList {
+    pub feeder: i32,
+    pub element_width: f32,
+    pub element_height: f32,
+    pub columns: Vec<MenuListColumn>,
+    /// The keys scroll it instead of moving a cursor.
+    pub not_selectable: bool,
+    pub no_scroll_bars: bool,
+    pub use_paging: bool,
+    pub select_border: [f32; 4],
+    /// The selected row's text, when it has an alpha.
+    pub highlight_color: [f32; 4],
+    /// Every row's fill, when it has an alpha.
+    pub background_color: [f32; 4],
+    /// The window's outline: the selected row's pulse.
+    pub outline_color: [f32; 4],
+    /// The window takes the cursor by hovering.
+    pub modal: bool,
+}
+
+/// A list box column, in the row's units.
+#[derive(Clone, Copy, Debug, Default, serde::Deserialize, serde::Serialize)]
+#[serde(default, deny_unknown_fields)]
+pub struct MenuListColumn {
+    pub max_chars: i32,
+    pub x: f32,
+    pub y: f32,
+    pub width: f32,
+    pub height: f32,
+    /// 1 centred, 2 to the right.
+    pub align: i32,
 }
 
 /// One of an item's animation states: where it sits, its colours, and

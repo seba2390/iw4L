@@ -217,6 +217,27 @@ pub(crate) struct ChromeItemOverride {
     /// The degrees the background picture turns about its centre, as
     /// [`game_api::MenuQuad::turn`].
     pub turn: Option<f32>,
+    /// A list box's rows this frame.
+    pub list: Option<ChromeList>,
+}
+
+/// A list box's cursor, window and rows from its first shown.
+#[derive(Clone, Debug, Default)]
+pub(crate) struct ChromeList {
+    pub count: i32,
+    pub top: i32,
+    pub cursor: i32,
+    pub focused: bool,
+    pub rows: Vec<Vec<ChromeListCell>>,
+}
+
+/// One column of one row.
+#[derive(Clone, Debug, Default)]
+pub(crate) struct ChromeListCell {
+    pub text: String,
+    pub text_arg: Option<i32>,
+    pub image: Option<&'static str>,
+    pub color: Option<[f32; 4]>,
 }
 
 #[derive(Default)]
@@ -655,6 +676,21 @@ fn paint_item(
         frame.coverage.gap(index, ChromeGapKind::FloatExpTarget);
     }
     let rect = style.rect;
+    if let (Some(def), Some(rows)) = (item.list.as_ref(), state.list.as_ref()) {
+        paint_list(
+            menu,
+            index,
+            item,
+            def,
+            rows,
+            &style,
+            surface,
+            assets,
+            anim,
+            host.milliseconds(),
+            frame,
+        );
+    }
     if item.owner_draw != 0 {
         let text = resolve_text(item, state, host, assets.localize, exprs)
             .ok()
@@ -778,6 +814,227 @@ fn paint_item(
             frame.vis_errors.push((index, format!("material {err:?}")));
             frame.coverage.gap(index, ChromeGapKind::MaterialExp);
         }
+    }
+}
+
+/// The scroll bar's width, taken from the rows when it shows.
+const LIST_SCROLL_BAR: f32 = 16.0;
+const LIST_MATERIAL_BAR: &str = "menu_mp_lobby_scrollbar_main";
+const LIST_MATERIAL_THUMB: &str = "ui_slider2";
+
+/// A list box's rows (`Item_ListBox_Paint`): from its first shown row while
+/// a whole one fits, each its fill, the selected row's pulse and its
+/// columns; the scroll bar at the right when the rows do not all fit.
+fn paint_list(
+    menu: &MenuDef,
+    index: usize,
+    item: &MenuItem,
+    def: &asset_game::MenuList,
+    rows: &ChromeList,
+    style: &EvaluatedItemStyle,
+    surface: &crate::surface::Hud2dSurface,
+    assets: ChromeAssets<'_>,
+    anim: ChromeMenuAnim,
+    time_ms: i32,
+    frame: &mut ChromeFrame,
+) {
+    let rect = style.rect;
+    if def.element_height <= 0.0 {
+        return;
+    }
+    let shown = ((rect.h - 2.0).max(0.0) / def.element_height) as i32;
+    let scrolls = !def.no_scroll_bars && rect.h > 0.0 && shown < rows.count;
+    let bar = if scrolls { LIST_SCROLL_BAR } else { 0.0 };
+    let quad =
+        |x: f32, y: f32, w: f32, h: f32, color: [f32; 4], material: &str, list: &mut Draw2dList| {
+            let applied =
+                surface.apply_rect(x, y, w, h, rect.horz_align as i32, rect.vert_align as i32);
+            list.cmds.push(Draw2dCmd {
+                material_namespace: assets.namespace(),
+                x: applied.x,
+                y: applied.y,
+                w: applied.w,
+                h: applied.h,
+                s0: 0.0,
+                t0: 0.0,
+                s1: 1.0,
+                t1: 1.0,
+                color,
+                material: material.to_owned(),
+                op: Draw2dOp::StretchPic,
+                provenance: Draw2dProvenance::MenuItem {
+                    menu: menu.name.clone(),
+                    index,
+                },
+                layer: 1,
+            });
+        };
+    if scrolls {
+        let x = rect.x + rect.w - LIST_SCROLL_BAR;
+        let y = rect.y + 3.0;
+        let track = rect.h - 2.0;
+        quad(
+            x,
+            y,
+            LIST_SCROLL_BAR,
+            rect.h,
+            [1.0; 4],
+            LIST_MATERIAL_BAR,
+            &mut frame.list,
+        );
+        let most = (rows.count - shown).max(1);
+        let thumb = y + (track - 32.0 - LIST_SCROLL_BAR) / most as f32 * rows.top as f32 + 19.0;
+        let thumb = thumb.min(y + rect.h - 2.0);
+        quad(
+            x,
+            thumb,
+            LIST_SCROLL_BAR,
+            LIST_SCROLL_BAR,
+            [1.0; 4],
+            LIST_MATERIAL_THUMB,
+            &mut frame.list,
+        );
+    }
+    let Some(layout) = assets.layout() else {
+        return;
+    };
+    let font_name = assets.font_name(
+        item.font_enum,
+        surface.scale_virtual_to_real()[1],
+        item.text_scale,
+    );
+    let font = font_name.and_then(|name| assets.catalog.and_then(|c| c.font(name)));
+    let draw_scale = layout.text_paint_scale(item.text_scale, anim.scale);
+    let x = rect.x + 1.0;
+    let mut y = rect.y + 1.0;
+    let mut left = rect.h - 2.0;
+    for (offset, cells) in rows.rows.iter().enumerate() {
+        if left < def.element_height {
+            break;
+        }
+        let row = rows.top + offset as i32;
+        let selected = row == rows.cursor && (!def.modal || rows.focused);
+        let row_w = rect.w - bar - 4.0;
+        if style.window_style == 0 && style.back_color[3] != 0.0 {
+            quad(
+                x + 2.0,
+                y + 2.0,
+                row_w,
+                def.element_height,
+                style.back_color,
+                "white",
+                &mut frame.list,
+            );
+        }
+        if def.background_color[3] != 0.0 {
+            quad(
+                x + 2.0,
+                y + 2.0,
+                row_w,
+                def.element_height - 2.0,
+                def.background_color,
+                "white",
+                &mut frame.list,
+            );
+        }
+        if selected && def.outline_color[3] != 0.0 {
+            // The window's outline pulsing towards four fifths of itself.
+            let pulse = ((time_ms / 150) as f32).sin() + 1.0;
+            let color = def
+                .outline_color
+                .map(|c| ((c * 0.8 - c) * pulse * 0.5 + c).clamp(0.0, 1.0));
+            quad(
+                x + 2.0,
+                y + 2.0,
+                row_w,
+                def.element_height - 2.0,
+                color,
+                "white",
+                &mut frame.list,
+            );
+        }
+        for (column, cell) in def.columns.iter().zip(cells) {
+            let cell_x = x + column.x;
+            let cell_y = y + column.y;
+            let mut color = cell.color.unwrap_or([1.0; 4]);
+            if let Some(image) = cell.image {
+                if column.width > 0.0 && column.height > 0.0 {
+                    quad(
+                        cell_x,
+                        cell_y + 2.0,
+                        column.width - 1.0,
+                        column.height - 2.0,
+                        color,
+                        image,
+                        &mut frame.list,
+                    );
+                }
+                continue;
+            }
+            if cell.text.is_empty() {
+                continue;
+            }
+            let Some((font, font_name)) = font.zip(font_name) else {
+                frame.coverage.gap(index, ChromeGapKind::AssetFont);
+                return;
+            };
+            let localized = assets.localize.and_then(|table| table.text(&cell.text));
+            let mut text = localized.map_or_else(|| cell.text.clone(), str::to_owned);
+            if let Some(arg) = cell.text_arg {
+                text = text.replace("&&1", &arg.to_string());
+            }
+            if column.max_chars > 0 {
+                text = text.chars().take(column.max_chars as usize).collect();
+            }
+            let width = layout_text_width(layout, font, &text, item.text_scale);
+            let off = match column.align {
+                1 => (column.width - width) * 0.5,
+                2 => column.width - width,
+                _ => 0.0,
+            }
+            .max(0.0);
+            if selected && def.highlight_color[3] != 0.0 {
+                color = def.highlight_color;
+            }
+            let scale = layout.text_scale(font.pixel_height, draw_scale);
+            let applied = surface.apply_rect(
+                cell_x + off + item.text_align_x,
+                cell_y + column.height + item.text_align_y,
+                scale,
+                scale,
+                rect.horz_align as i32,
+                rect.vert_align as i32,
+            );
+            frame.list.cmds.push(Draw2dCmd {
+                material_namespace: assets.namespace(),
+                x: (applied.x + 0.5).floor(),
+                y: (applied.y + 0.5).floor(),
+                w: applied.w,
+                h: applied.h,
+                s0: 0.0,
+                t0: 0.0,
+                s1: 1.0,
+                t1: 1.0,
+                color,
+                material: asset_core::AssetRef::bare_name(&font.material).to_owned(),
+                op: Draw2dOp::TextRun {
+                    font: font_name.to_owned(),
+                    scale,
+                    text,
+                    loc_key: String::new(),
+                    style: item.text_style,
+                    fx: None,
+                    glow: text_run_glow(font, style.glow_color),
+                },
+                provenance: Draw2dProvenance::MenuItem {
+                    menu: menu.name.clone(),
+                    index,
+                },
+                layer: 1,
+            });
+        }
+        left -= def.element_height;
+        y += def.element_height;
     }
 }
 
