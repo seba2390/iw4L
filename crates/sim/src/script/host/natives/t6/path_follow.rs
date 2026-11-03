@@ -178,6 +178,17 @@ impl Follow {
         self.pts[..=first.min(self.len - 1)].iter().rev()
     }
 
+    /// The point the actor is heading for.
+    pub(super) fn next_point(&self) -> [f32; 3] {
+        self.pts[self.next.min(self.len - 1)].origin
+    }
+
+    /// Whether the lookahead has reached the path's end, not a traversal's
+    /// begin node.
+    pub(super) fn arriving(&self) -> bool {
+        self.flags & REACHED_END != 0 && self.negotiation_start == 0
+    }
+
     /// Whether the path was cut at 32 points.
     pub(super) fn truncated(&self) -> bool {
         self.flags & TRUNCATED != 0
