@@ -736,7 +736,7 @@ impl Runner<'_, '_> {
             ui3d: def.ui3d_window.is_some(),
             focus: None,
             hover: None,
-            items: vec![ItemState::default(); def.items.len()],
+            items: ItemState::for_menu(def),
         });
         diag::info!(Ui, "menu open: {}", def.name);
         let name = def.name.clone();

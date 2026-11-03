@@ -257,9 +257,10 @@ Each milestone names its issues; open rules are in
   - [x] Search and Destroy, Sabotage and Demolition (#654): on `mp_nuked` bombs are picked up and planted, a detonation wins an S&D round and the next round starts.
 - [x] Wager matches (#655).
   - [x] On `mp_nuked` with Black Ops' bots, One in the Chamber ends on its last player standing, Gun Game on its score limit and on its time limit, Sticks and Stones and Sharpshooter on their time limits, on their own scripts, HUDs and end screens. A private match plays them without CoD Points; their popups are `t5.mp.wager_popup` (#651).
-- [ ] Create-a-class, perks and Pro perks with private-match unlocks (#650, #729, #734).
+- [x] Create-a-class, perks and Pro perks with private-match unlocks (#650, #729, #734, #780, #837).
   - [x] A custom class spawns with the profile's Black Ops stats (a fresh profile gets Black Ops' default classes), and the perks its movement, weapons and damage test apply, Second Chance among them (#650).
   - [x] Black Ops' `equipClass`, `equipClassItem`, `equipClassAttachment` and `copyclass` edit a custom class with its unlock, attachment and body rules, and the next spawn uses it (#729).
+  - [x] From Black Ops' own create-a-class menus, picking a weapon, an attachment, a weapon option and a perk from their list boxes edits the class, and the next spawn uses it (#780, #837).
 - [ ] Killstreaks (#656).
   - [x] Killstreaks are earned by kill streaks, sit on the dpad and raise their weapon on Black Ops' own scripts; each killstreak is its own issue (#656).
   - [x] Spy Plane, Counter-Spy Plane and Blackbird (#657): the sweep pings enemies on the compass, the Blackbird shows them live with their heading, an enemy counter-spy plane hides them under static.

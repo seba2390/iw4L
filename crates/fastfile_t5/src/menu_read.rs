@@ -17,6 +17,9 @@ const WINDOW_FRAME_SIZE: usize = 64;
 const WINDOW_BORDER_COLOR: usize = 124;
 const WINDOW_OUTLINE_COLOR: usize = 140;
 const WINDOW_MODAL: usize = 58;
+const WINDOW_DYNAMIC_FLAGS: usize = 0x54;
+/// The dynamic flag of a window that shows (the first of its clients').
+const WINDOW_VISIBLE: i32 = 4;
 const WINDOW_BORDER: usize = 57;
 const WINDOW_BORDER_SIZE: usize = 76;
 const WINDOW_OWNER_DRAW: usize = 68;
@@ -202,6 +205,8 @@ pub struct WindowRead {
     pub border_color: [f32; 4],
     pub outline_color: [f32; 4],
     pub modal: bool,
+    /// The window starts hidden (`visible 0`) until a script shows it.
+    pub starts_hidden: bool,
     pub owner_draw: i32,
     pub static_flags: i32,
     pub fore_color: [f32; 4],
@@ -636,6 +641,7 @@ fn window(s: &ZoneStream<'_>, p: Ptr) -> WindowRead {
         border_color: color_at(s, p, WINDOW_BORDER_COLOR),
         outline_color: color_at(s, p, WINDOW_OUTLINE_COLOR),
         modal: u8_at(s, p, WINDOW_MODAL) != 0,
+        starts_hidden: i32_at(s, p, WINDOW_DYNAMIC_FLAGS) & WINDOW_VISIBLE == 0,
         owner_draw: i32_at(s, p, WINDOW_OWNER_DRAW),
         static_flags: i32_at(s, p, WINDOW_STATIC_FLAGS),
         fore_color: color_at(s, p, WINDOW_FORE_COLOR),
