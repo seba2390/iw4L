@@ -101,6 +101,13 @@ pub trait GameQueries {
             "the host does not answer the profile's functions",
         ))
     }
+    /// The item the create-a-class menus act on (Black Ops'
+    /// `setCurrentItemIndex`).
+    fn current_item(&self) -> Result<i32, ExprError> {
+        Err(ExprError::Host(
+            "the host does not answer getcurrentitemindex",
+        ))
+    }
     /// The create-a-class item of that name, -1 for none (Black Ops'
     /// `getItemIndex`).
     fn item_index(&self, name: &str) -> Result<i32, ExprError> {

@@ -912,6 +912,7 @@ pub(crate) fn update_script_menus(
             open: &menus.stack,
             focus_rect: *focus_rect,
             focused: focused.as_deref(),
+            current_item: menus.current_item,
         };
         // A shown menu blurs the world while a menu holds the input.
         if def.blur_world != 0.0
@@ -1361,6 +1362,7 @@ fn handle_input(
         open: &runner.menus.stack,
         focus_rect: None,
         focused: Some(&top),
+        current_item: runner.menus.current_item,
     };
     let rects = item_screen_rects(def, &host, surface, runner.exprs);
     let visible = runner.visible_items(&top);

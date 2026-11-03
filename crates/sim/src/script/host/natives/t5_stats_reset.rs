@@ -97,6 +97,9 @@ pub(super) struct Item {
     all_classes: bool,
     /// Column 5: a perk that is a Pro version.
     pub(super) pro: bool,
+    /// Column 5 as a number: the attribute the sorted slots order
+    /// killstreaks by.
+    pub(super) attribute: i32,
     /// Columns 6 and 7: the name a body's perk starts with, and the weapon
     /// group a body goes with.
     pub(super) body_perk: String,
@@ -176,6 +179,7 @@ pub(super) fn items(table: &StringTable) -> Vec<Item> {
                 classes,
                 all_classes: group >= KILLSTREAK_GROUP && cell(row, 11).eq_ignore_ascii_case("all"),
                 pro: super::iw4::atoi(cell(row, 5)) != 0,
+                attribute: super::iw4::atoi(cell(row, 5)),
                 body_perk: cell(row, 6).to_owned(),
                 body_group: cell(row, 7).to_owned(),
                 null: cell(row, 4).to_ascii_lowercase().contains("null"),

@@ -20,6 +20,11 @@ pub(crate) fn sync_parsers(parsers: Res<GameMenuParsers>, mut cache: ResMut<Menu
 }
 
 impl MenuExprCache {
+    /// Whether a game registered the parser for that catalog tag.
+    pub(crate) fn has_parser(&self, tag: &str) -> bool {
+        self.parsers.get(tag).is_some()
+    }
+
     fn statement(&mut self, dump: &str) -> Result<&Statement, ExprError> {
         if !self.by_dump.contains_key(dump) {
             let statement = Statement::parse_with(dump, &self.parsers);

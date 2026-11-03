@@ -50,10 +50,12 @@ pub fn script_zone_formats() -> Vec<asset_core::ScriptZoneFormat> {
 
 /// The menu expression parser of each game whose menu catalogs tag their
 /// programs with the game (`asset_game`'s Black Ops catalog writes `t5`,
-/// its Black Ops 2 catalog `t6`).
+/// its Black Ops 2 catalog `t6`); `<tag>-infix` is the game's runtime
+/// compiler for the `( … )` groups its menus' console lines carry.
 pub fn menu_parsers() -> menu_expr::MenuParsers {
     menu_expr::MenuParsers(vec![
         ("t5", game_t5::parse_menu_expression),
+        ("t5-infix", game_t5::parse_menu_infix),
         ("t6", game_t6::parse_menu_expression),
     ])
 }
