@@ -289,6 +289,13 @@ fn settle_rows(world: &mut World, only: Option<u64>) {
         true => None,
         false => super::natives::t5_turret::rules(world).map(|rules| rules.bone_controls),
     };
+    let t6_guns: BTreeMap<ScriptModelId, [f32; 2]> = {
+        let runtime = world.resource::<RoundScript>();
+        super::natives::t6::turret_guns(world, only)
+            .into_iter()
+            .filter_map(|(object, gun)| Some((runtime.entities.get(&object)?.presence?, gun)))
+            .collect()
+    };
     let mut frame = FrameWorld::from_world(world);
     let mut model_caps: BTreeMap<
         Arc<str>,
@@ -358,6 +365,19 @@ fn settle_rows(world: &mut World, only: Option<u64>) {
             && let Some(dobj) = row.dobj.as_mut()
         {
             let rotations = bones(gun, &|tag| dobj.has_tag(tag))
+                .into_iter()
+                .filter(|(tag, _)| dobj.has_tag(tag))
+                .map(|(tag, angles)| xmodel_runtime::TagRotation {
+                    tag: tag.into(),
+                    angles,
+                })
+                .collect();
+            dobj.set_tag_rotations(rotations);
+        }
+        if let Some(&gun) = row.owner.script_model().and_then(|id| t6_guns.get(&id))
+            && let Some(dobj) = row.dobj.as_mut()
+        {
+            let rotations = super::natives::t6::turret_pose_controls(gun, &|tag| dobj.has_tag(tag))
                 .into_iter()
                 .filter(|(tag, _)| dobj.has_tag(tag))
                 .map(|(tag, angles)| xmodel_runtime::TagRotation {
