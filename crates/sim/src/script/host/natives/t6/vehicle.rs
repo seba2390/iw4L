@@ -38,6 +38,11 @@ const RIDER_SLACK: f32 = 2.0;
 const ENTITYNUM_NONE: i32 = 1023;
 /// The most nodes a vehicle passes in one tick.
 const MAX_HOPS: usize = 64;
+/// The engine's step along the curve: how many tries, and when it counts the
+/// distance as gone.
+const CURVE_TRIES: usize = 6;
+const MIN_CURVE_MOVE: f32 = 0.1;
+const MIN_CURVE_LEFT: f32 = 0.01;
 
 #[derive(Clone, Copy, Debug)]
 struct Drive {
@@ -398,6 +403,123 @@ fn set_speed(world: &mut World, receiver: &Value, args: &[Value]) -> Result<(u64
     Ok((id, speed))
 }
 
+/// The map's vehicle nodes as the engine links them at load: a node's next is
+/// the one its `target` names, its previous the first whose `target` names it,
+/// and its tension its own `tension`, else between those of the nearest nodes
+/// either way that set one, by the distance to them.
+#[derive(Resource)]
+struct NodeLinks {
+    next: BTreeMap<u64, u64>,
+    prev: BTreeMap<u64, u64>,
+    tension: BTreeMap<u64, f32>,
+}
+
+fn node_links(world: &mut World) -> std::sync::Arc<NodeLinks> {
+    #[derive(Resource)]
+    struct Built(std::sync::Arc<NodeLinks>);
+    if let Some(built) = world.get_resource::<Built>() {
+        return built.0.clone();
+    }
+    let nodes: Vec<u64> = world
+        .resource::<RoundScript>()
+        .entities
+        .iter()
+        .filter(|(_, entity)| entity.classname.starts_with("info_vehicle_node"))
+        .map(|(id, _)| *id)
+        .collect();
+    let mut names = BTreeMap::new();
+    let mut targets = BTreeMap::new();
+    let mut own = BTreeMap::new();
+    let mut at = BTreeMap::new();
+    for &node in &nodes {
+        if let Some(name) = text(world, node, "targetname") {
+            names.entry(name).or_insert(node);
+        }
+        if let Some(target) = text(world, node, "target") {
+            targets.insert(node, target);
+        }
+        let set = match field(world, node, "tension") {
+            Value::Float(f) => Some(f),
+            Value::Int(n) => Some(n as f32),
+            Value::String(text) => text.parse().ok(),
+            _ => None,
+        };
+        if let Some(set) = set {
+            own.insert(node, set);
+        }
+        at.insert(node, origin(world, node));
+    }
+    let next: BTreeMap<u64, u64> = targets
+        .iter()
+        .filter_map(|(&node, target)| {
+            names
+                .get(target)
+                .filter(|&&to| to != node)
+                .map(|&to| (node, to))
+        })
+        .collect();
+    let mut prev = BTreeMap::new();
+    for (&node, &to) in &next {
+        prev.entry(to).or_insert(node);
+    }
+    let gap = |a: u64, b: u64| -> f32 {
+        (0..3)
+            .map(|i| (at[&a][i] - at[&b][i]).powi(2))
+            .sum::<f32>()
+            .sqrt()
+    };
+    let walk = |start: u64, links: &BTreeMap<u64, u64>| -> Option<(f32, f32)> {
+        let mut node = start;
+        let mut dist = 0.0;
+        for _ in 0..nodes.len() {
+            let &step = links.get(&node)?;
+            if step == start {
+                return None;
+            }
+            dist += gap(node, step);
+            node = step;
+            if let Some(&set) = own.get(&node) {
+                return Some((set, dist));
+            }
+        }
+        None
+    };
+    let tension = nodes
+        .iter()
+        .map(|&node| {
+            let value = own.get(&node).copied().unwrap_or_else(|| {
+                match (walk(node, &prev), walk(node, &next)) {
+                    (Some((before, near)), Some((after, far))) => {
+                        before + (after - before) * near / (near + far)
+                    }
+                    (Some((only, _)), None) | (None, Some((only, _))) => only,
+                    (None, None) => 0.0,
+                }
+            });
+            (node, value)
+        })
+        .collect();
+    let links = std::sync::Arc::new(NodeLinks {
+        next,
+        prev,
+        tension,
+    });
+    world.insert_resource(Built(links.clone()));
+    links
+}
+
+/// The engine's path curve at `t` between two nodes, through the node before
+/// and the node after them, by the tension between the two.
+fn path_point([before, from, to, after]: [[f32; 3]; 4], tensions: (f32, f32), t: f32) -> [f32; 3] {
+    let k = tensions.0 + (tensions.1 - tensions.0) * t;
+    let (t2, t3) = (t * t, t * t * t);
+    let a = 2.0 * k * t2 - k * t3 - k * t;
+    let b = (k - 3.0) * t2 + (2.0 - k) * t3 + 1.0;
+    let c = (3.0 - 2.0 * k) * t2 + (k - 2.0) * t3 + k * t;
+    let d = k * t3 - k * t2;
+    std::array::from_fn(|i| a * before[i] + b * from[i] + c * to[i] + d * after[i])
+}
+
 /// Each tick: the vehicles on their paths drive on.
 fn drive(world: &mut World) {
     let seconds = crate::MATCH_TICK_MS as f32 / 1000.0;
@@ -418,20 +540,50 @@ fn drive(world: &mut World) {
         if super::super::super::players::now_ms(world) % 1000 < i64::from(crate::MATCH_TICK_MS) {
             diag::debug!(Sim, "vehicle {id}: speed {speed:.0}");
         }
-        let mut step = speed * seconds;
+        // The engine's step: along the path by what is left of the frame's
+        // distance, measured back along the curve, a few times over.
+        let links = node_links(world);
+        let mut left = speed * seconds;
         let mut at = origin(world, id);
         let mut reached = Vec::new();
         let mut ended = false;
+        let mut tries = 0;
         for _ in 0..MAX_HOPS {
             let (a, b) = (origin(world, path.from), origin(world, path.to));
             let length = (0..3).map(|i| (b[i] - a[i]).powi(2)).sum::<f32>().sqrt();
-            let left = (1.0 - path.t) * length;
-            if length > MIN_STEP && step < left {
-                path.t += step / length;
-                at = std::array::from_fn(|i| a[i] + (b[i] - a[i]) * path.t);
-                break;
+            let t = if length > MIN_STEP {
+                path.t + left / length
+            } else {
+                1.0
+            };
+            if t < 1.0 {
+                let before = links.prev.get(&path.from).map_or(a, |&n| origin(world, n));
+                let after = links.next.get(&path.to).map_or(b, |&n| origin(world, n));
+                let tension = |node: u64| links.tension.get(&node).copied().unwrap_or(0.0);
+                let point = path_point(
+                    [before, a, b, after],
+                    (tension(path.from), tension(path.to)),
+                    t,
+                );
+                let moved = (0..3)
+                    .map(|i| (point[i] - at[i]).powi(2))
+                    .sum::<f32>()
+                    .sqrt();
+                let over = left - moved;
+                tries += 1;
+                // A try that overshoots by more than was left is undone.
+                if over <= 0.0 && left < -over && tries > 1 {
+                    break;
+                }
+                path.t = t;
+                at = point;
+                left = over;
+                if moved < MIN_CURVE_MOVE || left <= MIN_CURVE_LEFT || tries >= CURVE_TRIES {
+                    break;
+                }
+                continue;
             }
-            step -= left.max(0.0);
+            left -= ((1.0 - path.t) * length).max(0.0);
             at = b;
             reached.push(path.to);
             if let Some(mph) = node_speed(world, path.to) {
@@ -450,7 +602,7 @@ fn drive(world: &mut World) {
                     break;
                 }
             }
-            if step <= MIN_STEP {
+            if left <= MIN_STEP {
                 break;
             }
         }
