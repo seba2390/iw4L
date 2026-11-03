@@ -101,7 +101,7 @@ struct Movement {
     stalled: bool,
     /// How fast the last walk moved it across, in units a second.
     speed: f32,
-    /// When its arrival ends; held until then or until it moves off anew.
+    /// When its arrival ends; held until then, a new path or its goal.
     arrival: Option<i64>,
     traverse_mode: TraverseMode,
     traversal: Option<Traversal>,
@@ -563,7 +563,10 @@ fn walk(world: &mut World, id: u64, from: [f32; 3]) {
     if !kept {
         let goal = movement(world, id).goal;
         match goal.and_then(|goal| plan(world, id, from, goal)) {
-            Some(path) => follow = follow_path(world, id, from, &path),
+            Some(path) => {
+                follow = follow_path(world, id, from, &path);
+                movement(world, id).arrival = None;
+            }
             None => {
                 follow.update(from, (false, false, false), &mut probe(world, id));
             }
@@ -927,6 +930,7 @@ fn think_one(world: &mut World, id: u64) -> Result<(), String> {
                 state.look = follow.look;
                 state.follow = Some(follow);
                 state.path = path;
+                state.arrival = None;
                 sync_path(state);
                 let mut runtime = world.resource_mut::<RoundScript>();
                 runtime.set_object_field(id, "pathstartpos", Value::Vector(at));
@@ -1015,9 +1019,14 @@ fn think_one(world: &mut World, id: u64) -> Result<(), String> {
         update_pitch_orient(world, id);
     }
     let now = origin_of(world, id);
-    // The engine notifies every frame the actor is in its goal, and its path
-    // runs on to the end (its arrival).
+    // The engine notifies every frame the actor is in its goal. Its path runs
+    // on until the player's body stops it; with no such collision here the
+    // path ends at the goal (`t6.actors.path_following`).
     if in_goal(world, id, now, goal) {
+        let state = movement(world, id);
+        state.path.clear();
+        state.follow = None;
+        state.arrival = None;
         raise(world, Value::Object(id), "goal", Vec::new());
     }
     Ok(())
