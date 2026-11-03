@@ -189,6 +189,11 @@ impl Follow {
         self.flags & REACHED_END != 0 && self.negotiation_start == 0
     }
 
+    /// How many points the path has left.
+    pub(super) fn len(&self) -> usize {
+        self.len
+    }
+
     /// Whether the path was cut at 32 points.
     pub(super) fn truncated(&self) -> bool {
         self.flags & TRUNCATED != 0
