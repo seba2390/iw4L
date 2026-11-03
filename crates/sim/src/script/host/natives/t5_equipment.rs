@@ -63,6 +63,8 @@ pub(crate) fn register(registry: &mut NativeRegistry) {
     // Both share a handler that returns at once in BlackOpsMP.exe.
     registry.register(Function, "sendranks", |_, _, _| Ok(Value::Undefined));
     registry.register(Function, "setplayerteamrank", |_, _, _| {
+        Ok(Value::Undefined)
+    });
     // `setCameraSpikeActive(toggle)`: the player's camera spike view, unless
     // the weapon is a scoped one held at aim.
     registry.register(Method, "setcameraspikeactive", |world, receiver, args| {
