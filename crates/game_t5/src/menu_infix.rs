@@ -88,7 +88,7 @@ fn lex(text: &str) -> Vec<Lexeme> {
     let string = |from: &[u8]| from.iter().map(|&b| char::from(b)).collect::<String>();
     while i < bytes.len() {
         let b = bytes[i];
-        if b < b'!' || b > 0x7f {
+        if !(b'!'..=0x7f).contains(&b) {
             i += 1;
             continue;
         }

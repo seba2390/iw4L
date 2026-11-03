@@ -541,7 +541,7 @@ impl Runner<'_, '_> {
     /// commands act on the same item. `true`: the line was one of them.
     fn current_item_command(&mut self, menu: &str, text: &str) -> bool {
         let words: Vec<String> =
-            super::animate::console_words(text, &mut |_| None).unwrap_or_default();
+            super::animate::console_words(text, &mut |_| None).unwrap_or_else(Vec::new);
         let Some(command) = words.first().map(|w| w.to_ascii_lowercase()) else {
             return false;
         };
