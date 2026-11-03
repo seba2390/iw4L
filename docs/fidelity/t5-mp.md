@@ -705,8 +705,10 @@ Each open section names the issue that works it.
 ## Audio (#668)
 
 - [ ] **A** Leader dialog, match music and battle chatter
-      (`_globallogic_audio.gsc`, `_battlechatter_mp.gsc`) have not run;
-      `playbattlechattertoteam` is refused.
+      (`_globallogic_audio.gsc`, `_battlechatter_mp.gsc`, `_music.gsc`) run
+      with no script fault, and `playBattleChatterToTeam` plays its first
+      alias on the speaker to that team. Its second alias (the temp event
+      carries both) is not read. None has been checked by ear (#668).
 
 ## Networking and private matches (#663, #665, #666)
 

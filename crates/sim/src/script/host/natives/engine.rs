@@ -676,7 +676,11 @@ pub(crate) fn sound_to_client(
     );
 }
 
-fn team_clients(world: &mut World, team: &str, except: Option<u32>) -> Vec<crate::ClientId> {
+pub(crate) fn team_clients(
+    world: &mut World,
+    team: &str,
+    except: Option<u32>,
+) -> Vec<crate::ClientId> {
     let team = match team {
         "axis" => entity_iw4::TEAM_AXIS,
         "allies" => entity_iw4::TEAM_ALLIES,
