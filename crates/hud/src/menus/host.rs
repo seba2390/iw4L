@@ -61,6 +61,8 @@ pub(crate) struct MenuHost<'a> {
     pub focus_rect: Option<[f32; 4]>,
     /// The open menu that takes input, when one does.
     pub focused: Option<&'a str>,
+    /// The create-a-class menus' current item.
+    pub current_item: i32,
 }
 
 impl MenuHost<'_> {
@@ -367,6 +369,9 @@ impl ExprHost for MenuHost<'_> {
     }
     fn item_index(&self, name: &str) -> Result<i32, ExprError> {
         Ok(self.world.t5_menu.ok_or(NO_PROFILE_STATS)?.item_index(name))
+    }
+    fn current_item(&self) -> Result<i32, ExprError> {
+        Ok(self.current_item)
     }
     fn static_dvar_int(&self, index: i32) -> Result<i32, ExprError> {
         self.dvar_int(self.static_name(index)?)

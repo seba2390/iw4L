@@ -71,6 +71,9 @@ pub struct ScriptMenus {
     pub(crate) draws_cursor: bool,
     /// The level's own menu (`ModeRules::level_menu`) has been opened.
     pub(crate) level_menu_opened: bool,
+    /// The item a game's create-a-class menus act on (Black Ops'
+    /// `setCurrentItemIndex`).
+    pub(crate) current_item: i32,
 }
 
 impl ScriptMenus {

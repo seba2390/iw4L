@@ -54,6 +54,7 @@ impl Runner<'_, '_> {
             open: &self.menus.stack,
             focus_rect,
             focused: self.menus.input_menu().map(|m| m.name.as_str()),
+            current_item: self.menus.current_item,
         };
         match run(self.exprs, &host) {
             Ok(value) => Some(value),
@@ -288,7 +289,7 @@ impl Runner<'_, '_> {
             Command::ScriptMenuResponse(response) => {
                 self.menus.responses.push((menu.to_owned(), response));
             }
-            Command::Exec(text) => self.exec(text),
+            Command::Exec(text) => self.exec(menu, text),
             Command::CopyDvar(name, source) => {
                 let value = self.dvar(&source).unwrap_or("").to_owned();
                 self.dvars.set(&name, value);
@@ -304,7 +305,7 @@ impl Runner<'_, '_> {
                     .and_then(|s| s.parse::<f32>().ok())
                     .unwrap_or(0.0) as i32;
                 if current == value {
-                    self.exec(command);
+                    self.exec(menu, command);
                 }
             }
             Command::ExecOnDvarStringValue {
@@ -314,7 +315,7 @@ impl Runner<'_, '_> {
             } => {
                 let current = self.dvar(&dvar);
                 if current.is_some_and(|c| c.eq_ignore_ascii_case(&value)) {
-                    self.exec(command);
+                    self.exec(menu, command);
                 }
             }
             Command::OpenForGameType(format) => {
@@ -389,47 +390,53 @@ impl Runner<'_, '_> {
     /// command runs, so a following `execNowOnDvarIntValue` sees the result.
     /// A console command line from a menu. A `set` takes effect at once, so
     /// a script reading the dvar after `execNow set name value` sees it.
-    pub(crate) fn exec(&mut self, text: String) {
+    pub(crate) fn exec(&mut self, menu: &str, text: String) {
         let statements = script::statements(&text);
         if statements.len() > 1 {
             for statement in statements {
-                self.exec(statement);
+                self.exec(menu, statement);
             }
             return;
         }
-        // The console's own `if ( value ) command`, and `ui_animate`, whose
-        // arguments may be `( … )` groups.
-        let head = text.trim_start().to_ascii_lowercase();
-        if head.starts_with("if") || head.starts_with("ui_animate") {
-            match super::animate::console_words(&text).as_deref() {
-                Some([first, value, rest @ ..]) if first.eq_ignore_ascii_case("if") => {
-                    if script::atoi_word(value) != 0 {
-                        let rest: Vec<String> = rest
-                            .iter()
-                            .map(|word| {
-                                if word.is_empty() || word.contains(char::is_whitespace) {
-                                    format!("\"{word}\"")
-                                } else {
-                                    word.clone()
-                                }
-                            })
-                            .collect();
-                        self.exec(rest.join(" "));
-                    }
-                    return;
-                }
-                Some([command, menu, item, state, ms, ..])
-                    if command.eq_ignore_ascii_case("ui_animate") =>
-                {
-                    self.animate(menu, item, state, script::atoi_word(ms));
-                    return;
-                }
-                Some(_) => {}
+        // Black Ops' console tokenizer evaluates each `( … )` group to one
+        // word before the command runs.
+        let text = if super::animate::has_group(&text) {
+            let words =
+                super::animate::console_words(&text, &mut |group| self.group_value(menu, group));
+            match words {
+                Some(words) => super::animate::console_line(&words),
                 None => {
-                    diag::warn!(Ui, "menu command `{text}`: a ( … ) group is not a constant");
+                    diag::warn!(
+                        Ui,
+                        "menu command `{text}` not run: a ( … ) group has no value"
+                    );
                     return;
                 }
             }
+        } else {
+            text
+        };
+        // The console's own `if ( value ) command`, and `ui_animate`.
+        let head = text.trim_start().to_ascii_lowercase();
+        if head.starts_with("if") || head.starts_with("ui_animate") {
+            match super::animate::console_words(&text, &mut |_| None).as_deref() {
+                Some([first, value, rest @ ..]) if first.eq_ignore_ascii_case("if") => {
+                    if script::atoi_word(value) != 0 {
+                        self.exec(menu, super::animate::console_line(rest));
+                    }
+                    return;
+                }
+                Some([command, menu_name, item, state, ms, ..])
+                    if command.eq_ignore_ascii_case("ui_animate") =>
+                {
+                    self.animate(menu_name, item, state, script::atoi_word(ms));
+                    return;
+                }
+                _ => {}
+            }
+        }
+        if self.current_item_command(menu, &text) {
+            return;
         }
         if let [command, name, value @ ..] = script::tokens(&text).as_slice()
             && matches!(
@@ -501,6 +508,94 @@ impl Runner<'_, '_> {
                 }
             }
             _ => self.menus.exec.push(text),
+        }
+    }
+
+    /// A `( … )` group's value: the game's runtime expression compiler (the
+    /// parser its catalog tag names with `-infix`), or a constant group's
+    /// value for a game without one.
+    fn group_value(&mut self, menu: &str, group: &str) -> Option<String> {
+        let tag = self
+            .catalog
+            .namespace
+            .map(|game| format!("{}-infix", game.as_str()))
+            .filter(|tag| self.exprs.has_parser(tag));
+        let Some(tag) = tag else {
+            return super::animate::constant_group(group);
+        };
+        let hex: String = group.bytes().map(|b| format!("{b:02x}")).collect();
+        let dump = format!("{tag} {hex}");
+        match self.with_host(menu, |exprs, host| {
+            Ok::<_, ()>(exprs.evaluate_string(&dump, host))
+        })? {
+            Ok(value) => Some(value),
+            Err(err) => {
+                diag::warn!(Ui, "menu {menu}: `{group}` has no value: {err:?}");
+                None
+            }
+        }
+    }
+
+    /// The commands on the create-a-class menus' current item that the menus
+    /// themselves answer; each also reaches the console, whose class
+    /// commands act on the same item. `true`: the line was one of them.
+    fn current_item_command(&mut self, menu: &str, text: &str) -> bool {
+        let words: Vec<String> =
+            super::animate::console_words(text, &mut |_| None).unwrap_or_default();
+        let Some(command) = words.first().map(|w| w.to_ascii_lowercase()) else {
+            return false;
+        };
+        match command.as_str() {
+            "setcurrentitemindex" => {
+                if let Some(index) = words.get(1) {
+                    self.menus.current_item = script::atoi_c(index);
+                }
+                self.menus.exec.push(text.to_owned());
+                true
+            }
+            "openattachmentmenuforcurrentitem" => {
+                self.open_attachment_menu(menu, &words);
+                true
+            }
+            _ => false,
+        }
+    }
+
+    /// `OpenAttachmentMenuForCurrentItem <menu> [equipifnone]`: an unlocked
+    /// current item with attachments opens the menu; one with none goes
+    /// into the class bare when asked (`equipifnone`).
+    fn open_attachment_menu(&mut self, from: &str, words: &[String]) {
+        let Some(menu) = words.get(1) else {
+            diag::warn!(
+                Ui,
+                "OpenAttachmentMenuForCurrentItem usage: OpenAttachmentMenuForCurrentItem <attachment_menu> <optional  - equipifnone>"
+            );
+            return;
+        };
+        let equip_if_none = words.len() == 3 && words[2].eq_ignore_ascii_case("equipifnone");
+        let n = self.menus.current_item;
+        let Some(data) = self.world.t5_menu else {
+            diag::warn!(Ui, "OpenAttachmentMenuForCurrentItem: no profile stats");
+            return;
+        };
+        if n == -1 || !data.item_unlocked(n) {
+            return;
+        }
+        if data.item_attachment_count(n) == 1 {
+            let name = data.item_name(n);
+            if equip_if_none {
+                let line =
+                    format!("equipclassattachment ( dvarString( ui_custom_name ) ) {name} none");
+                self.exec(from, line);
+            } else {
+                diag::warn!(Ui, "No attachments on item '{name}'");
+            }
+            return;
+        }
+        if self.catalog.get(menu).is_some() {
+            self.open(menu);
+        } else {
+            diag::warn!(Ui, "Could not find menu '{menu}'");
         }
     }
 
@@ -846,6 +941,7 @@ impl Runner<'_, '_> {
             open: &self.menus.stack,
             focus_rect: None,
             focused: self.menus.input_menu().map(|m| m.name.as_str()),
+            current_item: self.menus.current_item,
         };
         let mut out = Vec::new();
         for (index, item) in def.items.iter().enumerate() {

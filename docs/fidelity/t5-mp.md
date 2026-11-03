@@ -235,15 +235,21 @@ Each open section names the issue that works it.
       reset's writes (all to the client buffer, Combat Training being
       forced on) reach only the client buffer.
 - [ ] **G** The rest of Black Ops' create-a-class commands (#780):
-      `equipClassCurrentItem`, `equipClassCurrentAttachment`,
-      `equipClassCurrentOption`, `equipClassCurrentGlobalItem`,
-      `setCurrentItemIndex` and `buildItemListFor*` (they read the menus'
-      current item and lists, which the front end does not have, #664),
-      `equipItemInSlotSorted`, `equipGlobalItemInSlotSorted`,
-      `openAttachmentMenuForCurrentItem` and `ToggleWeaponOption` (it
-      reads the menus' current item too). The `purchase*`,
-      `sellcurrentitem` and `PurchaseWeaponOption` commands spend CoD
-      Points, which are out of scope.
+      `setCurrentItemIndex`, `equipClassCurrentItem`,
+      `equipClassCurrentGlobalItem`, `equipItemInSlotSorted`,
+      `equipGlobalItemInSlotSorted` and `openAttachmentMenuForCurrentItem`
+      act on the menus' current item (Closed). Open (#837): the item lists
+      (`buildItemListFor*`, `GetFeederCount`, `getFeederData`) feed
+      listboxes, and nothing reads Black Ops' listboxes yet, so the
+      menus' weapon, attachment and option lists do not draw and picking
+      from them does not set the current item; `equipClassCurrentAttachment`,
+      `equipClassCurrentOption` and `ToggleWeaponOption` read the current
+      attachment and weapon option those lists select, and the weapon
+      option table. `unknown!t5.mp.cac_face_paint`: a face paint item
+      goes in as its place in Black Ops' face paint lists, which are not
+      read, so `equipClassCurrentItem` leaves it out (with a warning). The
+      `purchase*`, `sellcurrentitem` and `PurchaseWeaponOption` commands
+      spend CoD Points, which are out of scope.
 - [ ] **G** `unknown!t5.mp.cac_match_resend`: a class edited while the
       host already holds the profile's stats (its client read one) is
       kept in the profile for the next match; how Black Ops sends the host
@@ -638,10 +644,11 @@ Each open section names the issue that works it.
       `ui_mapname` under `ui_gametype`. Items move between their animation
       states as `ui_animate` asks (rect and colours over the time scaled by
       `ui_animSpeedScale`, then the state's `onEnter`), and a menu's console
-      line takes the console's own `if ( value ) command` and constant
-      `( … )` groups, so PLAY's `live_flyout` fades its rows in; a group
-      that calls a function is not evaluated (the line is dropped with a
-      warning), and the border colour and the two other animated window
+      line takes the console's own `if ( value ) command`, and each `( … )`
+      group on it goes through Black Ops' runtime expression compiler
+      (infix to postfix, its operator precedence) to one word, so PLAY's
+      `live_flyout` fades its rows in and `execnow setCurrentItemIndex (
+      getCACItemIndex ( … ) )` runs; the border colour and the two other animated window
       fields are not moved. WAGER MATCH stays hidden: nothing sets
       `ui_mpWagerMatchEnabled`. The menus read the local profile's stats as the create-a-class
       commands keep them (`getDStat`, `getCACItemIndex`, `getStatByName`,
@@ -653,7 +660,7 @@ Each open section names the issue that works it.
       unlocks by rank. Open: a client that is not the host reads no
       profile stats; the UI level's client does not join, so its menus'
       server dvars wait in a full action queue; `inlobby`,
-      `getfeedercount`, `GetCurrentItemMultiText`, `GetWeaponOptionImage`,
+      `getfeedercount` (it counts a listbox's rows), `GetCurrentItemMultiText`, `GetWeaponOptionImage`,
       `getselfgamertag`, `getclanname` and `getxuid` are not answered;
       `cac_main`'s class rows show no names; the news ticker owner draws
       (`tickerHeaderText`, `ticker`) and the main menu's two fading

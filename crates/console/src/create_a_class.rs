@@ -4,7 +4,7 @@ use crate::{ConsoleCommand, ConsoleLine, ConsoleRegistry, ConsoleSettings, Conso
 
 /// Black Ops' create-a-class commands, which its menus run with `execnow`:
 /// each edits a custom class in the local profile's stats.
-const COMMANDS: [(&str, Option<&str>, &str); 15] = [
+const COMMANDS: [(&str, Option<&str>, &str); 20] = [
     (
         "equipclass",
         Some("equipClass"),
@@ -79,6 +79,31 @@ const COMMANDS: [(&str, Option<&str>, &str); 15] = [
         "uploadstats",
         Some("uploadStats"),
         "uploadStats — the profile's stats are saved as they change",
+    ),
+    (
+        "setcurrentitemindex",
+        Some("setCurrentItemIndex"),
+        "setCurrentItemIndex <itemIndex> — the item the create-a-class menus' current-item commands act on",
+    ),
+    (
+        "equipclasscurrentitem",
+        Some("equipClassCurrentItem"),
+        "equipClassCurrentItem <customclassname> — put the current item in a custom class",
+    ),
+    (
+        "equipclasscurrentglobalitem",
+        Some("equipClassCurrentGlobalItem"),
+        "equipClassCurrentGlobalItem — put the current item in its killstreak or deathstreak slot",
+    ),
+    (
+        "equipiteminslotsorted",
+        Some("equipItemInSlotSorted"),
+        "equipItemInSlotSorted <customclassname> <groupItemCount> <groupName> <numItemsOfSameAttributeAllowed> — the current item in or out of a class's sorted slots",
+    ),
+    (
+        "equipglobaliteminslotsorted",
+        Some("equipGlobalItemInSlotSorted"),
+        "equipGlobalItemInSlotSorted <groupItemCount> <groupName> <numItemsOfSameAttributeAllowed> — the current item in or out of the sorted killstreak slots",
     ),
 ];
 

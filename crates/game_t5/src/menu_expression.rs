@@ -76,6 +76,11 @@ const T5_FN_ISITEMLOCKED: i32 = 107;
 const T5_FN_ISITEMNEW: i32 = 110;
 const T5_FN_GETITEMNAME: i32 = 112;
 const T5_FN_GETITEMIMAGE: i32 = 113;
+const T5_FN_GETITEMUNLOCKLEVEL: i32 = 114;
+const T5_FN_GETITEMUNLOCKPLEVEL: i32 = 115;
+const T5_FN_GETITEMATTACHMENT: i32 = 155;
+const T5_FN_GETCURRENTITEMNAME: i32 = 255;
+const T5_FN_GETCURRENTITEMINDEX: i32 = 256;
 const T5_FN_GETITEMINDEX: i32 = 117;
 const T5_FN_GETSTATBYNAME: i32 = 125;
 const T5_FN_GETDSTAT: i32 = 221;
@@ -109,7 +114,7 @@ const PARTY: &str = game_api::unknown!(
 .id;
 
 #[derive(Clone, Debug)]
-enum T5Token {
+pub(crate) enum T5Token {
     Const(Operand),
     Op(i32),
 }
@@ -445,6 +450,14 @@ fn call(op: i32, stack: &mut Vec<Value>, host: &dyn GameQueries) -> Result<Opera
         T5_FN_ISITEMNEW => host.profile_function("isitemnew", &args()?)?,
         T5_FN_GETITEMNAME => host.profile_function("getitemname", &args()?)?,
         T5_FN_GETITEMIMAGE => host.profile_function("getitemimage", &args()?)?,
+        T5_FN_GETITEMUNLOCKLEVEL => host.profile_function("getitemunlocklevel", &args()?)?,
+        T5_FN_GETITEMUNLOCKPLEVEL => host.profile_function("getitemunlockplevel", &args()?)?,
+        T5_FN_GETITEMATTACHMENT => host.profile_function("getitemattachment", &args()?)?,
+        // The create-a-class menus' current item, and its name.
+        T5_FN_GETCURRENTITEMINDEX => Operand::Int(host.current_item()?),
+        T5_FN_GETCURRENTITEMNAME => {
+            host.profile_function("getitemname", &[Operand::Int(host.current_item()?)])?
+        }
         T5_FN_GETATTACHMENTNAME => host.profile_function("getattachmentname", &args()?)?,
         T5_FN_ISITEMGROUPNEW => host.profile_function("isitemgroupnew", &args()?)?,
         T5_FN_GETITEMEQUIPPEDATTACHMENT => {
@@ -667,7 +680,7 @@ fn evaluate(tokens: &[T5Token], host: &dyn GameQueries) -> Result<Operand, ExprE
 }
 
 #[derive(Debug)]
-struct Program(Vec<T5Token>);
+pub(crate) struct Program(pub(crate) Vec<T5Token>);
 
 impl MenuProgram for Program {
     fn evaluate(&self, queries: &dyn GameQueries) -> Result<Operand, ExprError> {

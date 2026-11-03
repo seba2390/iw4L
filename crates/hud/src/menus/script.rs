@@ -71,6 +71,28 @@ pub(crate) enum LocalVarKind {
 }
 
 /// A console word as `atoi` reads it.
+/// C's `atoi`: leading blanks, a sign, then the digits that follow; 0 when
+/// none.
+pub(crate) fn atoi_c(word: &str) -> i32 {
+    let word = word.trim_start();
+    let (negative, digits) = match word.as_bytes().first() {
+        Some(b'-') => (true, &word[1..]),
+        Some(b'+') => (false, &word[1..]),
+        _ => (false, word),
+    };
+    let value = digits
+        .bytes()
+        .take_while(u8::is_ascii_digit)
+        .fold(0i32, |n, d| {
+            n.wrapping_mul(10).wrapping_add(i32::from(d - b'0'))
+        });
+    if negative {
+        value.wrapping_neg()
+    } else {
+        value
+    }
+}
+
 pub(crate) fn atoi_word(word: &str) -> i32 {
     word.trim().parse::<f64>().map_or(0, |value| value as i32)
 }

@@ -15,6 +15,8 @@ mod grenade_indicator;
 mod heli;
 mod killfeed;
 mod menu_expression;
+mod menu_functions;
+mod menu_infix;
 mod missile;
 mod movement;
 mod mp_catalog;
@@ -40,6 +42,7 @@ mod zombie_catalog;
 mod zombie_startup;
 
 pub use menu_expression::parse_menu_expression;
+pub use menu_infix::parse_menu_infix;
 
 use game_api::{
     DownedRules, FailedLevelRules, HudRules, LibraryMode, ModeRules, MovementRules, Rule,

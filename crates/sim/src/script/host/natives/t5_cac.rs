@@ -523,7 +523,7 @@ impl Cac {
     }
 
     /// `equipClass`' and `equipClassItem`'s write: the item into its slot.
-    fn equip(&mut self, class: &str, n: i32) {
+    fn equip(&mut self, class: Option<&str>, n: i32) {
         if !(0..MAX_ITEMS).contains(&n) {
             self.say(format!("Invalid unlockable item {n} returning NULL"));
             self.say(format!("Item {n} is invalid"));
@@ -538,14 +538,14 @@ impl Cac {
             self.say(format!("Item {name} has an invalid loadout slot"));
             return;
         };
-        self.write_slot(Some(class), n as u32, SLOTS[slot]);
+        self.write_slot(class, n as u32, SLOTS[slot]);
     }
 
     /// The item into its slot, and its attachment `attachment` at `point`
     /// (blank for the slot's single attachment): an attachment already on
     /// is taken off; one that clashes with another on, or whose point is
     /// taken, is not put on.
-    fn equip_attachment(&mut self, class: &str, name: &str, attachment: &str, point: &str) {
+    fn equip_attachment(&mut self, class: Option<&str>, name: &str, attachment: &str, point: &str) {
         let n = self.index_by_name(name);
         if n == -1 || !self.unlocked(n) {
             return;
@@ -566,18 +566,18 @@ impl Cac {
             return;
         }
         let slot = SLOTS[slot];
-        self.write_slot(Some(class), n as u32, slot);
+        self.write_slot(class, n as u32, slot);
         let id = attachments[att];
         let at_point = self.point_of(id);
         let mut on = 0;
         for i in 1..5 {
             let key = format!("{slot}attachment{}", point_name(i));
-            let current = self.read_slot(Some(class), &key);
+            let current = self.read_slot(class, &key);
             // A slot outside the weapon's attachments reads past them in
             // Black Ops; it counts as none here.
             let current_id = attachments.get(current as usize).copied().unwrap_or(0);
             if current as usize == att {
-                self.write_slot(Some(class), 0, &key);
+                self.write_slot(class, 0, &key);
                 return;
             }
             if current_id != 0 {
@@ -597,7 +597,98 @@ impl Cac {
             let filter = self.dvar("attachmentFilter", ATTACHMENT_FILTER);
             format!("{slot}attachment{}", point_name(filter))
         };
-        self.write_slot(Some(class), att as u32, &key);
+        self.write_slot(class, att as u32, &key);
+    }
+
+    /// `equipClassCurrentItem`: an unlocked current item into its slot; a
+    /// weapon with no attachments goes on with none.
+    fn equip_current(&mut self, class: Option<&str>, n: i32) {
+        if n == -1 || !self.unlocked(n) {
+            return;
+        }
+        let Some(item) = self.item(n) else {
+            return;
+        };
+        let (slot, bare) = (item.slot, item.attachments.len() == 1);
+        let name = item.name.clone();
+        match slot {
+            Some(slot) if FACE_PAINT_SLOTS.contains(&slot) => diag::warn!(
+                Sim,
+                "unknown!t5.mp.cac_face_paint: equipClassCurrentItem writes a face paint item as its place in Black Ops' face paint lists, which are not read; {name} is not equipped"
+            ),
+            Some(PRIMARY | SECONDARY) if bare => self.equip_attachment(class, &name, "none", ""),
+            _ => self.equip(class, n),
+        }
+    }
+
+    /// `equipItemInSlotSorted`: the current item in or out of the group's
+    /// slots `<group>1…<group><count>`, which stay ordered by the items'
+    /// attribute (column 5) and then their number. An item already in a
+    /// slot comes out and the ones after it move up; a new one goes in at
+    /// its place when a slot is free and fewer than `allowed` share its
+    /// attribute.
+    fn equip_sorted(&mut self, class: Option<&str>, n: i32, count: i32, group: &str, allowed: i32) {
+        if count > SLOTS.len() as i32 {
+            return;
+        }
+        let Some(attribute) = self.item(n).map(|item| item.attribute) else {
+            return;
+        };
+        let count = count.max(0) as usize;
+        let slot_name = |k: usize| format!("{group}{k}");
+        let (mut items, mut defaults, mut attributes) = (Vec::new(), Vec::new(), Vec::new());
+        let (mut filled, mut same) = (0usize, 0);
+        for k in 1..=count {
+            let Some(slot) = index_of(&SLOTS, &slot_name(k)) else {
+                return;
+            };
+            let default = self.slot_default(slot) as i32;
+            let item = self.read_slot(class, &slot_name(k)) as i32;
+            let Some(item_attribute) = self.item(item).map(|item| item.attribute) else {
+                return;
+            };
+            if item != default {
+                filled += 1;
+                if item_attribute == attribute {
+                    same += 1;
+                }
+            }
+            items.push(item);
+            defaults.push(default);
+            attributes.push(item_attribute);
+        }
+        if let Some(mut at) = items.iter().position(|&item| item == n) {
+            while at + 2 <= filled {
+                self.write_slot(class, items[at + 1] as u32, &slot_name(at + 1));
+                at += 1;
+            }
+            self.write_slot(class, defaults[at] as u32, &slot_name(at + 1));
+            return;
+        }
+        if !self.unlocked(n) || count <= filled {
+            return;
+        }
+        if filled == 0 {
+            self.write_slot(class, n as u32, &slot_name(1));
+            return;
+        }
+        let Some(at) = (0..filled).find(|&k| attribute <= attributes[k] && same < allowed) else {
+            if same < allowed {
+                self.write_slot(class, n as u32, &slot_name(filled + 1));
+            }
+            return;
+        };
+        for k in (at..filled).rev() {
+            self.write_slot(class, items[k] as u32, &slot_name(k + 2));
+        }
+        // Within one attribute the lower number comes first.
+        let place = if attributes[at] == attribute && items[at] <= n {
+            self.write_slot(class, items[at] as u32, &slot_name(at + 1));
+            at + 2
+        } else {
+            at + 1
+        };
+        self.write_slot(class, n as u32, &slot_name(place));
     }
 
     /// A slot's item when a default class names none.
@@ -717,6 +808,15 @@ impl Cac {
     }
 }
 
+/// The create-a-class menus' current item (`setCurrentItemIndex`), which
+/// the `…Current…` and sorted-slot commands act on.
+#[derive(bevy_ecs::prelude::Resource, Default)]
+struct CurrentItem(i32);
+
+/// The face paint slots, whose items are written as their place in the
+/// face paint lists.
+const FACE_PAINT_SLOTS: [usize; 2] = [33, 34];
+
 fn arg(args: &[String], n: usize) -> &str {
     args.get(n).map_or("", String::as_str)
 }
@@ -746,8 +846,22 @@ pub(crate) fn run(
             | "statwriteddl"
             | "statsetbyname"
             | "uploadstats"
+            | "setcurrentitemindex"
+            | "equipclasscurrentitem"
+            | "equipclasscurrentglobalitem"
+            | "equipiteminslotsorted"
+            | "equipglobaliteminslotsorted"
     ) {
         return None;
+    }
+    if name == "setcurrentitemindex" {
+        if args.is_empty() {
+            return Some(Ok(vec![
+                "SetCurrentItemIndex usage: SetCurrentItemIndex <itemIndex>".into(),
+            ]));
+        }
+        world.insert_resource(CurrentItem(super::iw4::atoi(arg(args, 0))));
+        return Some(Ok(Vec::new()));
     }
     Some(run_command(world, name, args))
 }
@@ -788,7 +902,35 @@ fn build(world: &mut World) -> Result<Cac, String> {
 }
 
 fn run_on(world: &mut World, cac: &mut Cac, name: &str, args: &[String]) {
+    let current = world.get_resource::<CurrentItem>().map_or(0, |c| c.0);
     match name {
+        "equipclasscurrentitem" if args.is_empty() => cac.say(
+            "equipclasscurrentitem usage: equipclasscurrentitem <customclassname>".into(),
+        ),
+        // The current item in its slot of the class (the global slot for
+        // `equipClassCurrentGlobalItem`), as `equipClassItem` puts an item.
+        "equipclasscurrentitem" | "equipclasscurrentglobalitem" => {
+            let class = (name == "equipclasscurrentitem").then(|| arg(args, 0));
+            cac.equip_current(class, current);
+        }
+        "equipiteminslotsorted" if args.len() < 4 => cac.say(
+            "equipItemInSlotSorted usage: equipItemInSlotSorted <customclassname> <groupItemCount> <groupName> <numItemsOfSameAttributeAllowed>"
+                .into(),
+        ),
+        "equipglobaliteminslotsorted" if args.len() < 3 => cac.say(
+            "equipGlobalItemInSlotSorted usage: equipItemInSlotSorted <groupItemCount> <groupName> <numItemsOfSameAttributeAllowed>"
+                .into(),
+        ),
+        "equipiteminslotsorted" | "equipglobaliteminslotsorted" => {
+            let (class, rest) = if name == "equipiteminslotsorted" {
+                (Some(arg(args, 0)), &args[1..])
+            } else {
+                (None, args)
+            };
+            let count = super::iw4::atoi(arg(rest, 0));
+            let allowed = super::iw4::atoi(arg(rest, 2));
+            cac.equip_sorted(class, current, count, arg(rest, 1), allowed);
+        }
         // `statWriteDDL <path…> <value>`: the member the path names takes
         // the value.
         "statwriteddl" if args.len() < 2 => {
@@ -827,7 +969,7 @@ fn run_on(world: &mut World, cac: &mut Cac, name: &str, args: &[String]) {
         "equipclass" => {
             let n = cac.index_by_name(arg(args, 1));
             if n != -1 && cac.unlocked(n) {
-                cac.equip(arg(args, 0), n);
+                cac.equip(Some(arg(args, 0)), n);
             }
         }
         "equipclassitem" if args.len() < 2 => {
@@ -843,8 +985,8 @@ fn run_on(world: &mut World, cac: &mut Cac, name: &str, args: &[String]) {
                         .then(|| item.name.clone())
                 });
                 match bare {
-                    Some(weapon) => cac.equip_attachment(class, &weapon, "none", ""),
-                    None if cac.get(n).is_some() => cac.equip(class, n),
+                    Some(weapon) => cac.equip_attachment(Some(class), &weapon, "none", ""),
+                    None if cac.get(n).is_some() => cac.equip(Some(class), n),
                     None => {}
                 }
             }
@@ -854,7 +996,7 @@ fn run_on(world: &mut World, cac: &mut Cac, name: &str, args: &[String]) {
                 .into(),
         ),
         "equipclassattachment" => {
-            cac.equip_attachment(arg(args, 0), arg(args, 1), arg(args, 2), arg(args, 3));
+            cac.equip_attachment(Some(arg(args, 0)), arg(args, 1), arg(args, 2), arg(args, 3));
         }
         "equipdefaultclass" if args.len() < 2 => cac.say(
             "equipdefaultclass usage: equipdefaultclass <customclassname> <defaultClass>".into(),
@@ -1103,6 +1245,41 @@ impl T5MenuData {
         -1
     }
 
+    /// Item `n` is free or bought and its rank and prestige are reached.
+    pub fn item_unlocked(&self, n: i32) -> bool {
+        self.cac.unlocked(n)
+    }
+
+    /// The attachments item `n` lists, counting none (1: it takes none).
+    pub fn item_attachment_count(&self, n: i32) -> i32 {
+        self.cac
+            .item(n)
+            .map_or(0, |item| item.attachments.len() as i32)
+    }
+
+    fn item_attachment(&self, n: i32, k: i32) -> i32 {
+        let Some(item) = self.cac.item(n) else {
+            return 0;
+        };
+        if k == 0 {
+            return 0;
+        }
+        match usize::try_from(k)
+            .ok()
+            .and_then(|k| item.attachments.get(k))
+        {
+            Some(&id) => id as i32,
+            None => {
+                self.cac.say(format!(
+                    "Item {} does not have attachment number {k} it only has {} attachments",
+                    item.name,
+                    item.attachments.len()
+                ));
+                0
+            }
+        }
+    }
+
     /// One of the create-a-class menu functions by its lowercased name:
     /// `isitemlocked`, `isitemnew`, `getitemname`, `getitemimage`,
     /// `getitemequippedattachment`; `None` for another name.
@@ -1121,6 +1298,21 @@ impl T5MenuData {
             "isitemlocked" => MenuStat::Int(i32::from(self.item_locked(int(0)))),
             "isitemnew" => MenuStat::Int(i32::from(self.item_new(int(0)))),
             "getitemname" => MenuStat::Text(self.item_name(int(0))),
+            // Columns 10 and 14 of a valid item, 0 otherwise.
+            "getitemunlocklevel" => {
+                MenuStat::Int(self.cac.item(int(0)).map_or(0, |item| item.unlock_rank))
+            }
+            "getitemunlockplevel" => {
+                MenuStat::Int(self.cac.item(int(0)).map_or(0, |item| item.unlock_prestige))
+            }
+            // The global id of the item's `k`th attachment; 0 for none, with
+            // the game's warning past the item's attachments.
+            "getitemattachment" if args.len() != 2 => {
+                self.cac
+                    .say("Expected 2 parameters to GetItemAttachment()".into());
+                MenuStat::Int(0)
+            }
+            "getitemattachment" => MenuStat::Int(self.item_attachment(int(0), int(1))),
             "getitemimage" => MenuStat::Text(self.item_image(int(0))),
             "getitemequippedattachment" => {
                 MenuStat::Int(self.equipped_attachment(&text(0), int(1), int(2)))

@@ -134,9 +134,13 @@ impl Runner<'_, '_> {
 }
 
 /// A console line's words as Black Ops' tokenizer gives them: a quoted
-/// string is one word, and a `( … )` group is one word, its value when it
-/// is a constant expression (`None`: a group that is not).
-pub(crate) fn console_words(line: &str) -> Option<Vec<String>> {
+/// string is one word, and a `( … )` group that starts a word is one word,
+/// the value `group` gives its text (parentheses included; `None`: the
+/// group has no value and the line does not run).
+pub(crate) fn console_words(
+    line: &str,
+    group: &mut dyn FnMut(&str) -> Option<String>,
+) -> Option<Vec<String>> {
     let chars: Vec<char> = line.chars().collect();
     let mut words = Vec::new();
     let mut i = 0;
@@ -152,23 +156,9 @@ pub(crate) fn console_words(line: &str) -> Option<Vec<String>> {
             words.push(chars[i + 1..end].iter().collect());
             i = end + 1;
         } else if c == '(' {
-            let mut depth = 0;
-            let mut end = i;
-            while end < chars.len() {
-                match chars[end] {
-                    '(' => depth += 1,
-                    ')' => {
-                        depth -= 1;
-                        if depth == 0 {
-                            break;
-                        }
-                    }
-                    _ => {}
-                }
-                end += 1;
-            }
-            let group: String = chars[i + 1..end.min(chars.len())].iter().collect();
-            words.push(constant(&group)?);
+            let end = group_end(&chars, i);
+            let text: String = chars[i..(end + 1).min(chars.len())].iter().collect();
+            words.push(group(&text)?);
             i = end + 1;
         } else {
             let start = i;
@@ -179,6 +169,70 @@ pub(crate) fn console_words(line: &str) -> Option<Vec<String>> {
         }
     }
     Some(words)
+}
+
+/// Where the group opened at `open` closes: its matching `)`, a `)` inside
+/// a quoted string not counting (the end of the line when none closes it).
+fn group_end(chars: &[char], open: usize) -> usize {
+    let mut depth = 0;
+    let mut quoted = false;
+    let mut at = open;
+    while at < chars.len() {
+        match chars[at] {
+            '\\' if quoted => at += 1,
+            '"' => quoted = !quoted,
+            '(' if !quoted => depth += 1,
+            ')' if !quoted => {
+                depth -= 1;
+                if depth == 0 {
+                    return at;
+                }
+            }
+            _ => {}
+        }
+        at += 1;
+    }
+    chars.len()
+}
+
+/// Whether a console line has a `( … )` group outside quotes that starts a
+/// word.
+pub(crate) fn has_group(line: &str) -> bool {
+    let mut quoted = false;
+    let mut word_start = true;
+    for c in line.chars() {
+        match c {
+            '"' => quoted = !quoted,
+            '(' if !quoted && word_start => return true,
+            _ => {}
+        }
+        word_start = c.is_whitespace();
+    }
+    false
+}
+
+/// Words back into a console line, each that is empty or holds a blank in
+/// quotes.
+pub(crate) fn console_line(words: &[String]) -> String {
+    words
+        .iter()
+        .map(|word| {
+            if word.is_empty() || word.contains(char::is_whitespace) {
+                format!("\"{word}\"")
+            } else {
+                word.clone()
+            }
+        })
+        .collect::<Vec<_>>()
+        .join(" ")
+}
+
+/// A constant group's value as Black Ops prints it, for a game without its
+/// own expression compiler: `None` when it calls a function or names
+/// anything.
+pub(crate) fn constant_group(group: &str) -> Option<String> {
+    let inner = group.strip_prefix('(')?;
+    constant(inner.strip_suffix(')').unwrap_or(inner))
 }
 
 #[derive(Clone)]

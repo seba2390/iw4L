@@ -255,6 +255,9 @@ pub trait ExprHost {
         let _ = name;
         Err(ExprError::Host("getitemindex"))
     }
+    fn current_item(&self) -> Result<i32, ExprError> {
+        Err(ExprError::Host("getcurrentitemindex"))
+    }
     fn profile_function(&self, name: &str, args: &[Operand]) -> Result<Operand, ExprError> {
         let _ = (name, args);
         Err(ExprError::Host("profile functions"))
@@ -586,6 +589,9 @@ impl<H: ExprHost> GameQueries for Queries<'_, H> {
     }
     fn item_index(&self, name: &str) -> Result<i32, ExprError> {
         self.0.item_index(name)
+    }
+    fn current_item(&self) -> Result<i32, ExprError> {
+        self.0.current_item()
     }
     fn profile_function(&self, name: &str, args: &[Operand]) -> Result<Operand, ExprError> {
         self.0.profile_function(name, args)
