@@ -415,6 +415,9 @@ fn drive(world: &mut World) {
             continue;
         };
         let speed = ease(&mut world.resource_mut::<PathVehicles>(), id, seconds);
+        if super::super::super::players::now_ms(world) % 1000 < i64::from(crate::MATCH_TICK_MS) {
+            diag::debug!(Sim, "vehicle {id}: speed {speed:.0}");
+        }
         let mut step = speed * seconds;
         let mut at = origin(world, id);
         let mut reached = Vec::new();
