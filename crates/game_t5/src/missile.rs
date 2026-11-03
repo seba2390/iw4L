@@ -79,6 +79,9 @@ pub(crate) struct State {
     pub(crate) grenade: bool,
     /// Fired by a grenade launcher: it never destabilises.
     pub(crate) launched: bool,
+    /// Made a dud (`makeGrenadeDud`): it does not explode or crumple, and
+    /// goes after its minute.
+    pub(crate) dud: bool,
     /// What it rests on; `ENTITY_NONE` while flying.
     pub(crate) ground: i32,
     /// When its fuse runs out; 0 for no fuse.
@@ -165,6 +168,7 @@ impl State {
             bounce: game[4] & 1 != 0,
             grenade: game[4] & 2 != 0,
             launched: game[4] & 4 != 0,
+            dud: game[4] & 8 != 0,
             surface: game[5],
             ground: i(8),
             explode_at: i(12),
@@ -192,8 +196,10 @@ impl State {
 
     pub(crate) fn write(self, game: &mut [u8; GAME_MISSILE_BYTES]) {
         game[0..4].copy_from_slice(&self.travel.to_le_bytes());
-        game[4] =
-            u8::from(self.bounce) | u8::from(self.grenade) << 1 | u8::from(self.launched) << 2;
+        game[4] = u8::from(self.bounce)
+            | u8::from(self.grenade) << 1
+            | u8::from(self.launched) << 2
+            | u8::from(self.dud) << 3;
         game[5] = self.surface;
         game[8..12].copy_from_slice(&self.ground.to_le_bytes());
         game[12..16].copy_from_slice(&self.explode_at.to_le_bytes());
@@ -1331,7 +1337,10 @@ fn impact(
         }
         // A projectile that neither explodes on impact nor bounces ends
         // where it strikes, by its explosion type.
-        if state.bounce && !def.proj_impact_explode() && !crumples(missile, def, trace, world) {
+        if state.bounce
+            && !def.proj_impact_explode()
+            && (state.dud || !crumples(missile, def, trace, world))
+        {
             crate::grenade::bounce(missile, def, state, trace, end, world, gaps);
             return None;
         }

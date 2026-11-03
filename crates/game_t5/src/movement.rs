@@ -1240,6 +1240,12 @@ impl PlayerMovement for T5Movement {
         Some(crate::missile::State::read(&missile.game).ground)
     }
 
+    fn make_missile_dud(&self, missile: &mut game_api::fire::GameMissile) {
+        let mut state = crate::missile::State::read(&missile.game);
+        state.dud = true;
+        state.write(&mut missile.game);
+    }
+
     fn reset_missile_detonation_time(
         &self,
         missile: &mut game_api::fire::GameMissile,

@@ -880,6 +880,7 @@ fn bounce_off(
         def,
         n,
         rolls,
+        state.dud,
         world,
         gaps,
     );
@@ -903,7 +904,7 @@ fn bounce_off(
         };
         let angles = match def.stickiness() {
             STICK_GROUND | STICK_GROUND_KEEP_YAW => ground_angles(missile, def, trace, world),
-            _ => land_angles(missile, def, trace, true, false, world),
+            _ => land_angles(missile, def, state.dud, trace, true, false, world),
         };
         missile.angles = GameTrajectory {
             kind: TrajectoryKind::Stationary,
@@ -950,7 +951,7 @@ fn bounce_off(
             2 => (true, false),
             _ => (false, false),
         };
-        missile.angles.base = land_angles(missile, def, trace, rest, by_type, world);
+        missile.angles.base = land_angles(missile, def, state.dud, trace, rest, by_type, world);
         missile.angles.time = level;
     }
     let change = [delta[0] - vel[0], delta[1] - vel[1], delta[2] - vel[2]];
@@ -970,6 +971,7 @@ fn surface_bounce(
     def: &WeaponDefView<'_>,
     n: [f32; 3],
     rolls: bool,
+    dud: bool,
     world: &mut dyn FireWorld,
     gaps: &mut Vec<&'static Unknown>,
 ) -> Option<(f32, [f32; 3])> {
@@ -1028,7 +1030,7 @@ fn surface_bounce(
         gaps.push(crate::movement::weapon_unknown());
         return None;
     };
-    if def.keep_rolling() && length(*delta) < KEEP_ROLLING_SPEED {
+    if def.keep_rolling() && !dud && length(*delta) < KEEP_ROLLING_SPEED {
         along *= KEEP_ROLLING_BOOST + 1.0;
     }
     let d = dot(*delta, n) * (perpendicular - along);
@@ -1111,6 +1113,7 @@ fn roll(
 fn land_angles(
     missile: &mut GameMissile,
     def: &WeaponDefView<'_>,
+    dud: bool,
     trace: &BulletTrace,
     rest: bool,
     by_type: bool,
@@ -1118,7 +1121,7 @@ fn land_angles(
 ) -> [f32; 3] {
     let time = impact_time(trace, world);
     let mut angles = evaluate(&missile.angles, time);
-    if rolling_enabled(world) && def.keep_rolling() {
+    if rolling_enabled(world) && def.keep_rolling() && !dud {
         return angles;
     }
     let n = trace.normal;
@@ -1217,7 +1220,7 @@ pub(crate) fn explode(
     gaps: &mut Vec<&'static Unknown>,
 ) -> MissileRun {
     let level = world.level_time();
-    if def.explode_on_ground() && state.ground == ENTITY_NONE {
+    if (def.explode_on_ground() && state.ground == ENTITY_NONE) || state.dud {
         if level - state.spawned_at <= GROUND_WAIT_MS {
             state.explode_at = GROUND_RETRY;
             return MissileRun::Flying;

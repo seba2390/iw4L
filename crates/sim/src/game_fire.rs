@@ -1541,16 +1541,22 @@ pub(crate) fn game_missile_motion(
 }
 
 pub(crate) fn make_game_missile_dud(world: &mut FrameWorld, entnum: i32) -> bool {
-    let Some(rules) = missile_rules(world) else {
-        return false;
-    };
+    let rules = missile_rules(world);
+    let movement = rules
+        .is_none()
+        .then(|| crate::game_move::rules(world))
+        .flatten();
     let Some(mut missiles) = world.ecs().get_resource_mut::<GameMissiles>() else {
         return false;
     };
     let Some(missile) = missiles.0.get_mut(&entnum) else {
         return false;
     };
-    rules.0.make_dud(missile);
+    match (rules, movement) {
+        (Some(rules), _) => rules.0.make_dud(missile),
+        (None, Some(movement)) => movement.make_missile_dud(missile),
+        (None, None) => return false,
+    }
     true
 }
 

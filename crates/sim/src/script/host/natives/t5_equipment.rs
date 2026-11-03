@@ -143,6 +143,21 @@ pub(crate) fn register(registry: &mut NativeRegistry) {
         }
         Ok(Value::Undefined)
     });
+    // `makeGrenadeDud`: the grenade's fuse no longer explodes it.
+    registry.register(Method, "makegrenadedud", |world, receiver, _| {
+        let id = super::engine::entity_id(world, receiver)?;
+        let entity = &world.resource::<crate::script::RoundScript>().entities[&id];
+        let crate::script::host::entities::EntityKind::Missile(_) = entity.kind else {
+            return Err("MakeGrenadeDud: entity must be a grenade entity".into());
+        };
+        let number = entity.number;
+        crate::game_fire::make_game_missile_dud(
+            &mut crate::frame::FrameWorld::from_world(world),
+            number,
+        );
+        Ok(Value::Undefined)
+    });
+
     registry.register(Function, "spawntimedfx", spawn_timed_fx);
     registry.register(Function, "testspawnpoint", |world, _, args| {
         let at = vector(args, 0)?;
