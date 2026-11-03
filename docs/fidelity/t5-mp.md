@@ -676,13 +676,15 @@ Each open section names the issue that works it.
       profile shows the class reset notice and the lobby's CREATE A CLASS
       unlocks by rank. Open: a client that is not the host reads no
       profile stats; the UI level's client does not join, so its menus'
-      server dvars wait in a full action queue; `inlobby`,
-      `GetCurrentItemMultiText` is not answered; `getselfgamertag` answers
-      the `name` dvar and `getclanname` and `getxuid` nothing (no Live
-      identity or clan);
-      `cac_main`'s class rows show no names; the news ticker owner draws
-      (`tickerHeaderText`, `ticker`) and the main menu's two fading
-      background layers (their alpha expressions) do not draw.
+      server dvars wait in a full action queue; `GetCurrentItemMultiText`
+      needs the item it is evaluated on and is not answered, which leaves
+      the faction button's rect; `getselfgamertag` answers the `name` dvar
+      and `getclanname` and `getxuid` nothing (no Live identity or clan);
+      `inlobby` answers the client in a real level, not Black Ops' connection
+      state. The news ticker (`tickerHeaderText`, `ticker`) has no online news
+      to show, and the main menu's two fading background layers (their alpha
+      expressions) do not draw. A renamed class's name lives in a dvar for
+      the run; persisting it across runs is `t5.hud.class_name_persist`.
 - [ ] **V** `t5.hud.custom_class_info`: with `ui_useCustomClassInfo` set,
       `getCACItemIndex` reads the custom game mode's class table, which is
       not read (the dvar is registered 0).
