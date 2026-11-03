@@ -35,6 +35,9 @@ pub struct GameCodeHud {
     pub command_hint: Option<CommandHintFn>,
     /// The game's grenade indicators.
     pub grenade_indicators: Option<GrenadeIndicatorFn>,
+    /// Whether a resting missile draws with its weapon's retrievable model;
+    /// `None` never does.
+    pub retrievable_model: Option<RetrievableModelFn>,
     /// Whether the game's HUD visibility bit (its number, which a menu's
     /// `isvisibilitybitset` tests) is set; `None` answers none.
     pub visibility_bit: Option<VisibilityBitFn>,
@@ -658,6 +661,23 @@ pub struct CrosshairPicture {
 
 /// What a game's grenade indicators draw this frame.
 pub type GrenadeIndicatorFn = fn(&GrenadeIndicatorView<'_>) -> GrenadeIndicators;
+
+/// A missile as the client's retrievable model test reads it.
+pub struct RetrievableView<'a> {
+    /// The viewing player, as its movement keeps it.
+    pub player: &'a MovePlayer,
+    pub weapon: u32,
+    /// The weapon's ammo and clip indices.
+    pub ammo_index: i32,
+    pub clip_index: i32,
+    /// How long it has been at rest; `None` while it flies.
+    pub resting_ms: Option<i32>,
+    /// It is stuck in an entity.
+    pub stuck: bool,
+    pub dvar: &'a dyn Fn(&str) -> Option<f32>,
+}
+
+pub type RetrievableModelFn = fn(&RetrievableView<'_>) -> bool;
 
 /// What a game's grenade indicators read.
 pub struct GrenadeIndicatorView<'a> {

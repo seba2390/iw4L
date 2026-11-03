@@ -253,6 +253,7 @@ impl WeaponCatalog {
                 }
             },
             skin_parent: None,
+            alternate_world_models: Default::default(),
             projectile_model: geometry
                 .projectile_model_name
                 .and_then(|ptr| leftover_cstr_iw5(stream, ptr)),

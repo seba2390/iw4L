@@ -88,6 +88,9 @@ impl WeaponCatalog {
                 .def_str(sz::WEAPON_DEF_PARENT_WEAPON_NAME_OFF)
                 .map(str::to_owned),
             world_model: bare_owned(w.cstr(geometry.world_model_name)),
+            alternate_world_models: geometry
+                .world_model_slot_names
+                .map(|name| bare_owned(w.cstr(name))),
             projectile_model: bare_owned(w.cstr(geometry.projectile_model_name)),
             knife_xmodel: None,
             rocket_model: bare_owned(w.cstr(geometry.rocket_model_name)),

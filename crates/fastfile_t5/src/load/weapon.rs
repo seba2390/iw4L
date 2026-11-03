@@ -81,6 +81,8 @@ pub(super) fn load_weapon(s: &mut ZoneStream<'_>, links: &mut dyn AssetLinkSink)
                 _ => None,
             })
             .unwrap_or(false);
+    let world_model_slot_names =
+        [4, 8].map(|slot| weap_def.and_then(|body| world_slot_name(s, links, body, slot)));
     s.record_weapon(WeaponGeometry {
         kill_icon_name: assets.kill_icon,
         overlay_material_name,
@@ -107,6 +109,7 @@ pub(super) fn load_weapon(s: &mut ZoneStream<'_>, links: &mut dyn AssetLinkSink)
         world_model_name: assets.world,
         world_clip_model_name: assets.clip,
         has_stowed_model,
+        world_model_slot_names,
         move_speed_scale: body_combat.move_speed_scale,
         ads_move_speed_scale: body_combat.ads_move_speed_scale,
         weap_type: body_combat.weap_type,
@@ -288,6 +291,24 @@ fn follow_string_array(
             Ok(Some(arr))
         }
     }
+}
+
+/// The name of a `worldModel` slot other than the first.
+fn world_slot_name(
+    s: &mut ZoneStream<'_>,
+    links: &mut dyn AssetLinkSink,
+    body: Ptr,
+    slot: usize,
+) -> Option<Ptr> {
+    let ZonePtr::Offset(array) = s.ptr_at(body, 0x30c).ok()? else {
+        return None;
+    };
+    let ZonePtr::Offset(model) = s.ptr_at(s.resolve_alias(array), slot).ok()? else {
+        return None;
+    };
+    links
+        .xmodel_name_ptr(s.resolve_alias(model))
+        .or_else(|| links.xmodel_name_ptr(model))
 }
 
 fn follow_xmodel_array(

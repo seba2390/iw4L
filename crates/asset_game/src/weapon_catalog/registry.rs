@@ -895,6 +895,19 @@ impl WeaponRegistry {
         ))
     }
 
+    /// The world model slot past the first (1 or 2) a missile of the weapon
+    /// can draw with.
+    pub fn alternate_world_model_of(
+        &self,
+        index: u32,
+        slot: usize,
+    ) -> Option<(crate::AssetNamespace, &str)> {
+        let (namespace, _) = self.projectile_model_reference_of(index)?;
+        let row = self.rows.get(index as usize)?;
+        let name = row.alternate_world_models.get(slot.checked_sub(1)?)?.as_deref()?;
+        Some((namespace, name))
+    }
+
     pub fn component_namespace_of(
         &self,
         index: u32,
