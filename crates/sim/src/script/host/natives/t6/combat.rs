@@ -161,7 +161,7 @@ fn actor_eye(world: &mut World, id: u64) -> Option<([f32; 3], [f32; 3])> {
 
 /// `cansee`: within the actor's sight distance and field of view, with
 /// nothing in the sight line (`t6.actors.sight` for what is not read).
-fn can_see(world: &mut World, id: u64, target: &Value) -> Result<bool, String> {
+pub(super) fn can_see(world: &mut World, id: u64, target: &Value) -> Result<bool, String> {
     let (from, look) = actor_eye(world, id).ok_or("not an actor")?;
     let to = eye(world, target)?;
     let delta = sub(to, from);
@@ -174,11 +174,17 @@ fn can_see(world: &mut World, id: u64, target: &Value) -> Result<bool, String> {
     if fov != 0.0 && (facing < 0.0 || facing * facing < distance_sq * fov * fov) {
         return Ok(false);
     }
+    // The sight line passes through the actor's own body and its target's.
     let ignore = TraceIgnore {
         client: world
             .resource::<RoundScript>()
             .player_client_of(target)
             .map(crate::ClientId),
+        model: world
+            .resource::<RoundScript>()
+            .entities
+            .get(&id)
+            .and_then(|entity| entity.presence),
         ..Default::default()
     };
     Ok(traced(entity_trace(world, from, to, SIGHT_MASK, ignore)).0 >= 1.0)
