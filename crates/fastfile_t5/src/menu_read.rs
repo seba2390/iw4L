@@ -45,6 +45,12 @@ const ITEM_ANIM_INFO: usize = 0x108;
 /// `UI_AnimInfo`: the state the item shows now follows the state count
 /// and the states' list.
 const ANIM_INFO_CURRENT: usize = 8;
+const ANIM_INFO_COUNT: usize = 0;
+const ANIM_INFO_STATES: usize = 4;
+/// An `animParamsDef_t`'s event handlers (its `onEnter`).
+const ANIM_PARAMS_HANDLERS: usize = 0x68;
+/// More states than any menu holds: a corrupt count stops here.
+const MAX_ANIM_STATES: usize = 64;
 const ANIM_PARAMS_NAME: usize = 0;
 const ANIM_PARAMS_RECT: usize = 4;
 const ANIM_PARAMS_FORE_COLOR: usize = 32;
@@ -259,6 +265,8 @@ pub struct ItemRead {
     pub focus: Option<FocusRead>,
     /// The animation state the item shows as loaded, when it has states.
     pub anim_state: Option<AnimStateRead>,
+    /// Every animation state the item can be animated to, in order.
+    pub anim_states: Vec<AnimStateRead>,
 }
 
 /// An item's animation state (`animParamsDef_t`).
@@ -268,6 +276,19 @@ pub struct AnimStateRead {
     pub rect: MenuRectRead,
     pub fore_color: [f32; 4],
     pub back_color: [f32; 4],
+    /// Its event handlers: `onEnter` runs when an animation reaches it.
+    pub handlers: Vec<EventHandlerRead>,
+}
+
+/// The `animParamsDef_t` at `state`.
+fn anim_state(s: &ZoneStream<'_>, state: Ptr) -> AnimStateRead {
+    AnimStateRead {
+        name: string_at(s, state, ANIM_PARAMS_NAME),
+        rect: rect_at(s, state.at(ANIM_PARAMS_RECT)),
+        fore_color: color_at(s, state, ANIM_PARAMS_FORE_COLOR),
+        back_color: color_at(s, state, ANIM_PARAMS_BACK_COLOR),
+        handlers: event_handlers(s, ptr_at(s, state, ANIM_PARAMS_HANDLERS)),
+    }
 }
 
 /// A `menuDef_t`.
@@ -583,15 +604,21 @@ fn item(s: &ZoneStream<'_>, p: Ptr) -> ItemRead {
         alpha_exp: rpn_dump(s, p.at(ITEM_FORECOLOR_A_EXP)),
         handlers: event_handlers(s, ptr_at(s, p, ITEM_ON_EVENT)),
         focus,
-        anim_state: ptr_at(s, p, ITEM_ANIM_INFO).map(|info| {
-            let state = info.at(ANIM_INFO_CURRENT);
-            AnimStateRead {
-                name: string_at(s, state, ANIM_PARAMS_NAME),
-                rect: rect_at(s, state.at(ANIM_PARAMS_RECT)),
-                fore_color: color_at(s, state, ANIM_PARAMS_FORE_COLOR),
-                back_color: color_at(s, state, ANIM_PARAMS_BACK_COLOR),
-            }
-        }),
+        anim_state: ptr_at(s, p, ITEM_ANIM_INFO)
+            .map(|info| anim_state(s, info.at(ANIM_INFO_CURRENT))),
+        anim_states: ptr_at(s, p, ITEM_ANIM_INFO)
+            .map(|info| {
+                let count = (i32_at(s, info, ANIM_INFO_COUNT).max(0) as usize).min(MAX_ANIM_STATES);
+                ptr_at(s, info, ANIM_INFO_STATES)
+                    .map(|states| {
+                        (0..count)
+                            .filter_map(|i| ptr_at(s, states, i * 4))
+                            .map(|state| anim_state(s, state))
+                            .collect()
+                    })
+                    .unwrap_or_else(Vec::new)
+            })
+            .unwrap_or_else(Vec::new),
     }
 }
 

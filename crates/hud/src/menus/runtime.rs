@@ -397,6 +397,40 @@ impl Runner<'_, '_> {
             }
             return;
         }
+        // The console's own `if ( value ) command`, and `ui_animate`, whose
+        // arguments may be `( … )` groups.
+        let head = text.trim_start().to_ascii_lowercase();
+        if head.starts_with("if") || head.starts_with("ui_animate") {
+            match super::animate::console_words(&text).as_deref() {
+                Some([first, value, rest @ ..]) if first.eq_ignore_ascii_case("if") => {
+                    if script::atoi_word(value) != 0 {
+                        let rest: Vec<String> = rest
+                            .iter()
+                            .map(|word| {
+                                if word.is_empty() || word.contains(char::is_whitespace) {
+                                    format!("\"{word}\"")
+                                } else {
+                                    word.clone()
+                                }
+                            })
+                            .collect();
+                        self.exec(rest.join(" "));
+                    }
+                    return;
+                }
+                Some([command, menu, item, state, ms, ..])
+                    if command.eq_ignore_ascii_case("ui_animate") =>
+                {
+                    self.animate(menu, item, state, script::atoi_word(ms));
+                    return;
+                }
+                Some(_) => {}
+                None => {
+                    diag::warn!(Ui, "menu command `{text}`: a ( … ) group is not a constant");
+                    return;
+                }
+            }
+        }
         if let [command, name, value @ ..] = script::tokens(&text).as_slice()
             && matches!(
                 command.to_ascii_lowercase().as_str(),
@@ -563,7 +597,6 @@ impl Runner<'_, '_> {
             diag::warn!(Ui, "menu open: `{name}` is not loaded");
             return;
         };
-
         if let Some(pos) = self.menus.position(name) {
             let open = self.menus.stack.remove(pos);
             self.menus.stack.push(open);

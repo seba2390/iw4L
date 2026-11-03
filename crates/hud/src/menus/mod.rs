@@ -1,3 +1,4 @@
+mod animate;
 mod host;
 mod runtime;
 mod script;
@@ -130,6 +131,7 @@ fn item_overrides(def: &MenuDef, open: &OpenMenu) -> Vec<ChromeItemOverride> {
                     state.and_then(|state| state.fore)
                 },
                 back: state.and_then(|state| state.back),
+                rect: state.and_then(|state| state.rect),
                 ..Default::default()
             }
         })
@@ -475,6 +477,7 @@ pub(crate) fn update_script_menus(
         }
     }
 
+    runner.step_animations();
     // A front end's own level: the game's UI opens its main menu once the
     // level has loaded.
     if in_game
