@@ -1018,6 +1018,21 @@ fn signal(world: &mut World, name: &str) -> Result<Value, String> {
     Ok(Value::Undefined)
 }
 
+/// A player's or a script entity's velocity.
+pub(crate) fn velocity_of(world: &mut World, id: u64) -> Result<Value, String> {
+    if let Some(client) = runtime(world).player_client(id) {
+        return Ok(Value::Vector(
+            crate::frame::FrameWorld::from_world(world)
+                .player(crate::ClientId(client))
+                .map_or(ZERO, |ps| ps.velocity),
+        ));
+    }
+    let now = now_ms(world);
+    Ok(Value::Vector(
+        world.resource::<Mechanics>().velocity(id, now),
+    ))
+}
+
 pub(crate) fn register(registry: &mut NativeRegistry) {
     register_entities(registry);
     register_placement(registry);
@@ -1266,17 +1281,7 @@ fn register_placement(registry: &mut NativeRegistry) {
     });
     registry.register(Method, "getvelocity", |world, receiver, _| {
         let id = entity_id(world, receiver)?;
-        if let Some(client) = runtime(world).player_client(id) {
-            return Ok(Value::Vector(
-                crate::frame::FrameWorld::from_world(world)
-                    .player(crate::ClientId(client))
-                    .map_or(ZERO, |ps| ps.velocity),
-            ));
-        }
-        let now = now_ms(world);
-        Ok(Value::Vector(
-            world.resource::<Mechanics>().velocity(id, now),
-        ))
+        velocity_of(world, id)
     });
     registry.register(Method, "getentitynumber", |world, receiver, _| {
         let id = entity_id(world, receiver)?;

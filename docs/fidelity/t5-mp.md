@@ -166,7 +166,10 @@ Each open section names the issue that works it.
       weapon's stock and clip; Black Ops sums the clips of every held weapon
       that shares the weapon's ammo cap instead, which is not applied.
 - [ ] **G** Lethal, tactical and equipment items (`_weaponobjects.gsc`):
-      the decoy (`FakeFire`, `Launch` refused), the camera spike
+      `t5.mp.launch_entity`: `launch` only reaches a missile (no base game
+      script launches anything else). `t5.mp.fakefire_shots`: a decoy's burst
+      arrives as one call, so it sounds shorter than its shot count; the
+      camera spike
       (`ActionSlotOneButtonPressed`, `SetCameraSpikeActive`, the extra
       camera); concussion and the tactical insertion are not verified in
       a run; a smoke or gas grenade's own lingering smoke entity (Black
@@ -714,6 +717,9 @@ Each open section names the issue that works it.
       compensation of Black Ops' movement and weapons are unmeasured.
 
 ## Closed
+
+- [x] **G** The decoy (#649): `launch`, `isOnGround` and `getVelocity` on a
+      missile, and `fakeFire` playing its weapon's sound where the decoy is.
 
 - [x] **G** The retrievable model and Warlord Pro's
       `specialty_twogrenades` (#804): a resting retrievable missile draws

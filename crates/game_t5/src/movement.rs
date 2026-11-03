@@ -1226,6 +1226,20 @@ impl PlayerMovement for T5Movement {
         crate::missile::run_missile(missile, world)
     }
 
+    fn launch_missile(
+        &self,
+        missile: &mut game_api::fire::GameMissile,
+        velocity: [f32; 3],
+        spin: Option<[f32; 3]>,
+        world: &dyn game_api::fire::FireWorld,
+    ) {
+        crate::grenade::launch(missile, velocity, spin, world);
+    }
+
+    fn missile_ground(&self, missile: &game_api::fire::GameMissile) -> Option<i32> {
+        Some(crate::missile::State::read(&missile.game).ground)
+    }
+
     fn reset_missile_detonation_time(
         &self,
         missile: &mut game_api::fire::GameMissile,
