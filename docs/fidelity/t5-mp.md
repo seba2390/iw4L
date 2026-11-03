@@ -170,8 +170,7 @@ Each open section names the issue that works it.
       (`ActionSlotOneButtonPressed`, `SetCameraSpikeActive`, the extra
       camera); concussion and the tactical insertion are not verified in
       a run; a smoke or gas grenade's own lingering smoke entity (Black
-      Ops keeps its explosion entity 61 s) is `t5.weapons.grenade`;
-      `makegrenadedud` is refused.
+      Ops keeps its explosion entity 61 s) is `t5.weapons.grenade`.
       `t5.mp.grenade_stick`: a sticking grenade that strikes a dead
       player (Black Ops links it to the player's body) or a vehicle
       (linked to the part struck, its blast then hurting the vehicle
@@ -714,6 +713,11 @@ Each open section names the issue that works it.
       compensation of Black Ops' movement and weapons are unmeasured.
 
 ## Closed
+
+- [x] **G** `makeGrenadeDud` (#649): a dud does not explode on its fuse, does not
+      crumple or keep rolling, cannot be thrown back, and goes a minute after
+      it spawned; the private match dud times (`scr_<mode>_thrownGrenadeDudTime`)
+      and their messages work.
 
 - [x] **G** The retrievable model and Warlord Pro's
       `specialty_twogrenades` (#804): a resting retrievable missile draws

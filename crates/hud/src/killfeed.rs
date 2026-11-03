@@ -451,7 +451,7 @@ fn game_line_alpha(timing: game_api::hud::MessageWindow, line: &GameLine, now: i
 }
 
 /// A script print's text: its localized template with its arguments in
-/// place of `&&1`, `&&2`, ….
+/// place of `&&1`, `&&2`, …, or after it.
 fn game_print_text(
     strings: Option<&PreparedLocalizedStrings>,
     cmd: &net::SvcGameNotify,
@@ -464,8 +464,15 @@ fn game_print_text(
     let args = cmd.name.split(sim::HUD_PRINT_ARG_SEPARATOR).map(|arg| {
         crate::hudelem::resolve_hud_text(strings, arg).unwrap_or_else(|| arg.to_owned())
     });
+    // A template with no place for an argument is followed by it (the message
+    // a script builds from several strings).
     Some(args.enumerate().fold(template, |line, (i, arg)| {
-        line.replace(&format!("&&{}", i + 1), &arg)
+        let place = format!("&&{}", i + 1);
+        if line.contains(&place) {
+            line.replace(&place, &arg)
+        } else {
+            line + &arg
+        }
     }))
 }
 
