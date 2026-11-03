@@ -49,6 +49,11 @@ fn timed_fx_unknown() -> &'static Unknown {
 }
 
 pub(crate) fn register(registry: &mut NativeRegistry) {
+    // Both share a handler that returns at once in BlackOpsMP.exe.
+    registry.register(Function, "sendranks", |_, _, _| Ok(Value::Undefined));
+    registry.register(Function, "setplayerteamrank", |_, _, _| {
+        Ok(Value::Undefined)
+    });
     // `launch(velocity[, spin])` on a missile: it falls again from where it is.
     registry.register(Method, "launch", |world, receiver, args| {
         let id = super::engine::entity_id(world, receiver)?;
