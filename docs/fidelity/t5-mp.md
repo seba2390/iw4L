@@ -91,8 +91,7 @@ Each open section names the issue that works it.
 - [ ] **G** Spawn selection: the spawn influencer builtins
       (`addsphereinfluencer`, `addcylinderinfluencer`, …) and
       `_spawning.gsc`'s scoring have not run.
-- [ ] **G** `sendranks`, `setplayerteamrank` are not implemented;
-      `ghost`, `boundswouldtelefrag`, `testspawnpoint`, `killserver`,
+- [ ] **G** `ghost`, `boundswouldtelefrag`, `testspawnpoint`, `killserver`,
       `ban`, `endparty`, `endlobby`, `sethostmigrationstatus` are refused.
 - [ ] **V** `t5.hud.spectator_label`: `hud_spectator`'s `SPECTATING` and the
       followed player's name do not show while following, though its bits
@@ -717,6 +716,9 @@ Each open section names the issue that works it.
       compensation of Black Ops' movement and weapons are unmeasured.
 
 ## Closed
+
+- [x] **G** `sendranks` and `setplayerteamrank` (#782): their shared handler
+      returns at once in `BlackOpsMP.exe`, so a disconnect's callback goes on.
 
 - [x] **G** The decoy (#649): `launch`, `isOnGround` and `getVelocity` on a
       missile, and `fakeFire` playing its weapon's sound where the decoy is.
