@@ -17,7 +17,9 @@ one status: `status: help wanted` (free), `status: in progress` (claimed) or
 1. **Pick.** An open `status: help wanted` issue whose "Depends on" issues are
    closed. Work you were asked to do that no issue covers gets an issue first,
    in the same shape and with the same labels — unless it is a small fix (a
-   typo, a wrong constant, a doc correction).
+   typo, a wrong constant, a doc correction). An account without label access
+   sets them with the form's Game, Mode and Area answers (`CONTRIBUTING.md`,
+   Opening an issue).
 2. **Claim before the first edit.**
    ```sh
    gh issue edit <N> --add-assignee @me \

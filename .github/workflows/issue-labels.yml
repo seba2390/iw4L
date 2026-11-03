@@ -1,0 +1,38 @@
+name: issue labels
+
+# GitHub lets only people with triage access set labels, so the issue forms ask
+# for them and this applies the answers. The body is untrusted: it reaches the
+# script as data, and only the names listed here can ever be applied.
+on:
+  issues:
+    types: [opened, edited]
+
+permissions:
+  issues: write
+
+jobs:
+  label:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/github-script@v7
+        with:
+          script: |
+            const allowed = new Set([
+              "game: Modern Warfare 2", "game: Black Ops 1", "game: Black Ops 2", "game: all",
+              "mode: Multiplayer", "mode: Zombies", "mode: all",
+              "area: gsc", "area: render", "area: audio", "area: ai", "area: ui", "area: assets",
+              "area: net", "area: gameplay", "area: perf", "area: platform", "area: tooling", "area: docs",
+            ]);
+            const sections = (context.payload.issue.body || "").split(/^### +/m).slice(1);
+            const labels = sections
+              .filter((section) => /^(Game|Mode|Area)\s*$/.test(section.split("\n")[0]))
+              .flatMap((section) => section.split("\n").slice(1).join(",").split(","))
+              .map((label) => label.trim())
+              .filter((label) => allowed.has(label));
+            if (labels.length > 0) {
+              await github.rest.issues.addLabels({
+                ...context.repo,
+                issue_number: context.payload.issue.number,
+                labels: [...new Set(labels)],
+              });
+            }
