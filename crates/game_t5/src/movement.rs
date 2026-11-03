@@ -967,6 +967,7 @@ impl PlayerMovement for T5Movement {
             }
         }
         let (word, bit) = match flag {
+            ScriptFlag::Charred => return None,
             ScriptFlag::NoMelee => (&mut ps.pm_flags, pm_flags::NO_MELEE),
             ScriptFlag::NoWeaponCycling => (&mut ps.weap_flags, weap_flags::CYCLING_DISABLED),
             ScriptFlag::WeaponsDisabled => (&mut ps.weap_flags, weap_flags::WEAPONS_DISABLED),
