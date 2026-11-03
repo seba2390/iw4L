@@ -11,6 +11,19 @@ pub(crate) struct ItemState {
     pub(crate) anim: Option<ItemAnim>,
 }
 
+impl ItemState {
+    /// A menu's items as it opens: hidden where its data says so.
+    pub(crate) fn for_menu(def: &asset_game::MenuDef) -> Vec<Self> {
+        def.items
+            .iter()
+            .map(|item| Self {
+                hidden: item.starts_hidden,
+                ..Self::default()
+            })
+            .collect()
+    }
+}
+
 /// An item moving to one of its animation states (`ui_animate`): from the
 /// look it had when the move began, over `duration_ms` of the UI's clock.
 #[derive(Clone, Debug)]

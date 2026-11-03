@@ -194,6 +194,7 @@ impl T5MenuSink {
         let window = read.window;
         let (outline_color, modal) = (window.outline_color, window.modal);
         let mut item = MenuItem {
+            starts_hidden: window.starts_hidden,
             name: window.name.clone().unwrap_or_else(String::new),
             item_type: engine_item_type(ty),
             style: i32::from(window.style),

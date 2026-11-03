@@ -697,7 +697,7 @@ pub(crate) fn update_script_menus(
                 ui3d: def.ui3d_window.is_some(),
                 focus: None,
                 hover: None,
-                items: vec![state::ItemState::default(); def.items.len()],
+                items: state::ItemState::for_menu(def),
             };
             layers.push((
                 name.clone(),
