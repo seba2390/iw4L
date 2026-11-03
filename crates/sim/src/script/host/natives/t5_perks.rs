@@ -69,13 +69,13 @@ const PERKS: [&str; 52] = [
 /// `shellshock`, `sprintrecovery`, `unlimitedsprint`, `fastads`) run in
 /// the game's movement, fire and damage rules and in `shellshock`,
 /// `nottargetedbyai` in the Sentry Gun's search and a dog's choice of enemy,
-/// `scavenger` in the item touch, `noname` in the crosshair's name and
-/// `loudenemies` in the client's mantle and dive sounds. No perk row of
+/// `scavenger` in the item touch, `noname` in the crosshair's name,
+/// `loudenemies` in the client's mantle and dive sounds and `gas_mask` in
+/// the client's poison overlay. No perk row of
 /// Black Ops' stats table and no script gives `grenadepulldeath` or
 /// `reconnaissance`.
-const ENGINE_PERKS: [&str; 8] = [
+const ENGINE_PERKS: [&str; 7] = [
     "specialty_bulletflinch",
-    "specialty_gas_mask",
     "specialty_grenadepulldeath",
     "specialty_pin_back",
     "specialty_quieter",

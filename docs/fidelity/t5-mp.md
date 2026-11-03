@@ -203,14 +203,21 @@ Each open section names the issue that works it.
       Pro: a thrown-back grenade keeps at least
       `perk_grenadeTossBackTimer`, 2500 ms, of fuse; no throwback is
       ported); `_quieter` (Ninja: the server's footsteps raise no AI sound
-      event, and no AI hears here); `_gas_mask` (Tactical Mask: it holds
-      off the client's poison overlay, which is not ported). No perk row
+      event, and no AI hears here). No perk row
       of Black Ops' stats table and no script gives `_grenadepulldeath`
       (a grenade of `perk_grenadeDeath` dropped when a downed player
       dies) or `_reconnaissance` (compass marks), so a match never sets
       them; their tests are not ported. Lightweight's
       `specialty_movefaster` is tested only by vehicle code (#660). The
       scripts' own perk rules apply (#650).
+- [ ] **V** `t5.mp.poison_gates`: the client's poison overlay (Nova gas'
+      `startPoisoning`, faded at two thirds per second, held off by
+      Tactical Mask, drawn with `r_poisonFX_*` by the overlay pass after
+      the transporter) also takes the client scripts' own poisoned word
+      (no client script sets it), holds its target at 0 under one
+      player-state flag and during a killcam, and both the target and the
+      amount at 0 in two more client states; which states those are is not
+      read, so they do not gate it here (#805).
 - [ ] **G** Create-a-class: a player's custom classes live in Black Ops'
       stats (`getdstat("cacLoadouts", "customclassN", slot)` in a hosted
       match, `onlinegame` 1). The listen host's own profile keeps Black
@@ -698,6 +705,15 @@ Each open section names the issue that works it.
 
 ## Closed
 
+- [x] **V** The poison overlay and Tactical Mask (#805): Nova gas'
+      `startPoisoning` / `stopPoisoning` set the player's poisoned word;
+      the client fades its poison amount toward it at two thirds per
+      second (Tactical Mask, `specialty_gas_mask`, holds it at 0, and
+      `r_poisonFX_debug_enable` draws `r_poisonFX_debug_amount`), and the
+      overlay pass draws the `poison` material after the transporter with
+      the warp, double vision and blur from `r_poisonFX_*` (the scripts'
+      `SetClientDvar` values over the registered defaults), its blur in
+      the script blur's place.
 - [x] **G** Minefields and barrels (#669): on Jungle a player standing in a
       `minefield` trigger dies, and a `dest_glo_barrel_explosive` explodes.
 - [x] **G** Destructibles (#669): a map entity with a `destructibledef` is

@@ -1,23 +1,26 @@
 //! Black Ops' screen overlays: its backend's overlay pass, which draws one
 //! exclusive overlay over the frame by precedence (the burning one first,
-//! then the electric shock, then the transporter), each a fullscreen draw of
-//! its post material reading the frame as drawn so far, while flame overlays
-//! are allowed; then its blur pass.
+//! then the electric shock, then the transporter, each while flame overlays
+//! are allowed, then the poison while its amount is over 0), each a
+//! fullscreen draw of its post material reading the frame as drawn so far;
+//! then its blur pass.
 
 use game_api::post::{
     BlurRules, FlameOverlay, OverlayConstant, OverlayFeedback, OverlayFrame, OverlayPass,
-    OverlayRules,
+    OverlayRules, PoisonOverlay,
 };
 use game_api::unknown;
 
 const BURN: &str = "flamethrowerfx_color_distort_overlay_bloom";
 const SHOCK: &str = "zombie_electric_shock_overlay";
 const TRANSPORTER: &str = "zombie_transporter_overlay";
+const POISON: &str = "poison";
 const BLEND: &str = "feedbackblend";
-const MATERIALS: [&str; 12] = [
+const MATERIALS: [&str; 13] = [
     BURN,
     SHOCK,
     TRANSPORTER,
+    POISON,
     BLEND,
     game_api::blur::MATERIALS[0],
     game_api::blur::MATERIALS[1],
@@ -43,7 +46,7 @@ pub(crate) const OVERLAYS: OverlayRules = OverlayRules {
     }),
     gaps: &[unknown!(
         "t5.render.overlay_rest",
-        "the overlay pass's other draws: water sheeting (between the burn and the shock) and the three after the transporter",
+        "the overlay pass's other draws: water sheeting (between the burn and the shock) and the two after the poison",
         "Black Ops' overlay pass beyond the flame-style overlays and the blur"
     )],
 };
@@ -60,7 +63,15 @@ fn plan(frame: &OverlayFrame<'_>) -> Vec<OverlayPass> {
 /// squares), then blended back over it; a radius under its smallest draws at
 /// the smallest, faded by its share of it.
 fn blur_pass(frame: &OverlayFrame<'_>) -> Option<OverlayPass> {
-    let refdef = (frame.menu_blur * frame.menu_blur + frame.script_blur * frame.script_blur).sqrt();
+    // The poison's blur takes the script's place while it plays.
+    let script_blur = frame
+        .screen
+        .poison
+        .filter(|poison| poison.amount > 0.0)
+        .map_or(frame.script_blur, |poison| {
+            poison_blur(&poison, frame.now_ms)
+        });
+    let refdef = (frame.menu_blur * frame.menu_blur + script_blur * script_blur).sqrt();
     if !(0.0 < frame.r_blur || 0.0 < refdef) {
         return None;
     }
@@ -82,7 +93,8 @@ fn blur_pass(frame: &OverlayFrame<'_>) -> Option<OverlayPass> {
 }
 
 /// The frame's exclusive overlay: the burn, else the shock, else the
-/// transporter, each while flame overlays are allowed and it plays.
+/// transporter, each while flame overlays are allowed and it plays, else the
+/// poison while its amount is over 0.
 fn exclusive(frame: &OverlayFrame<'_>) -> Option<OverlayPass> {
     let screen = frame.screen;
     let playing = |overlay: Option<FlameOverlay>| {
@@ -96,7 +108,18 @@ fn exclusive(frame: &OverlayFrame<'_>) -> Option<OverlayPass> {
         (Some(burn), ..) => (BURN, burn, true),
         (None, Some(shock), _) => (SHOCK, shock, false),
         (None, None, Some(transporter)) => (TRANSPORTER, transporter, false),
-        (None, None, None) => return None,
+        (None, None, None) => {
+            return screen
+                .poison
+                .filter(|poison| poison.amount > 0.0)
+                .map(|poison| OverlayPass {
+                    material: POISON.to_owned(),
+                    constants: poison_rows(&poison, frame.now_ms, frame.viewport),
+                    blur: None,
+                    feedback: OverlayFeedback::Frame,
+                    color: WHITE,
+                });
+        }
     };
     let atlas = frame
         .atlases
@@ -151,6 +174,75 @@ fn flame_rows(
                 if y <= 0.0 { 0.0 } else { 1.0 / y },
                 overlay.magnitude,
             ],
+        ),
+        (OverlayConstant::ViewportDimensions, [0.0, 0.0, 1.0, 1.0]),
+    ]
+}
+
+/// The pulse's smoothstep: `r_poisonFX_pulse` past 1, as `(3 - 2p)p²`.
+fn pulse_weight(poison: &PoisonOverlay) -> f32 {
+    let pulse = poison.pulse - 1.0;
+    let pulse = if 0.0 > pulse { 0.0 } else { pulse };
+    (pulse * -2.0 + 3.0) * pulse * pulse
+}
+
+/// The poison's blur: between `r_poisonFX_blurMin` and `_blurMax` along two
+/// sines of the frame's time (the faster weighted by the pulse's smoothstep,
+/// the slower by its rest), times the amount.
+fn poison_blur(poison: &PoisonOverlay, now_ms: i32) -> f32 {
+    let t = now_ms as f32 * 0.001;
+    let s = pulse_weight(poison);
+    let range = poison.blur_max - poison.blur_min;
+    let slow =
+        (((t * 0.166_666_67 * 7.853_982).sin() + 1.0) * 0.5 * range + poison.blur_min) * (1.0 - s);
+    let fast = (((t * 0.333_333_34 * 7.853_982).sin() + 1.0) * 0.5 * range + poison.blur_min) * s;
+    (slow + fast) * poison.amount
+}
+
+/// The rows the poison pass sets from its amount, the frame's time in
+/// seconds and the scene viewport: the warp, two sines each way scaled by
+/// `r_poisonFX_warpX` / `_warpY` (the faster weighted by the pulse's
+/// smoothstep, the slower by its rest), with their reciprocal scales; then
+/// the double vision's shift either side of the centre: across, a slow
+/// cosine, two sines that play every other quarter and half second, and
+/// `r_poisonFX_dvisionX` along the cosine of `_dvisionA`, over the
+/// viewport's width; down, `_dvisionY` along its sine, over the height.
+fn poison_rows(
+    poison: &PoisonOverlay,
+    now_ms: i32,
+    [_, _, width, height]: [f32; 4],
+) -> Vec<(OverlayConstant, [f32; 4])> {
+    use std::f32::consts::{FRAC_PI_2, PI, TAU};
+    let t = now_ms as f32 * 0.001;
+    let s = pulse_weight(poison);
+    let rest = 1.0 - s;
+    let amount = poison.amount;
+    let [warp_x, warp_y] = poison.warp;
+    let x = ((t * 0.2 * TAU).sin() * warp_x * s + (t * 0.1 * TAU).sin() * warp_x * rest) * amount;
+    let y = ((t * 0.118_343_197 * TAU + FRAC_PI_2).sin() * warp_y * rest
+        + (t * 0.236_686_39 * TAU + FRAC_PI_2).sin() * warp_y * s)
+        * amount;
+    let warp = [x, y, 1.0 / (1.0 - x) * 0.5, 1.0 / (1.0 - y) * 0.5];
+    let every_other = |at: f32, scale: f32| {
+        if (at as i32) & 1 == 0 {
+            (at * PI).sin() * scale
+        } else {
+            0.0
+        }
+    };
+    let quarter = every_other(t * 0.25, 3.25);
+    let half = every_other(t * 0.5, 3.75);
+    let angle = poison.dvision_a * 0.017_453_292;
+    let slow = (t * 0.083_333_336 * TAU).cos() * 1.25;
+    let shift =
+        (slow + rest * quarter + half * s + angle.cos() * poison.dvision_x) / width * amount;
+    let lift = angle.sin() * poison.dvision_y / height * amount;
+    vec![
+        (OverlayConstant::GameTime, game_time(now_ms)),
+        (OverlayConstant::PostFxControl(0), warp),
+        (
+            OverlayConstant::PostFxControl(1),
+            [shift + 0.5, lift + 0.5, 0.5 - shift, 0.5 - lift],
         ),
         (OverlayConstant::ViewportDimensions, [0.0, 0.0, 1.0, 1.0]),
     ]

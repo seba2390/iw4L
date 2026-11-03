@@ -66,19 +66,27 @@ fn dvar_text(world: &World, name: &str) -> String {
 /// weapon view link and a demo's free or follow camera; no installed map
 /// reaches any of them, so they do not gate it here.
 pub(crate) fn frame(world: &mut World, client: u32, dvars: &PoisonDvars) {
-    let now = crate::level_time_ms(world.resource::<crate::step::StepRequest>().tick);
     let protected = world
         .resource::<crate::script::RoundScript>()
         .players
         .get(&client)
         .is_some_and(|player| player.perks.contains(PROTECTION_PERK));
+    let amount = fade(world, client, protected);
+    publish(world, client, amount, dvars);
+}
+
+/// One client frame of the poison amount (Black Ops and Black Ops 2 move
+/// it alike): toward 1 while the player is poisoned and not `held_off`,
+/// else toward 0, by the frame's time at the rate, stopping at the target.
+pub(crate) fn fade(world: &mut World, client: u32, held_off: bool) -> f32 {
+    let now = crate::level_time_ms(world.resource::<crate::step::StepRequest>().tick);
     let mut overlays = world.get_resource_or_insert_with(PoisonOverlays::default);
     let state = overlays.0.entry(client).or_default();
     let frame_ms = state
         .last_ms
         .map_or(0, |last| now.wrapping_sub(last).max(0));
     state.last_ms = Some(now);
-    let target = if state.poisoned && !protected {
+    let target = if state.poisoned && !held_off {
         1.0
     } else {
         0.0
@@ -96,8 +104,21 @@ pub(crate) fn frame(world: &mut World, client: u32, dvars: &PoisonDvars) {
             state.amount = target;
         }
     }
-    let amount = state.amount;
-    publish(world, client, amount, dvars);
+    state.amount
+}
+
+/// The client's screen takes the poison its renderer draws, or none.
+pub(crate) fn show(world: &mut World, client: u32, poison: Option<PoisonOverlay>) {
+    let mut frame = crate::frame::FrameWorld::from_world(world);
+    let id = crate::ClientId(client);
+    if frame.client_meta(id).is_some() {
+        frame
+            .client_meta_mut(id)
+            .view_effects
+            .client_screen
+            .overlays
+            .poison = poison;
+    }
 }
 
 /// The poison render dvars, as the client holds them.
@@ -122,24 +143,20 @@ impl PoisonDvars {
 }
 
 /// The client's screen takes the amount the renderer draws, with the poison
-/// render dvars it reads: none while that amount is not over 0.
+/// render dvars it reads: none while that amount is not over 0. Black Ops
+/// 2's pass reads no dvar for the warp or the double vision's angle and
+/// vertical offset; its draw keeps its own.
 fn publish(world: &mut World, client: u32, amount: f32, dvars: &PoisonDvars) {
     let amount = if dvars.debug_enable { 1.0 } else { amount };
     let poison = (amount > 0.0).then_some(PoisonOverlay {
         amount,
         pulse: dvars.pulse,
         dvision_x: dvars.dvision_x,
+        warp: [0.0; 2],
+        dvision_a: 0.0,
+        dvision_y: 0.0,
         blur_min: dvars.blur_min,
         blur_max: dvars.blur_max,
     });
-    let mut frame = crate::frame::FrameWorld::from_world(world);
-    let id = crate::ClientId(client);
-    if frame.client_meta(id).is_some() {
-        frame
-            .client_meta_mut(id)
-            .view_effects
-            .client_screen
-            .overlays
-            .poison = poison;
-    }
+    show(world, client, poison);
 }

@@ -340,6 +340,11 @@ pub struct PoisonOverlay {
     pub pulse: f32,
     /// The double vision's horizontal offset.
     pub dvision_x: f32,
+    /// The distortion's amount (horizontal, vertical).
+    pub warp: [f32; 2],
+    /// The double vision's angle in degrees, and its vertical offset.
+    pub dvision_a: f32,
+    pub dvision_y: f32,
     /// The blur it adds, from `blur_min` to `blur_max`.
     pub blur_min: f32,
     pub blur_max: f32,
