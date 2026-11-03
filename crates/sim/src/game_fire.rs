@@ -1499,6 +1499,47 @@ pub(crate) fn detonate_game_missile(
     true
 }
 
+/// `launch` on a missile the game runs; false when it is not one.
+pub(crate) fn launch_game_missile(
+    world: &mut FrameWorld,
+    tick: Tick,
+    entnum: i32,
+    velocity: [f32; 3],
+    spin: Option<[f32; 3]>,
+) -> bool {
+    let Some(movement) = crate::game_move::rules(world) else {
+        return false;
+    };
+    let Some(mut missile) = world
+        .ecs()
+        .get_resource::<GameMissiles>()
+        .and_then(|missiles| missiles.0.get(&entnum).copied())
+    else {
+        return false;
+    };
+    let owner = u32::try_from(missile.owner).ok().map(ClientId);
+    let around = MatchFireWorld::new(world, tick, owner);
+    movement.launch_missile(&mut missile, velocity, spin, &around);
+    if let Some(mut missiles) = world.ecs().get_resource_mut::<GameMissiles>() {
+        missiles.0.insert(entnum, missile);
+    }
+    true
+}
+
+/// A missile the game runs: its velocity and what it rests on.
+pub(crate) fn game_missile_motion(
+    world: &FrameWorld,
+    entnum: i32,
+) -> Option<([f32; 3], Option<i32>)> {
+    let missile = world
+        .ecs_ref()
+        .get_resource::<GameMissiles>()?
+        .0
+        .get(&entnum)?;
+    let ground = crate::game_move::rules(world).and_then(|rules| rules.missile_ground(missile));
+    Some((missile.position.delta, ground))
+}
+
 pub(crate) fn make_game_missile_dud(world: &mut FrameWorld, entnum: i32) -> bool {
     let rules = missile_rules(world);
     let movement = rules

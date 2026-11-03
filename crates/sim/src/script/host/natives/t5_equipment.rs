@@ -17,6 +17,29 @@ const SPAWN_MINS: [f32; 3] = [-15.0, -15.0, 0.0];
 const SPAWN_MAXS: [f32; 3] = [15.0, 15.0, 70.0];
 const SPAWN_MASK: u32 = 0x0081_0011;
 
+/// `launch` only reaches a missile the game runs (Black Ops throws any
+/// entity); no script of the base game launches another.
+fn launch_unknown() -> &'static Unknown {
+    unknown!(
+        "t5.mp.launch_entity",
+        "launch on an entity that is not a missile does nothing",
+        "Black Ops' launch on any entity"
+    )
+}
+
+/// The client's automatic fire keeps firing only while shots keep coming; a
+/// burst's shots all arrive at once here.
+fn fake_burst_unknown() -> &'static Unknown {
+    unknown!(
+        "t5.mp.fakefire_shots",
+        "fakeFire's shots arrive together, so a burst sounds shorter than its count",
+        "Black Ops' shot count on the fake fire event, played by the client's automatic fire"
+    )
+}
+
+const ENTITY_WORLD: i32 = 0x3fe;
+const ENTITY_NONE: i32 = 0x3ff;
+
 fn timed_fx_unknown() -> &'static Unknown {
     unknown!(
         "t5.mp.timed_fx",
@@ -26,6 +49,100 @@ fn timed_fx_unknown() -> &'static Unknown {
 }
 
 pub(crate) fn register(registry: &mut NativeRegistry) {
+    // `launch(velocity[, spin])` on a missile: it falls again from where it is.
+    registry.register(Method, "launch", |world, receiver, args| {
+        let id = super::engine::entity_id(world, receiver)?;
+        let number = world.resource::<crate::script::RoundScript>().entities[&id].number;
+        if args.is_empty() || args.len() > 2 {
+            return Err("Incorrect number of parameters".into());
+        }
+        let velocity = vector(args, 0)?;
+        if velocity.iter().any(|c| !c.is_finite()) {
+            return Err(format!(
+                "invalid velocity parameter in launch command: {} {} {}",
+                velocity[0], velocity[1], velocity[2]
+            ));
+        }
+        let spin = if args.len() > 1 {
+            Some(vector(args, 1)?)
+        } else {
+            None
+        };
+        let tick = world.resource::<crate::step::StepRequest>().tick;
+        if !crate::game_fire::launch_game_missile(
+            &mut FrameWorld::from_world(world),
+            tick,
+            number,
+            velocity,
+            spin,
+        ) {
+            let gap = launch_unknown();
+            diag::warn!(Sim, "unknown!{}: {}", gap.id, gap.what);
+        }
+        Ok(Value::Undefined)
+    });
+    // `isOnGround([any entity but the world])`: a player's own rule, or what a
+    // missile rests on: the world always, another entity unless the argument
+    // asks for the world.
+    registry.register(Method, "isonground", |world, receiver, args| {
+        let id = super::engine::entity_id(world, receiver)?;
+        let number = world.resource::<crate::script::RoundScript>().entities[&id].number;
+        let frame = FrameWorld::from_world(world);
+        if let Some((_, ground)) = crate::game_fire::game_missile_motion(&frame, number) {
+            let world_only = matches!(args.first(), Some(Value::Int(n)) if *n != 0);
+            let on = match ground {
+                Some(ENTITY_WORLD) => true,
+                Some(ENTITY_NONE) | None => false,
+                Some(_) => !world_only,
+            };
+            return Ok(Value::Int(on.into()));
+        }
+        super::player::is_on_ground(world, receiver)
+    });
+    // `getVelocity` of a missile the game runs: its trajectory's.
+    registry.register(Method, "getvelocity", |world, receiver, _| {
+        let id = super::engine::entity_id(world, receiver)?;
+        let number = world.resource::<crate::script::RoundScript>().entities[&id].number;
+        let frame = FrameWorld::from_world(world);
+        if let Some((velocity, _)) = crate::game_fire::game_missile_motion(&frame, number) {
+            return Ok(Value::Vector(velocity));
+        }
+        super::engine::velocity_of(world, id)
+    });
+    // `fakeFire(owner, origin, weapon, shots)`: the weapon's fire sound at the
+    // origin, by the client's automatic fire simulation; no shot is fired.
+    registry.register(Method, "fakefire", |world, receiver, args| {
+        if args.len() != 4 {
+            return Err(
+                "FakeFire( <owner>, <origin>, <weapon>, <shot count> ) takes 4 parameters".into(),
+            );
+        }
+        let id = super::engine::entity_id(world, receiver)?;
+        let number = world.resource::<crate::script::RoundScript>().entities[&id].number;
+        super::player::client_of(world, &args[0])
+            .map_err(|_| String::from("Owner entity is not a player"))?;
+        let origin = vector(args, 1)?;
+        let weapon = string(args, 2)?;
+        let Some(weapon_id) = FrameWorld::from_world(world).weapon_index_by_script_name(&weapon)
+        else {
+            return Err(format!("Invalid weapon name {weapon}"));
+        };
+        let shots = int(args, 3)?.max(1);
+        if shots > 1 {
+            let gap = fake_burst_unknown();
+            diag::info!(Sim, "game gap {}: {}", gap.id, gap.what);
+        }
+        let mut frame = FrameWorld::from_world(world);
+        for _ in 0..shots {
+            frame.push_script_audio(crate::ScriptAudioCommand::TurretFire {
+                entity: number,
+                weapon: weapon_id,
+                barrel: 0,
+                origin,
+            });
+        }
+        Ok(Value::Undefined)
+    });
     // `makeGrenadeDud`: the grenade's fuse no longer explodes it.
     registry.register(Method, "makegrenadedud", |world, receiver, _| {
         let id = super::engine::entity_id(world, receiver)?;

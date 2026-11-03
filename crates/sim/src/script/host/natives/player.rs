@@ -1070,7 +1070,19 @@ fn offhand_class_of(world: &mut World, name: &str) -> i32 {
     }
 }
 
-fn client_of(world: &World, receiver: &Value) -> Result<ClientId, String> {
+/// `isOnGround` of a player.
+pub(crate) fn is_on_ground(world: &mut World, receiver: &Value) -> Result<Value, String> {
+    let id = client_of(world, receiver)?;
+    let frame = FrameWorld::from_world(world);
+    Ok(Value::Int(
+        frame
+            .player(id)
+            .is_some_and(|ps| ps.ground_entity_num != playerstate_iw4::ENTITYNUM_NONE)
+            .into(),
+    ))
+}
+
+pub(crate) fn client_of(world: &World, receiver: &Value) -> Result<ClientId, String> {
     player(world, receiver).map(ClientId)
 }
 
@@ -1355,14 +1367,7 @@ fn register_body(registry: &mut NativeRegistry) {
         Ok(Value::Undefined)
     });
     registry.register(Method, "isonground", |world, receiver, _| {
-        let id = client_of(world, receiver)?;
-        let frame = FrameWorld::from_world(world);
-        Ok(Value::Int(
-            frame
-                .player(id)
-                .is_some_and(|ps| ps.ground_entity_num != playerstate_iw4::ENTITYNUM_NONE)
-                .into(),
-        ))
+        is_on_ground(world, receiver)
     });
     registry.register(Method, "isonladder", |world, receiver, _| {
         let id = client_of(world, receiver)?;

@@ -1005,6 +1005,25 @@ pub trait PlayerMovement: Sync {
         (crate::fire::MissileRun::Gone, Vec::new())
     }
 
+    /// Throws a missile again (`launch`): falling from where it is at
+    /// `velocity`, turning by `spin` when given.
+    fn launch_missile(
+        &self,
+        missile: &mut crate::fire::GameMissile,
+        velocity: [f32; 3],
+        spin: Option<[f32; 3]>,
+        world: &dyn crate::fire::FireWorld,
+    ) {
+        let _ = (missile, velocity, spin, world);
+    }
+
+    /// What a missile rests on; `None` where the game's weapons do not run
+    /// here.
+    fn missile_ground(&self, missile: &crate::fire::GameMissile) -> Option<i32> {
+        let _ = missile;
+        None
+    }
+
     /// Resets a missile's detonation time (`resetmissiledetonationtime`):
     /// `after_ms` from now when given, else its weapon's fuse time when it
     /// has timed detonation.

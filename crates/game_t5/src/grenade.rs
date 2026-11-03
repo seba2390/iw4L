@@ -1182,6 +1182,36 @@ fn land_angles(
 /// A grenade's fuse running out: it explodes where its trajectory has it,
 /// tells scripts where and on what it last struck, shows its explosion on
 /// the surface below and does its blast.
+/// `launch`: the missile falls again from where it is at `velocity`, turning
+/// by `spin` when given (its angles trajectory takes a steady spin).
+pub(crate) fn launch(
+    missile: &mut GameMissile,
+    velocity: [f32; 3],
+    spin: Option<[f32; 3]>,
+    world: &dyn FireWorld,
+) {
+    let level = world.level_time();
+    let mut state = State::read(&missile.game);
+    state.ground = ENTITY_NONE;
+    state.write(&mut missile.game);
+    missile.position = GameTrajectory {
+        kind: TrajectoryKind::Gravity(gravity(world)),
+        time: level,
+        duration: 0,
+        base: missile.origin,
+        delta: velocity,
+    };
+    if let Some(spin) = spin {
+        missile.angles = GameTrajectory {
+            kind: TrajectoryKind::Linear,
+            time: level,
+            duration: 0,
+            base: evaluate(&missile.angles, level),
+            delta: spin,
+        };
+    }
+}
+
 pub(crate) fn explode(
     missile: &mut GameMissile,
     def: &WeaponDefView<'_>,
