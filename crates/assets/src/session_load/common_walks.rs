@@ -1293,6 +1293,10 @@ pub(super) struct ZombieCommons {
 /// The zone of Black Ops' front-end level.
 pub(crate) const T5_FRONT_END_LEVEL: &str = "frontend";
 
+/// The zone of Black Ops' multiplayer front end: the multiplayer
+/// executable's UI level, loaded after `ui_mp`.
+pub(crate) const T5_MP_UI_LEVEL: &str = "ui_viewer_mp";
+
 pub(super) fn walk_zombie_commons(
     zone_ff: &Path,
     progress: &LoadProgress,
@@ -1309,7 +1313,8 @@ pub(super) fn walk_zombie_commons(
     let is_front_end = stem == T5_FRONT_END_LEVEL;
     // A multiplayer map takes the multiplayer executable's zones: each
     // singleplayer common zone's `_mp` twin, then `patch_mp` over the map.
-    let is_mp_map = stem.starts_with("mp_");
+    // So does the multiplayer front end's level, with its menus.
+    let is_mp_map = stem.starts_with("mp_") || stem == T5_MP_UI_LEVEL;
     if !(is_zombie_map || is_front_end || is_mp_map)
         || asset_transport::zone_game_for_path(zone_ff) != Some(asset_core::ZoneGame::T5)
     {

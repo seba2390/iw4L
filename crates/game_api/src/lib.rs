@@ -507,6 +507,9 @@ pub struct ModeRules {
     /// The game's 3D UI texture, which menus with a window paint into and
     /// world materials sample; `None` has none.
     pub ui3d: Option<Ui3dRules>,
+    /// The menu the game's UI opens itself when this level has loaded, with
+    /// no script to open it (a front end's own level); `None` opens none.
+    pub level_menu: Option<&'static str>,
 }
 
 /// The windows of a game's 3D UI texture.

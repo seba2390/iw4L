@@ -88,6 +88,10 @@ pub trait GameQueries {
         let _ = team;
         Err(ExprError::Host("the host does not answer playersalive"))
     }
+    /// The UI's clock in milliseconds (`milliseconds`).
+    fn milliseconds(&self) -> Result<i32, ExprError> {
+        Err(ExprError::Host("the host does not answer milliseconds"))
+    }
     /// The server's time in the local client's snapshot (Black Ops'
     /// `gettime`).
     fn server_time(&self) -> Result<i32, ExprError> {

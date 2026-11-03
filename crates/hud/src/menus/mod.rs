@@ -356,7 +356,9 @@ pub(crate) fn update_script_menus(
         }
         return;
     }
-    if (!in_game && !frontend) || (in_game && meta.is_none()) {
+    // A front end's own level has no client in it, only its menus.
+    let level_menu = input.mode.as_ref().and_then(|mode| mode.level_menu);
+    if (!in_game && !frontend) || (in_game && meta.is_none() && level_menu.is_none()) {
         if menus.screen.is_some() {
             out.stop_music.write(frame::UiStopMusic);
             out.binding.command = None;
@@ -471,6 +473,16 @@ pub(crate) fn update_script_menus(
             }
             sim::MenuCommandKind::CloseInGame => runner.close_all(),
         }
+    }
+
+    // A front end's own level: the game's UI opens its main menu once the
+    // level has loaded.
+    if in_game
+        && !runner.menus.level_menu_opened
+        && let Some(name) = level_menu
+    {
+        runner.menus.level_menu_opened = true;
+        runner.open(name);
     }
 
     let console_open = input.hud_input.as_ref().is_some_and(|h| h.console_open);

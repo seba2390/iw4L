@@ -27,8 +27,12 @@ In a BO2 match, Escape opens Resume, Create-a-Class, settings and leave controls
 The host can end a match and return the group to its lobby to change map/rules.
 The lobby supports passwords; protected browser entries prompt before joining.
 Modern Warfare (2007) has installation recognition and menus; multiplayer
-requires an asset reader that is not implemented yet. Black Ops multiplayer is
-refused; its Zombies runs ([BO1-ZOMBIES.md](BO1-ZOMBIES.md)).
+requires an asset reader that is not implemented yet. Black Ops' own front end
+runs its Zombies ([BO1-ZOMBIES.md](BO1-ZOMBIES.md)); its MULTIPLAYER loads
+the multiplayer front end as the multiplayer executable does (the level
+`ui_viewer_mp` under `ui_mp`'s menus), whose Private Match lobby starts the
+chosen map and mode (`IW4L_GAMETYPE=tdm make map ZONE=t5:ui_viewer_mp` opens
+it directly).
 
 The library opens before game asset preparation. MW2 scripted menu assets
 are prepared asynchronously after selecting its profile.

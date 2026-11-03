@@ -15,6 +15,7 @@ pub(crate) fn route_session_commands(
     manifest: Option<Res<::session::SessionContentManifest>>,
     mut dispatch: ResMut<ConsoleDispatch>,
     mut authority: Option<ResMut<net::AuthorityWorld>>,
+    mut commands: Commands,
 ) {
     for cmd in events.read() {
         match cmd.name.as_str() {
@@ -89,17 +90,50 @@ pub(crate) fn route_session_commands(
                     },
                 }
             }
+            // `map <zone> [gametype]`: a zone without its game's prefix is
+            // the current map's game's; a gametype also switches the mode
+            // the level loads under.
             "map" => match cmd.args.as_slice() {
-                [zone] => match transition.request_zone(zone.clone()) {
-                    Ok(id) => echo.write(format!("map: requested `{zone}` (swap #{id})")),
-                    Err(error) => {
-                        dispatch.release();
-                        echo.write(format!("map: {error}"));
+                [zone, gametype @ ..] if gametype.len() <= 1 => {
+                    let zone = match manifest.as_ref().map(|manifest| &manifest.map) {
+                        Some(::session::ManifestFact::Known(current)) if !zone.contains(':') => {
+                            format!("{}:{zone}", current.namespace.as_str())
+                        }
+                        _ => zone.clone(),
+                    };
+                    let mode = match gametype.first() {
+                        Some(token) => match sim::HostGameModeSelection::from_token(token) {
+                            Some(mode) => Some((token.clone(), mode)),
+                            None => {
+                                dispatch.release();
+                                echo.write(format!("map: unknown gametype `{token}`"));
+                                continue;
+                            }
+                        },
+                        None => None,
+                    };
+                    match transition.request_zone(zone.clone()) {
+                        Ok(id) => {
+                            if let Some((gametype, mode)) = mode {
+                                asset_transport::select_zombies_start(Some(
+                                    asset_transport::ZombiesStart {
+                                        gametype,
+                                        location: None,
+                                    },
+                                ));
+                                commands.insert_resource(mode);
+                            }
+                            echo.write(format!("map: requested `{zone}` (swap #{id})"))
+                        }
+                        Err(error) => {
+                            dispatch.release();
+                            echo.write(format!("map: {error}"));
+                        }
                     }
-                },
+                }
                 _ => {
                     dispatch.release();
-                    echo.write("usage: map <zone>");
+                    echo.write("usage: map <zone> [gametype]");
                 }
             },
             "disconnect" => {

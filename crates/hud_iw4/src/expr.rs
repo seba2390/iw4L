@@ -518,6 +518,9 @@ impl<H: ExprHost> GameQueries for Queries<'_, H> {
     fn ads_javelin(&self) -> Result<bool, ExprError> {
         Ok(self.0.weapon_lock()?.ads_javelin)
     }
+    fn milliseconds(&self) -> Result<i32, ExprError> {
+        Ok(self.0.milliseconds())
+    }
     fn key_binding(&self, command: &str) -> Result<Operand, ExprError> {
         self.0.key_binding(command)
     }

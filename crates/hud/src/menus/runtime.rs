@@ -364,6 +364,21 @@ impl Runner<'_, '_> {
                     self.menus.menu_messages.push((text, false));
                 }
             }
+            // Black Ops' handler copies `ui_gametype` to `g_gametype` and
+            // `sv_mapRotation` to `sv_mapRotationCurrent`, then runs
+            // `wait ; wait ; map <ui_mapname>`.
+            Command::StartListenServer => {
+                let gametype = self.dvar("ui_gametype").unwrap_or("").to_owned();
+                let map = self.dvar("ui_mapname").unwrap_or("").to_owned();
+                let rotation = self.dvar("sv_mapRotation").unwrap_or("").to_owned();
+                self.set_dvar("g_gametype", &gametype);
+                self.set_dvar("sv_mapRotationCurrent", &rotation);
+                if map.is_empty() {
+                    diag::warn!(Ui, "menu {menu}: StartListenServer with no ui_mapname");
+                    return;
+                }
+                self.menus.exec.push(format!("map {map} {gametype}"));
+            }
             Command::Unhandled(name) => {
                 diag::debug!(Ui, "menu {menu}: script command `{name}` not run");
             }
@@ -548,6 +563,7 @@ impl Runner<'_, '_> {
             diag::warn!(Ui, "menu open: `{name}` is not loaded");
             return;
         };
+
         if let Some(pos) = self.menus.position(name) {
             let open = self.menus.stack.remove(pos);
             self.menus.stack.push(open);

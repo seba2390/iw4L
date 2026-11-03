@@ -629,8 +629,21 @@ Each open section names the issue that works it.
       `isitemnew`, `getitemname`, `getitemimage`, `getdefaultclassslot`,
       `getcacitemindex`, `getitemequippedattachment`, …) read the item
       table and the custom classes, which do not exist yet (#650).
-- [ ] **V** Black Ops' multiplayer front end and Private Match lobby menus
-      (`ui_mp`, `patch_ui_mp`) are not reachable from the game library.
+- [ ] **V** `t5.hud.mp_front_end` (#664): Black Ops' MULTIPLAYER
+      (`StartMultiplayerGame`) loads the multiplayer front end as
+      BlackOpsMP.exe's UI does: its level `ui_viewer_mp` with `ui_mp` and
+      `patch_ui_mp`'s menus, opening `main` (→ `main_text`); the Private
+      Match lobby's START MATCH (`uiScript StartListenServer`) starts
+      `ui_mapname` under `ui_gametype`. Open: `live_flyout`'s rows switch
+      their animation states with `ui_animate`, which the menus do not run
+      (`t5.csc.animate_ui`); the menus' expressions call functions not
+      answered yet, so the items they gate do not draw: `tablelookup` (the
+      lobby's map name), `inlobby`, `isPartyReady`, `getitemindex` (CREATE
+      A CLASS and KILLSTREAKS rows), `getfeedercount`, `getDStat` (PLAY
+      opens `live_flyout` as if the class reset warning had been shown);
+      the news ticker owner draws (`tickerHeaderText`, `ticker`) and the
+      main menu's two fading background layers (their alpha expressions)
+      do not draw.
 
 ## Bots (#652, #709)
 

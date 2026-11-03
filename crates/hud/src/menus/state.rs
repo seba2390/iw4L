@@ -54,6 +54,8 @@ pub struct ScriptMenus {
     pub(crate) pause_requested: bool,
     /// The game's own cursor was drawn this frame: the system pointer hides.
     pub(crate) draws_cursor: bool,
+    /// The level's own menu (`ModeRules::level_menu`) has been opened.
+    pub(crate) level_menu_opened: bool,
 }
 
 impl ScriptMenus {

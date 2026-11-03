@@ -742,7 +742,20 @@ pub(crate) fn register(registry: &mut NativeRegistry) {
         let now = i64::from(crate::level_time_ms(
             world.resource::<crate::step::StepRequest>().tick,
         ));
-        world.resource_mut::<RoundScript>().change_level = Some((map, now + exit_ms));
+        world.resource_mut::<RoundScript>().change_level = Some((map, None, now + exit_ms));
+        Ok(Value::Undefined)
+    });
+    // `StartMultiplayerGame()` queues the console command `startMultiplayer`,
+    // which leaves for the multiplayer executable; its UI loads `ui_mp` and
+    // the level `ui_viewer_mp` under it. The front end's Private Match
+    // starts on Team Deathmatch (`ui_gametype tdm`), and no gametype script
+    // runs on that level.
+    registry.register(Function, "startmultiplayergame", |world, _, _| {
+        let now = i64::from(crate::level_time_ms(
+            world.resource::<crate::step::StepRequest>().tick,
+        ));
+        world.resource_mut::<RoundScript>().change_level =
+            Some(("ui_viewer_mp".to_owned(), Some("tdm".to_owned()), now));
         Ok(Value::Undefined)
     });
     // `SaveGame(name, description, screenshot, flag)`: Black Ops refuses a

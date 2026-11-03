@@ -56,6 +56,9 @@ pub(crate) enum Command {
     /// Black Ops' `uiScript sendMenuNotify "name arg"`: a message to the
     /// level's scripts.
     SendMenuNotify(String),
+    /// `uiScript StartListenServer`: the host starts `ui_mapname` under
+    /// `ui_gametype`.
+    StartListenServer,
     Unhandled(String),
 }
 
@@ -307,6 +310,7 @@ pub(crate) fn parse(script: &str, exec_takes_statement: bool) -> Vec<Command> {
                 match script.as_str() {
                     "quit" => (Command::Exec("quit".into()), 2),
                     "sendmenunotify" => (Command::SendMenuNotify(arg(i + 2)), 3),
+                    "startlistenserver" => (Command::StartListenServer, 2),
                     "openmenuondvar" | "openmenuondvarnot" | "closemenuondvar"
                     | "closemenuondvarnot" => (
                         Command::MenuOnDvar {

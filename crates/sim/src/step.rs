@@ -931,9 +931,10 @@ fn publish_snapshot_system(ecs: &mut World) {
         }
     }
     let level_change = match &runtime.change_level {
-        Some((_, at)) if i64::from(crate::level_time_ms(tick)) >= *at => {
-            runtime.change_level.take().map(|(map, _)| map)
-        }
+        Some((_, _, at)) if i64::from(crate::level_time_ms(tick)) >= *at => runtime
+            .change_level
+            .take()
+            .map(|(map, gametype, _)| (map, gametype)),
         _ => None,
     };
     effects.kicks = std::mem::take(&mut runtime.kicks)
