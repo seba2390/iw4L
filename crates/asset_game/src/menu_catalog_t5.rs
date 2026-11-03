@@ -21,8 +21,8 @@ use fastfile_t5::{
 
 use crate::localize::decode_localized_text;
 use crate::menu_catalog::{
-    FontDef, MenuBorder, MenuCatalog, MenuDef, MenuEditField, MenuEvent, MenuFrame, MenuItem,
-    MenuRect, MenuSlider, T5EventScript, T5ScriptCondition,
+    FontDef, MenuAnimState, MenuBorder, MenuCatalog, MenuDef, MenuEditField, MenuEvent, MenuFrame,
+    MenuItem, MenuRect, MenuSlider, T5EventScript, T5ScriptCondition,
 };
 
 /// The HUD menu lists a Black Ops zombies client draws, in its load order:
@@ -256,6 +256,20 @@ impl T5MenuSink {
         if !read.alpha_exp.is_empty() {
             item.float_exp.push((FLOAT_FORECOLOR_A, read.alpha_exp));
         }
+        item.anim_states = read
+            .anim_states
+            .into_iter()
+            .map(|state| MenuAnimState {
+                name: state.name.unwrap_or_else(String::new),
+                rect: rect(state.rect),
+                fore_color: state.fore_color,
+                back_color: state.back_color,
+                on_enter: event_handlers(state.handlers)
+                    .into_iter()
+                    .find(|(name, _)| name == "onenter")
+                    .map_or_else(Vec::new, |(_, events)| events),
+            })
+            .collect();
         for (name, events) in event_handlers(read.handlers) {
             let handlers = &mut item.handlers;
             match name.as_str() {

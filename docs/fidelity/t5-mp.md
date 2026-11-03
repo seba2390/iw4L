@@ -492,8 +492,9 @@ Each open section names the issue that works it.
       not move anything: Black Ops starts each named item (`*` for all)
       from where it stands towards the named animation state over the
       time (scaled by its UI animation speed), and its menu draw blends
-      the item's rect and colours between them; the menus here keep only
-      each item's state as loaded. `_explode.csc`'s screen dirt and
+      the item's rect and colours between them. The menus run that move
+      for `ui_animate` (`t5.hud.mp_front_end`), but the client script
+      builtin does not reach them yet. `_explode.csc`'s screen dirt and
       `_cameraspike.csc`'s HUD moves call it; each menu, item and state
       asked for logs the id once (#651).
 - [ ] **V** `t5.csc.extra_camera`: the camera spike's extra camera
@@ -634,9 +635,15 @@ Each open section names the issue that works it.
       BlackOpsMP.exe's UI does: its level `ui_viewer_mp` with `ui_mp` and
       `patch_ui_mp`'s menus, opening `main` (→ `main_text`); the Private
       Match lobby's START MATCH (`uiScript StartListenServer`) starts
-      `ui_mapname` under `ui_gametype`. Open: `live_flyout`'s rows switch
-      their animation states with `ui_animate`, which the menus do not run
-      (`t5.csc.animate_ui`); the menus' expressions call functions not
+      `ui_mapname` under `ui_gametype`. Items move between their animation
+      states as `ui_animate` asks (rect and colours over the time scaled by
+      `ui_animSpeedScale`, then the state's `onEnter`), and a menu's console
+      line takes the console's own `if ( value ) command` and constant
+      `( … )` groups, so PLAY's `live_flyout` fades its rows in; a group
+      that calls a function is not evaluated (the line is dropped with a
+      warning), and the border colour and the two other animated window
+      fields are not moved. WAGER MATCH stays hidden: nothing sets
+      `ui_mpWagerMatchEnabled`. Open: the menus' expressions call functions not
       answered yet, so the items they gate do not draw: `tablelookup` (the
       lobby's map name), `inlobby`, `isPartyReady`, `getitemindex` (CREATE
       A CLASS and KILLSTREAKS rows), `getfeedercount`, `getDStat` (PLAY

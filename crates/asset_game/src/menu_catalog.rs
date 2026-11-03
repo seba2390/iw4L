@@ -204,6 +204,21 @@ pub struct MenuItem {
     pub mouse_enter: Vec<String>,
     pub on_focus: Vec<String>,
     pub cover: bool,
+    /// Black Ops' animation states (`ui_animate`, `AnimateUI`) the item can
+    /// be moved to.
+    pub anim_states: Vec<MenuAnimState>,
+}
+
+/// One of an item's animation states: where it sits, its colours, and
+/// what runs once an animation reaches it (`onEnter`).
+#[derive(Clone, Debug, Default, serde::Deserialize, serde::Serialize)]
+#[serde(default, deny_unknown_fields)]
+pub struct MenuAnimState {
+    pub name: String,
+    pub rect: MenuRect,
+    pub fore_color: [f32; 4],
+    pub back_color: [f32; 4],
+    pub on_enter: Vec<MenuEvent>,
 }
 
 /// A picture drawn as a frame: its corners and edges keep `size` (virtual

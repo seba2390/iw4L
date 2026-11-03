@@ -86,6 +86,9 @@ const MULTIPLAYER_ENGINE_DVARS: &[(&str, &str)] = &[
     ("zombiemode", "0"),
     // The multiplayer executable: menus show their multiplayer rows.
     ("ui_multiplayer", "1"),
+    // Registered on and not changed by the executable: the PLAY flyout's
+    // rows show.
+    ("ui_ethernetLinkActive", "1"),
     ("cg_usingClientScripts", "1"),
     // A local match is neither online nor a system link.
     ("systemlink", "0"),

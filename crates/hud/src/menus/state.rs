@@ -6,6 +6,21 @@ pub(crate) struct ItemState {
     pub(crate) hidden: bool,
     pub(crate) fore: Option<[f32; 4]>,
     pub(crate) back: Option<[f32; 4]>,
+    /// Where an animation has moved the item.
+    pub(crate) rect: Option<asset_game::MenuRect>,
+    pub(crate) anim: Option<ItemAnim>,
+}
+
+/// An item moving to one of its animation states (`ui_animate`): from the
+/// look it had when the move began, over `duration_ms` of the UI's clock.
+#[derive(Clone, Debug)]
+pub(crate) struct ItemAnim {
+    pub(crate) from_rect: asset_game::MenuRect,
+    pub(crate) from_fore: [f32; 4],
+    pub(crate) from_back: [f32; 4],
+    pub(crate) to: usize,
+    pub(crate) start_ms: i32,
+    pub(crate) duration_ms: i32,
 }
 
 #[derive(Clone, Debug)]

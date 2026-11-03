@@ -70,6 +70,11 @@ pub(crate) enum LocalVarKind {
     String,
 }
 
+/// A console word as `atoi` reads it.
+pub(crate) fn atoi_word(word: &str) -> i32 {
+    word.trim().parse::<f64>().map_or(0, |value| value as i32)
+}
+
 pub(crate) fn tokens(script: &str) -> Vec<String> {
     spanned_tokens(script)
         .into_iter()
