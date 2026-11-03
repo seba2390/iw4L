@@ -59,8 +59,6 @@ struct PathVehicles {
     max: BTreeMap<u64, f32>,
     /// Moving platforms (`setmovingplatformenabled`).
     platforms: std::collections::BTreeSet<u64>,
-    /// Actors that do not push players (`pushplayer(0)`).
-    no_push: std::collections::BTreeSet<u64>,
 }
 
 fn field(world: &mut World, id: u64, name: &str) -> Value {
@@ -592,20 +590,14 @@ pub(super) fn register(registry: &mut NativeRegistry) {
         super::super::engine::entity_id(world, receiver)?;
         Ok(Value::Undefined)
     });
-    // gscm_pushplayer(on): whether the actor pushes players aside
-    // (`t6.actors.push_player`: kept, not applied).
+    // gscm_pushplayer(on): `1` takes bodies out of the actor's move mask.
     registry.register(Method, "pushplayer", |world, receiver, args| {
         let id = super::super::engine::entity_id(world, receiver)?;
         if world.resource::<RoundScript>().entities[&id].kind != EntityKind::Actor {
             return Err("not an actor".into());
         }
-        let on = !matches!(args.first(), Some(Value::Int(0)));
-        let mut vehicles = world.get_resource_or_insert_with(PathVehicles::default);
-        if on {
-            vehicles.no_push.remove(&id);
-        } else {
-            vehicles.no_push.insert(id);
-        }
+        let through = !matches!(args.first(), Some(Value::Int(0)));
+        super::movement::set_through_bodies(world, id, through);
         Ok(Value::Undefined)
     });
     // gscm_getgroundent: what a player or resting missile stands on.

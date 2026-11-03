@@ -7,6 +7,7 @@ use super::super::super::actor_nav::{LinkEdits, NavNodeKind, node_value};
 use super::super::super::entities::EntityKind;
 use super::super::engine::{entity_id, trace};
 use super::path_follow::{Follow, Lookahead, Probe};
+use super::team_move::{self, Friend, Mover, Slowed, TeamMove};
 use super::{anim, vector};
 use crate::frame::FrameWorld;
 use crate::script::runtime::{notify_now, raise, start_function_now, start_now, thread_alive};
@@ -48,6 +49,25 @@ const ARRIVAL_SPEED_SQ: f32 = 0.0625;
 const ARRIVAL_MS: i64 = 500;
 const ARRIVAL_STOP_MS: i64 = 200;
 const FRAME_MS: f32 = 50.0;
+/// How far around an enemy a path that would pass it is dropped for combat
+/// is the actor's `pathenemyfightdist`; the wait that follows is the team
+/// move's.
+const PATH_DROP_WAIT_MS: i64 = 500;
+/// A wait on a friend that is itself piled up on another.
+const PILE_CHAIN_WAIT_MS: i64 = 50;
+/// Piling up: how close another actor counts as touching, how far one holds
+/// it, how far up or down one counts, and the move the actor makes when its
+/// clip has none (all squared).
+const PILE_TOUCH_SQ: f32 = 900.0;
+const PILE_HOLD_SQ: f32 = 1_406.25;
+const PILE_HEIGHT_SQ: f32 = 6_400.0;
+const PILE_TOUCH_HEIGHT: f32 = 80.0;
+const PILE_MIN_MOVE_SQ: f32 = 2.25;
+const PILE_MOVED_SHARE: f32 = 0.25;
+/// How fast a species counts itself when it stands still: 190 for a zombie,
+/// 300 for a dog.
+const ZOMBIE_SPEED: f32 = 190.0;
+const DOG_SPEED: f32 = 300.0;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(super) enum Script {
@@ -103,6 +123,22 @@ struct Movement {
     speed: f32,
     /// When its arrival ends; held until then, a new path or its goal.
     arrival: Option<i64>,
+    /// Where its last move took it and where it meant to go (a frame's), and
+    /// whether it ran into a player.
+    velocity: [f32; 2],
+    wish: [f32; 2],
+    hit_sentient: bool,
+    /// The engine's move mode: 0 stop, 1 stopping, 2 walk, 3 run.
+    move_mode: u8,
+    /// The team move's wait, the actor it piled up on, and the friend it
+    /// slows behind.
+    wait_until: i64,
+    pile: Option<u64>,
+    slowed: Slowed,
+    /// The end its path was planned to, kept while it stays in the goal.
+    path_goal: Option<[f32; 3]>,
+    /// `pushplayer(1)`: its moves pass through players' bodies.
+    through_bodies: bool,
     traverse_mode: TraverseMode,
     traversal: Option<Traversal>,
     /// The pain script while it runs; the engine's choice waits for it.
@@ -505,11 +541,24 @@ fn step(world: &mut World, id: u64, from: [f32; 3], to: [f32; 3]) -> [f32; 3] {
     let raised = [from[0], from[1], from[2] + STEP_HEIGHT];
     let up = trace(world, ground, raised, mins, maxs, ACTOR_MASK);
     let mut moved = lerp(ground, raised, up.fraction);
+    let bodies = player_bodies(world, id);
+    movement(world, id).hit_sentient = false;
     let mut motion = [to[0] - from[0], to[1] - from[1], 0.0];
     // A wall takes the part of the motion into it; the rest slides along.
     for _ in 0..SLIDES {
         let ahead = [moved[0] + motion[0], moved[1] + motion[1], moved[2]];
         let across = trace(world, moved, ahead, mins, maxs, ACTOR_MASK);
+        let world_fraction = across.fraction;
+        let across = crate::step::actor_move_past_bodies(
+            across,
+            &bodies,
+            (moved, ahead),
+            (mins, maxs),
+            ACTOR_MASK,
+        );
+        if across.fraction < world_fraction {
+            movement(world, id).hit_sentient = true;
+        }
         moved = lerp(moved, ahead, across.fraction);
         if across.fraction >= 1.0 || across.startsolid != 0 {
             break;
@@ -535,6 +584,15 @@ fn step(world: &mut World, id: u64, from: [f32; 3], to: [f32; 3]) -> [f32; 3] {
         fall + GRAVITY * seconds
     };
     lerp(moved, below, down.fraction)
+}
+
+/// The players' bodies an actor's move stops at, unless `pushplayer(1)` took
+/// bodies out of its mask.
+fn player_bodies(world: &mut World, id: u64) -> Vec<crate::step::PlayerBodyClip> {
+    if movement(world, id).through_bodies {
+        return Vec::new();
+    }
+    crate::step::alive_body_clips(&FrameWorld::from_world(world))
 }
 
 pub(super) fn lerp(a: [f32; 3], b: [f32; 3], t: f32) -> [f32; 3] {
@@ -593,6 +651,11 @@ fn walk(world: &mut World, id: u64, from: [f32; 3]) {
     let state = movement(world, id);
     state.stalled = moved < 0.1;
     state.speed = moved * 1000.0 / FRAME_MS;
+    state.wish = [at[0] - from[0], at[1] - from[1]];
+    state.velocity = [
+        (landed[0] - from[0]) * 1000.0 / FRAME_MS,
+        (landed[1] - from[1]) * 1000.0 / FRAME_MS,
+    ];
     {
         let look = movement(world, id).look;
         let mut runtime = world.resource_mut::<RoundScript>();
@@ -608,6 +671,331 @@ fn walk(world: &mut World, id: u64, from: [f32; 3]) {
     {
         set_yaw(world, id, yaw);
     }
+}
+
+/// The lookahead's update for an actor that takes no code move this frame.
+fn look_only(world: &mut World, id: u64, at: [f32; 3]) {
+    let Some(mut follow) = movement(world, id).follow.take() else {
+        return;
+    };
+    let kept = follow.update(at, (false, false, true), &mut probe(world, id));
+    let state = movement(world, id);
+    state.look = follow.look;
+    state.follow = Some(follow);
+    sync_path(state);
+    if !kept {
+        state.planned = false;
+    }
+}
+
+fn stands_still(state: &mut Movement) {
+    state.speed = 0.0;
+    state.velocity = [0.0; 2];
+    state.wish = [0.0; 2];
+}
+
+fn drop_path(state: &mut Movement) {
+    state.path.clear();
+    state.follow = None;
+    state.arrival = None;
+    state.path_goal = None;
+    state.slowed = Slowed::default();
+}
+
+fn pile_state(world: &World, id: u64) -> Option<u64> {
+    world
+        .get_resource::<Movements>()
+        .and_then(|movements| movements.0.get(&id))
+        .and_then(|state| state.pile)
+}
+
+fn flat_sq(a: [f32; 3], b: [f32; 3]) -> f32 {
+    (a[0] - b[0]).powi(2) + (a[1] - b[1]).powi(2)
+}
+
+/// The living actors other than `id`.
+fn others(world: &mut World, id: u64) -> Vec<u64> {
+    let candidates: Vec<u64> = world
+        .resource::<RoundScript>()
+        .entities
+        .iter()
+        .filter(|(other, entity)| **other != id && entity.kind == EntityKind::Actor)
+        .map(|(other, _)| *other)
+        .collect();
+    candidates
+        .into_iter()
+        .filter(|other| alive(world, *other))
+        .collect()
+}
+
+/// The engine's pile-up upkeep before an actor's frame: it ends once the other
+/// is no longer near, and when it has stepped clear and its path leads away.
+fn update_pile(world: &mut World, id: u64, at: [f32; 3]) {
+    let Some(pile) = movement(world, id).pile else {
+        return;
+    };
+    let is_actor = world
+        .resource::<RoundScript>()
+        .entities
+        .get(&pile)
+        .is_some_and(|entity| entity.kind == EntityKind::Actor);
+    if !is_actor || !alive(world, pile) {
+        movement(world, id).pile = None;
+        return;
+    }
+    let there = origin_of(world, pile);
+    let dist_sq = flat_sq(at, there);
+    if dist_sq >= PILE_HOLD_SQ {
+        if pile_state(world, pile) == Some(id) {
+            movement(world, pile).pile = None;
+        }
+        movement(world, id).pile = None;
+        return;
+    }
+    if dist_sq >= PILE_TOUCH_SQ && anim::get(world, id).mode == "normal" {
+        let state = movement(world, id);
+        let away = (at[0] - there[0]) * state.look.dir[0] + (at[1] - there[1]) * state.look.dir[1];
+        if state.follow.is_some() && away > 0.0 {
+            state.pile = None;
+        }
+    }
+}
+
+/// When an actor waits: it piles up on an actor it touches (in combat, only
+/// one that ran into a player or actor).
+fn check_pile(world: &mut World, id: u64, at: [f32; 3]) {
+    if movement(world, id).pile.is_some() {
+        return;
+    }
+    let in_combat = movement(world, id).script == Some(Script::Combat);
+    for other in others(world, id) {
+        if in_combat && !movement(world, other).hit_sentient {
+            continue;
+        }
+        let there = origin_of(world, other);
+        if (at[2] - there[2]).powi(2) <= PILE_HEIGHT_SQ && flat_sq(at, there) <= PILE_TOUCH_SQ {
+            movement(world, id).pile = Some(other);
+            return;
+        }
+    }
+}
+
+/// The engine's move for an actor piled up on another: straight away from it
+/// by its clip's root motion. It holds when that gets it no farther or brings
+/// it to a third actor, which then piles up on it in turn.
+fn separate(world: &mut World, id: u64, from: [f32; 3], pile: u64) {
+    let there = origin_of(world, pile);
+    let delta = [from[0] - there[0], from[1] - there[1]];
+    let dist_sq = delta[0] * delta[0] + delta[1] * delta[1];
+    let dir = if dist_sq == 0.0 {
+        // The engine draws a random direction; two actors on one spot.
+        let now = super::super::super::players::now_ms(world) as u64;
+        let (sin, cos) = ((now.wrapping_mul(2_654_435_761).wrapping_add(id) % 360) as f32)
+            .to_radians()
+            .sin_cos();
+        [cos, sin]
+    } else {
+        let dist = dist_sq.sqrt();
+        [delta[0] / dist, delta[1] / dist]
+    };
+    let root = anim::get(world, id).step;
+    let move_sq = (root[0] * root[0] + root[1] * root[1]).max(PILE_MIN_MOVE_SQ);
+    let distance = move_sq.sqrt();
+    let to = [
+        from[0] + dir[0] * distance,
+        from[1] + dir[1] * distance,
+        from[2],
+    ];
+    let landed = step(world, id, from, to);
+    let farther = dist_sq < flat_sq(landed, there);
+    let moved = move_sq * PILE_MOVED_SHARE < flat_sq(landed, from);
+    let free = farther && moved && !touches_another(world, id, pile, from, landed);
+    let state = movement(world, id);
+    state.wish = [to[0] - from[0], to[1] - from[1]];
+    if free {
+        state.velocity = [
+            (landed[0] - from[0]) * 1000.0 / FRAME_MS,
+            (landed[1] - from[1]) * 1000.0 / FRAME_MS,
+        ];
+        state.speed = flat_distance(from, landed) * 1000.0 / FRAME_MS;
+        world
+            .resource_mut::<RoundScript>()
+            .set_object_field(id, "origin", Value::Vector(landed));
+    } else {
+        state.velocity = [0.0; 2];
+        state.speed = 0.0;
+        if pile_state(world, pile).is_none() {
+            movement(world, pile).pile = Some(id);
+        }
+    }
+}
+
+/// Whether a piled-up actor's move brings it to touch a third actor (which
+/// then piles up on it).
+fn touches_another(world: &mut World, id: u64, pile: u64, from: [f32; 3], to: [f32; 3]) -> bool {
+    let mut touches = false;
+    for other in others(world, id) {
+        if other == pile {
+            continue;
+        }
+        let there = origin_of(world, other);
+        if flat_sq(to, there) < PILE_TOUCH_SQ
+            && PILE_TOUCH_SQ <= flat_sq(from, there)
+            && (from[2] - there[2]).abs() < PILE_TOUCH_HEIGHT
+        {
+            if pile_state(world, other).is_none() {
+                movement(world, other).pile = Some(id);
+            }
+            touches = true;
+        }
+    }
+    touches
+}
+
+/// The engine's team move for an actor with a path (`natives::t6::team_move`).
+fn team_step(world: &mut World, id: u64, at: [f32; 3], now: i64) -> TeamMove {
+    if movement(world, id).wait_until > now {
+        return TeamMove::Wait;
+    }
+    if let Some(pile) = movement(world, id).pile
+        && pile_state(world, pile).is_some_and(|chain| chain != id)
+    {
+        movement(world, id).wait_until = now + PILE_CHAIN_WAIT_MS;
+        return TeamMove::Wait;
+    }
+    let team = field(world, id, "team");
+    let mut friends = Vec::new();
+    for other in others(world, id) {
+        if field(world, other, "team") != team {
+            continue;
+        }
+        let there = origin_of(world, other);
+        let normal = anim::get(world, other).mode == "normal";
+        let number = world.resource::<RoundScript>().entities[&other].number;
+        let state = movement(world, other);
+        let velocity = if state.pile.is_none() {
+            [
+                state.wish[0] * 1000.0 / FRAME_MS,
+                state.wish[1] * 1000.0 / FRAME_MS,
+            ]
+        } else {
+            [0.0; 2]
+        };
+        friends.push(Friend {
+            id: other,
+            number,
+            at: there,
+            velocity,
+            hit_sentient: state.hit_sentient,
+            walks: state.move_mode == 2,
+            runs: state.move_mode == 3,
+            normal,
+        });
+    }
+    let nododge = !matches!(field(world, id, "nododgemove"), Value::Int(0));
+    let species_speed = if matches!(field(world, id, "isdog"), Value::Int(1)) {
+        DOG_SPEED
+    } else {
+        ZOMBIE_SPEED
+    };
+    let number = world.resource::<RoundScript>().entities[&id].number;
+    let slowed = movement(world, id).slowed;
+    let slowed_at = slowed.by.map(|friend| origin_of(world, friend));
+    let path = movement(world, id).path.clone();
+    let negotiating = (0..path.len()).any(|index| negotiation(world, &path, index).is_some());
+    let state = movement(world, id);
+    let me = Mover {
+        number,
+        at,
+        velocity: state.velocity,
+        look_dir: [state.look.dir[0], state.look.dir[1]],
+        look_dist: state.look.dist,
+        amount: state.look.amount,
+        moving: state.move_mode != 0,
+        nododge,
+        piled: state.pile.is_some(),
+        species_speed,
+        slowed,
+        slowed_at,
+        negotiating,
+    };
+    let out = team_move::decide(&me, &friends);
+    state.slowed = out.slowed;
+    if out.pile.is_some() {
+        state.pile = out.pile;
+    }
+    if out.wait {
+        state.wait_until = now + team_move::WAIT_MS;
+    }
+    if out.drop_path {
+        drop_path(state);
+    }
+    out.result
+}
+
+/// The move mode a team move's result and the actor's pile-up and arrival
+/// leave it in; the script follows from it.
+fn move_mode(result: TeamMove, piled: bool, moving: bool, stop_left: Option<i64>) -> u8 {
+    let piled_mode = if moving { 2 } else { 1 };
+    match result {
+        TeamMove::Wait => {
+            if piled {
+                piled_mode
+            } else {
+                0
+            }
+        }
+        TeamMove::Travel => {
+            if piled {
+                piled_mode
+            } else if stop_left.is_some_and(|left| left <= ARRIVAL_STOP_MS) {
+                1
+            } else {
+                3
+            }
+        }
+        TeamMove::Slow => {
+            if piled {
+                piled_mode
+            } else if stop_left.is_some_and(|left| left < ARRIVAL_STOP_MS) {
+                1
+            } else {
+                2
+            }
+        }
+    }
+}
+
+/// The engine drops a path for combat when its enemy is within
+/// `pathenemyfightdist` across and the goal height, in sight, and either the
+/// lookahead would pass it or it stands in the actor's goal.
+fn enemy_stops_path(
+    world: &mut World,
+    id: u64,
+    at: [f32; 3],
+    goal: [f32; 3],
+    enemy: &Value,
+) -> bool {
+    let Ok(other) = entity_id(world, enemy) else {
+        return false;
+    };
+    let there = origin_of(world, other);
+    let fight = number(world, id, "pathenemyfightdist", 0.0);
+    let height = number(world, id, "goalheight", GOAL_HEIGHT);
+    if flat_sq(at, there) >= fight * fight || (there[2] - at[2]).abs() > height {
+        return false;
+    }
+    if !super::combat::can_see(world, id, enemy).unwrap_or(false) {
+        return false;
+    }
+    let look = movement(world, id).look;
+    let beyond = [
+        at[0] + look.dir[0] * look.dist - there[0],
+        at[1] + look.dir[1] * look.dist - there[1],
+    ];
+    let passes = look.dir[0] * beyond[0] + look.dir[1] * beyond[1] > 0.0
+        && beyond[0] * beyond[0] + beyond[1] * beyond[1] < look.dist * look.dist;
+    passes || in_goal(world, id, there, goal)
 }
 
 /// The engine's arrival, after the frame's lookahead: where the actor steps
@@ -910,9 +1298,13 @@ fn think_one(world: &mut World, id: u64) -> Result<(), String> {
     }
     let at = origin_of(world, id);
     let goal = *movement(world, id).goal.get_or_insert(at);
-    if !movement(world, id).planned {
+    let now_ms = super::super::super::players::now_ms(world);
+    update_pile(world, id, at);
+    // No new path while the team move's wait runs on an actor without one.
+    let holding = movement(world, id).follow.is_none() && now_ms < movement(world, id).wait_until;
+    if !movement(world, id).planned && !holding && !keeps_path(world, id, goal) {
         movement(world, id).planned = true;
-        let path = if in_goal(world, id, at, goal) {
+        let path = if movement(world, id).follow.is_none() && in_goal(world, id, at, goal) {
             Some(Vec::new())
         } else {
             plan(world, id, at, goal)
@@ -931,6 +1323,7 @@ fn think_one(world: &mut World, id: u64) -> Result<(), String> {
                 state.follow = Some(follow);
                 state.path = path;
                 state.arrival = None;
+                state.path_goal = (!state.path.is_empty()).then_some(goal);
                 sync_path(state);
                 let mut runtime = world.resource_mut::<RoundScript>();
                 runtime.set_object_field(id, "pathstartpos", Value::Vector(at));
@@ -942,8 +1335,7 @@ fn think_one(world: &mut World, id: u64) -> Result<(), String> {
                 );
             }
             None => {
-                movement(world, id).path.clear();
-                movement(world, id).follow = None;
+                drop_path(movement(world, id));
                 {
                     let mut runtime = world.resource_mut::<RoundScript>();
                     runtime.set_object_field(id, "pathstartpos", Value::Undefined);
@@ -955,7 +1347,6 @@ fn think_one(world: &mut World, id: u64) -> Result<(), String> {
         }
     }
     // A traversal starts on its begin node, or as near as the walk got.
-    let path = movement(world, id).path.clone();
     let stalled = movement(world, id).stalled;
     // The engine's exposed state runs combat for an actor with no path, or
     // with one while it is not safe to change its script, enemy or not;
@@ -963,32 +1354,46 @@ fn think_one(world: &mut World, id: u64) -> Result<(), String> {
     // an arrival (the last 200 ms when farther from the goal than `walkdist`,
     // just under that when not), or move.
     let safe = !matches!(field(world, id, "safetochangescript"), Value::Int(0));
+    if movement(world, id).follow.is_some()
+        && let Some(enemy) = enemy.as_ref()
+        && enemy_stops_path(world, id, at, goal, enemy)
+    {
+        let state = movement(world, id);
+        drop_path(state);
+        state.planned = false;
+        state.wait_until = now_ms + PATH_DROP_WAIT_MS;
+    }
+    let path = movement(world, id).path.clone();
     let crossing = negotiation(world, &path, 0).filter(|_| {
         let gap = flat_distance(at, path[0].at);
         safe && (gap <= 1.0 || stalled && gap <= POINT_REACHED)
     });
-    let now_ms = super::super::super::players::now_ms(world);
-    let walkdist = number(world, id, "walkdist", 0.0);
-    let far = (0..3).map(|i| (at[i] - goal[i]).powi(2)).sum::<f32>() > walkdist * walkdist;
-    let stopping = movement(world, id).arrival.is_some_and(|end| {
-        let time = end - now_ms;
-        if far {
-            time <= ARRIVAL_STOP_MS
-        } else {
-            time < ARRIVAL_STOP_MS
-        }
-    });
+    let decided =
+        (!path.is_empty() && safe && crossing.is_none()).then(|| team_step(world, id, at, now_ms));
+    if decided == Some(TeamMove::Wait) {
+        check_pile(world, id, at);
+    }
+    let path_left = !movement(world, id).path.is_empty();
+    let state = movement(world, id);
+    let piled = state.pile.is_some();
+    let moving = state.velocity[0].powi(2) + state.velocity[1].powi(2) >= 1.0;
+    let stop_left = state.arrival.map(|end| end - now_ms);
+    let mode = decided.map_or(0, |result| move_mode(result, piled, moving, stop_left));
+    state.move_mode = mode;
     let script = match crossing {
-        _ if path.is_empty() || !safe => Script::Combat,
+        _ if !path_left || !safe => Script::Combat,
         Some((begin, _)) => Script::Traverse(begin),
-        None if stopping => Script::Stop,
-        None => Script::Move,
+        None => match mode {
+            0 => Script::Combat,
+            1 => Script::Stop,
+            _ => Script::Move,
+        },
     };
     if script == Script::Move && movement(world, id).script != Some(Script::Move) {
         movement(world, id).arrival = None;
     }
     if !matches!(script, Script::Move | Script::Stop) {
-        movement(world, id).speed = 0.0;
+        stands_still(movement(world, id));
     }
     if let Some((begin, end)) = crossing {
         movement(world, id).traversal = Some(Traversal {
@@ -1007,8 +1412,20 @@ fn think_one(world: &mut World, id: u64) -> Result<(), String> {
                 _ => state.traversal = None,
             }
         }
-        Script::Move | Script::Stop => walk(world, id, at),
-        Script::Combat => face(world, id, at, enemy.as_ref()),
+        Script::Move | Script::Stop => match pile_state(world, id) {
+            Some(pile) => {
+                look_only(world, id, at);
+                separate(world, id, at, pile);
+            }
+            None => walk(world, id, at),
+        },
+        Script::Combat => {
+            look_only(world, id, at);
+            if let Some(pile) = pile_state(world, id) {
+                separate(world, id, at, pile);
+            }
+            face(world, id, at, enemy.as_ref());
+        }
         Script::Pain | Script::Death => {}
     }
     if world
@@ -1019,17 +1436,66 @@ fn think_one(world: &mut World, id: u64) -> Result<(), String> {
         update_pitch_orient(world, id);
     }
     let now = origin_of(world, id);
-    // The engine notifies every frame the actor is in its goal. Its path runs
-    // on until the player's body stops it; with no such collision here the
-    // path ends at the goal (`t6.actors.path_following`).
+    // The engine notifies every frame the actor is in its goal.
     if in_goal(world, id, now, goal) {
-        let state = movement(world, id);
-        state.path.clear();
-        state.follow = None;
-        state.arrival = None;
         raise(world, Value::Object(id), "goal", Vec::new());
     }
     Ok(())
+}
+
+/// The engine keeps a path through a new goal while the path's end stays in
+/// the goal and no traversal lies ahead on it.
+fn keeps_path(world: &mut World, id: u64, goal: [f32; 3]) -> bool {
+    let state = movement(world, id);
+    let Some(end) = state.path_goal.filter(|_| state.follow.is_some()) else {
+        return false;
+    };
+    if state.follow.as_ref().is_some_and(Follow::truncated) {
+        return false;
+    }
+    let path = state.path.clone();
+    if !in_goal(world, id, end, goal)
+        || (0..path.len()).any(|index| negotiation(world, &path, index).is_some())
+    {
+        return false;
+    }
+    movement(world, id).planned = true;
+    true
+}
+
+/// A second's debug line: how many pairs of living actors stand closer than
+/// their bodies' width, and the closest.
+fn report_crowd(world: &mut World, actors: &[u64]) {
+    const BODY_SQ: f32 = 900.0;
+    let now = super::super::super::players::now_ms(world);
+    if now % 1000 >= i64::from(crate::MATCH_TICK_MS) {
+        return;
+    }
+    let mut spots = Vec::with_capacity(actors.len());
+    for &id in actors {
+        if alive(world, id) {
+            spots.push(origin_of(world, id));
+        }
+    }
+    let mut overlaps = 0;
+    let mut closest = f32::MAX;
+    for (index, a) in spots.iter().enumerate() {
+        for b in &spots[index + 1..] {
+            if (a[2] - b[2]).abs() < PILE_TOUCH_HEIGHT {
+                let dist = flat_sq(*a, *b);
+                closest = closest.min(dist);
+                overlaps += usize::from(dist < BODY_SQ);
+            }
+        }
+    }
+    if closest < f32::MAX {
+        diag::debug!(
+            Sim,
+            "crowd: {} actors, {overlaps} pairs within a body, closest {:.0}",
+            spots.len(),
+            closest.sqrt()
+        );
+    }
 }
 
 /// Every server frame: each living actor's path, animscript and walk.
@@ -1046,6 +1512,7 @@ fn think(world: &mut World) {
     }
     super::corpse::forget_deleted(world);
     super::corpse::think(world);
+    report_crowd(world, &actors);
     for id in actors {
         // The death state (`AIS_DEATH`): steps the death clip's root motion
         // while its animscript runs; once it ends the actor becomes a corpse.
@@ -1082,9 +1549,14 @@ fn set_goal(world: &mut World, id: u64, goal: [f32; 3]) {
 
 pub(super) fn replan(world: &mut World, id: u64) {
     let state = movement(world, id);
-    state.path.clear();
-    state.follow = None;
+    drop_path(state);
     state.planned = false;
+}
+
+/// `pushplayer`: `1` takes players' bodies out of the actor's move, `0` puts
+/// them back.
+pub(super) fn set_through_bodies(world: &mut World, id: u64, through: bool) {
+    movement(world, id).through_bodies = through;
 }
 
 pub(super) fn in_custom(world: &mut World, id: u64) -> bool {

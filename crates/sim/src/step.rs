@@ -2523,7 +2523,7 @@ impl ActorClip {
     }
 }
 
-fn alive_body_clips(world: &FrameWorld) -> Vec<PlayerBodyClip> {
+pub(crate) fn alive_body_clips(world: &FrameWorld) -> Vec<PlayerBodyClip> {
     let mut bodies: Vec<_> = world
         .client_ids_sorted()
         .into_iter()
@@ -2865,6 +2865,25 @@ pub(crate) fn script_mantle(
         world.link_player_standing_area(id);
     }
     Ok(available)
+}
+
+/// An actor's move stopped by the bodies given; one it starts inside and
+/// leaves does not hold it.
+pub(crate) fn actor_move_past_bodies(
+    hit: Trace,
+    bodies: &[PlayerBodyClip],
+    (start, end): ([f32; 3], [f32; 3]),
+    (mins, maxs): ([f32; 3], [f32; 3]),
+    tracemask: u32,
+) -> Trace {
+    let input = GroundTraceInput {
+        start,
+        end,
+        mins,
+        maxs,
+        tracemask,
+    };
+    clip_move_to_players(hit, bodies, u16::MAX, true, input)
 }
 
 fn clip_move_to_players(

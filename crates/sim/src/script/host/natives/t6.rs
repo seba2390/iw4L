@@ -48,6 +48,7 @@ mod sentry;
 pub(crate) use sentry::zone_penetration_depth;
 mod sound;
 mod stats;
+mod team_move;
 mod turret;
 mod usable;
 pub(crate) mod vehicle;
