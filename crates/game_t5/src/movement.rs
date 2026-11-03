@@ -84,6 +84,41 @@ fn gap_unknown(gap: Gap) -> &'static Unknown {
     }
 }
 
+/// Black Ops' multiplayer server broadcasts a player's sprinting and running
+/// steps, jumps and landings as `footstep` and walking steps as
+/// `footsteplite`, to the opposing team's AI; a crouching player and one with
+/// Ninja (`specialty_quieter`) raises none. Crouched and prone steps and
+/// fall-damage landings have no AI event.
+fn step_ai_events(
+    ps: &PlayerState,
+    signals: &[MoveSignal],
+    world: &mut dyn game_api::fire::FireWorld,
+) {
+    use game_api::fire::{AiEvent, AiPointEvent};
+    if ps.pm_flags & pm_flags::DUCKED != 0
+        || movement_t5::perks::mp::has(ps, movement_t5::perks::mp::QUIETER)
+    {
+        return;
+    }
+    for signal in signals {
+        let MoveSignal::Event { event, .. } = *signal else {
+            continue;
+        };
+        let kind = match event {
+            event::FOOTSTEP_SPRINT | event::FOOTSTEP_RUN | event::JUMP => AiPointEvent::Footstep,
+            event::FOOTSTEP_WALK => AiPointEvent::FootstepLite,
+            e if (event::LAND..event::FALL_DAMAGE).contains(&e) => AiPointEvent::Footstep,
+            _ => continue,
+        };
+        world.ai_event(AiEvent::Point {
+            originator: ps.client_num,
+            kind,
+            teams: None,
+            origin: ps.origin,
+        });
+    }
+}
+
 fn events_unknown() -> &'static Unknown {
     unknown!(
         "t5.movement.events",
@@ -1136,6 +1171,9 @@ impl PlayerMovement for T5Movement {
         } else {
             [ps.viewangles[0], ps.viewangles[1]]
         };
+        if !self.zombies {
+            step_ai_events(&ps, signals, world);
+        }
         crate::fire::server_events(
             &ps,
             was.aim_spread_scale,
