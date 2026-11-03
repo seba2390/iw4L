@@ -79,6 +79,7 @@ fn throwback_weapon(missile: &GameMissile, world: &dyn FireWorld) -> bool {
 fn candidate(ps: &PlayerState, missile: &GameMissile, world: &mut dyn FireWorld) -> bool {
     let state = State::read(&missile.game);
     if ps.water_level >= UNDERWATER
+        || state.dud
         || !matches!(state.link, LinkTag::None)
         || !throwback_weapon(missile, world)
     {

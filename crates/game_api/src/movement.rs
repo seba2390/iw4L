@@ -1008,6 +1008,12 @@ pub trait PlayerMovement: Sync {
     /// Resets a missile's detonation time (`resetmissiledetonationtime`):
     /// `after_ms` from now when given, else its weapon's fuse time when it
     /// has timed detonation.
+    /// Marks a grenade a dud (`makeGrenadeDud`), where the game's weapons run
+    /// here.
+    fn make_missile_dud(&self, missile: &mut crate::fire::GameMissile) {
+        let _ = missile;
+    }
+
     fn reset_missile_detonation_time(
         &self,
         _missile: &mut crate::fire::GameMissile,
