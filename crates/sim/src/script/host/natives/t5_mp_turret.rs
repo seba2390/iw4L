@@ -23,7 +23,7 @@ const FLAG_TOW: u32 = 0x2_0000;
 /// carried, just put down.
 const EF_SENTRY: u32 = 0x1;
 const EF_TOW: u32 = 0x2;
-const EF_CARRIED: u32 = 0x8;
+pub(super) const EF_CARRIED: u32 = 0x8;
 const EF_PLACED: u32 = 0x20;
 
 /// The player's weapon flags: carrying a turret, and it cannot be put

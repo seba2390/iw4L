@@ -78,10 +78,6 @@ const PERKS: [&str; 52] = [
 /// `reconnaissance`.
 const ENGINE_PERKS: [&str; 2] = ["specialty_grenadepulldeath", "specialty_reconnaissance"];
 
-/// Hacker: its client rule swaps an enemy turret's model, which is not run;
-/// the detect models of claymores and the like are the scripts' own.
-const HACKER: &str = "specialty_showenemyequipment";
-
 /// Each player's perk bits, by client number. The client's player info
 /// takes a copy every frame.
 #[derive(Resource, Clone, Debug, Default)]
@@ -150,12 +146,6 @@ pub(crate) fn register(registry: &mut NativeRegistry) {
             diag::warn!(
                 Sim,
                 "t5.mp.perk_effects: {perk}'s effect in Black Ops' own movement and weapon code is not applied"
-            );
-        }
-        if name.eq_ignore_ascii_case(HACKER) {
-            diag::warn!(
-                Sim,
-                "t5.mp.hacker_turret_model: an enemy turret does not draw with its detect model"
             );
         }
         Ok(Value::Undefined)
