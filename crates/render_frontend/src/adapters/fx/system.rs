@@ -2433,7 +2433,10 @@ fn drain_weapon_fire_fx(
     mut cursor: ResMut<FxJournalCursor>,
     mut combat: ResMut<CombatFxDump>,
     mut ping_bus: ResMut<WeaponFirePingBus>,
-    fx_world: FxSceneAccess,
+    (fx_world, poses): (
+        FxSceneAccess,
+        Option<Res<crate::adapters::anim::dobj_pose::HostDObjPoseFrame>>,
+    ),
 ) {
     let (view, settings) = view_settings;
     for fire in pending.read().map(|record| record.0) {
@@ -2484,10 +2487,26 @@ fn drain_weapon_fire_fx(
             .ok()
             .filter(|(runtime, _)| runtime.in_next_snap())
             .map(|(_, bolts)| bolts);
+        // A shooter with no player body (a turret) flashes at its own
+        // model's `tag_flash`.
+        let own_flash = || {
+            let poses = poses.as_deref()?;
+            let dobj = u32::try_from(identities.get(fire.entity).ok()?.number()).ok()?;
+            let bone = poses.bone_named(dobj, "tag_flash")?;
+            let resolved = poses.resolve_live_bolt(dobj, bone)?;
+            Some(FxBoltTarget {
+                dobj,
+                bone,
+                centity_teleport: resolved.centity_teleport,
+                orientation: resolved.orientation?,
+            })
+        };
         let flash_target = if player_view {
             fpv_bolts.flash[hand]
-        } else {
+        } else if world_bolts.get(fire.entity).is_ok() {
             remote_bolts.and_then(|bolts| bolts.flash)
+        } else {
+            own_flash()
         };
         let brass_target = if player_view {
             fpv_bolts.brass[hand]
