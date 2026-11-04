@@ -294,7 +294,16 @@ pub fn run(root: &Path, bin: &Path, scenario: &Rounds) -> Result<Verdict, String
     }
     manifest["script_faults"] = faults.clone().into();
 
-    let log_text = std::fs::read_to_string(&log).unwrap_or_default();
+    let log_text = match std::fs::read_to_string(&log) {
+        Ok(text) => text,
+        Err(error) => {
+            failures.push(format!(
+                "the log {} could not be read: {error}",
+                log.display()
+            ));
+            String::new()
+        }
+    };
     let rounds = rounds_seen(&log_text);
     match rounds["max_round"].as_i64() {
         Some(round) if round >= scenario.min_round => {}
