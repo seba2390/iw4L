@@ -87,7 +87,14 @@ pub(crate) fn client_vehicle(world: &mut World, id: u64) -> Option<ClientVehicle
     let drive = world
         .get_resource::<GroundDrives>()
         .and_then(|drives| drives.0.get(&id).copied())
-        .unwrap_or_default();
+        // A car nobody has driven yet stands still on nothing.
+        .unwrap_or(GroundDrive {
+            speed: 0.0,
+            throttle: 0.0,
+            surface: None,
+            sliding: false,
+            peeling: false,
+        });
     let driver = super::t5_mp_heli::driver_of(world, id);
     let (max_speed, reverse_scale, class) =
         motion.map_or((0.0, 0.0, 0), |m| (m.max_speed, m.reverse_scale, m.class));
