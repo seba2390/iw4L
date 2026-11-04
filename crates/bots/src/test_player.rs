@@ -256,6 +256,8 @@ const REVIVE_STAND_OFF: f32 = 32.0;
 /// stands this high above its origin.
 const RIDE_AFTER_MS: i32 = 15_000;
 const BUS_FLOOR: f32 = 36.0;
+/// How far above the bus floor the test player is set down to board.
+const BOARD_DROP: f32 = 12.0;
 /// The perk the use test buys.
 const QUICK_REVIVE: &str = "specialty_quickrevive";
 /// The eye height it plans with before it stands there.
@@ -1888,7 +1890,8 @@ pub(crate) fn drive_test_player(
             .map_or(RIDE_AFTER_MS, |s| s * 1000);
         if !test.boarded && clock.time_ms - since_ms >= after {
             test.boarded = true;
-            let stand = [bus[0], bus[1], bus[2] + BUS_FLOOR + 1.0];
+            // A little above it, to drop onto it however the bus leans.
+            let stand = [bus[0], bus[1], bus[2] + BUS_FLOOR + BOARD_DROP];
             diag::info!(Sim, "test player: boarding the bus at {}", fmt_point(stand));
             if let Err(error) = actions.push(
                 id,

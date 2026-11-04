@@ -116,6 +116,8 @@ pub enum MenuCommandKind {
     PopUp(MenuPopUp),
     /// Every centre popup is taken away (Black Ops' `clearCenterPopups`).
     HidePopUps,
+    /// A line for the HUD's centre print (Black Ops' client `Center Print`).
+    CenterPrint(PopUpText),
 }
 
 #[derive(Clone, Debug, PartialEq)]

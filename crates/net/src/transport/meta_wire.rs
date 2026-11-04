@@ -1352,6 +1352,10 @@ fn encode_client_meta(out: &mut WireWriter, meta: &ClientSnapshotMeta) {
                 put_text(out, &popup.sound);
             }
             sim::MenuCommandKind::HidePopUps => out.put_u8(5),
+            sim::MenuCommandKind::CenterPrint(text) => {
+                out.put_u8(6);
+                put_popup_text(out, text);
+            }
         }
     }
     match &meta.location_selection {
@@ -1694,6 +1698,7 @@ fn decode_client_meta(input: &mut WireReader<'_>) -> Result<ClientSnapshotMeta, 
                 })
             }
             5 => sim::MenuCommandKind::HidePopUps,
+            6 => sim::MenuCommandKind::CenterPrint(get_popup_text(input, 0)?),
             _ => return Err(WireError::Malformed("bad menu command tag")),
         };
         menu_commands.push(sim::MenuCommand { serial, kind });

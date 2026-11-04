@@ -605,23 +605,18 @@ Each open section names the issue that works it.
       keeps beyond those it shows is not read. A print's wrap measures the
       window's font at its text scale, in virtual pixels; the unit Black
       Ops' wrap measures in is not compared.
-- [ ] **V** `t5.hud.player_card_emblem`: the kill player card has no gamercard
-      background or emblem (`emblemPlayerBackgroundMaterial`, owner draw 389),
-      and a Second Chance revive (`syrette_mp`) does not centre-print
-      `CGAME_YOUREVIVED` / `CGAME_YOUWEREREVIVED` (#854).
+- [ ] **V** `t5.hud.player_card_emblem`: the kill player card's gamercard
+      background (menu function 401, `emblemPlayerBackgroundMaterial`) is left
+      to the item's own; its handler is not read. Owner draw 389 is settled:
+      Black Ops draws the image it fetched for the player's xuid from the online
+      service, and without one nothing, as here.
 - [ ] **V** `t5.hud.mp_visibility_bits` (`GameCodeHud::visibility_bit`):
-      Black Ops' client rebuilds 64 HUD visibility bits a frame; the script
-      UI flags (0–3), the match flags (4–16), demo playback (19, 20, 31,
-      32: never in a match; 37 is never set), the killcam (21), the
-      location selector (22, 30: never open yet, #658), the player-flag
-      bits (25, 47, 48, and 28 when the player flags set it), the vehicle
-      view (27), the teams (38–41), the compass (42), the objective icon
-      and obituary dvars (43, 46), the scoreboard (44) and the popups' bit
-      (45) are answered. The rest are not (a UI menu open 24, scoped aim
-      33, the guided missile 28/50, the flash 23, …),
-      and bit 45 does not test the scoped sniper view that hides popups.
-- [ ] **V** `t5.hud.killcam_visibility`: during a killcam the popups' bit
-      (45) is not answered (#667).
+      Black Ops' client rebuilds 64 HUD visibility bits a frame, and every bit a
+      HUD menu asks for is answered (Closed). What differs: bit 23 reads the
+      flash and shell shock's screen, not the second test on the next snapshot
+      (its fields not read); bit 26's sight overlay takes the zoom in window
+      both ways; bits 28 and 50 take the guided weapon's entity field as none.
+
 - [ ] **V** The scripts' class menu (`changeclass`, from `ui_mp`) opens on
       connect and its responses (`custom1`…, the presets) reach the
       scripts' `menuresponse`, but most of its items do not paint: the
@@ -715,6 +710,14 @@ Each open section names the issue that works it.
       rank's name types itself out (`popInLetterFXTime` 40 ms, decaying at 4 s).
       A game mode's description names no game type (the client's string is
       not read). Only a ranked match reaches this by script.
+- [x] **V** Multiplayer visibility bits (#854), `t5.hud.killcam_visibility`: the
+      demo bits (17, 18), flash (23), a UI menu holding the keys (24), the sight
+      overlay (26), the guided missile (28, 50), a fuel tank weapon (29), a
+      scoped sight (33), the wager flag (49); popups (45) by the rule of
+      Black Ops' client, in a killcam too. An open menu hides the HUD behind it.
+- [x] **V** A Second Chance revive's centre print (#854): `CGAME_YOUREVIVED`,
+      `CGAME_YOUWEREREVIVED`, owner draw 90, `cg_centertime` 5 s, the last 100 ms
+      fading. The obituary is the only thing that sets it.
 
 - [x] **V** Crosshair names and colour (#853): a line of 8192 units along the
       view, stopped by the world, finds the player under the crosshair; an

@@ -94,6 +94,11 @@ impl Runner<'_, '_> {
         self.animate(&popup.menu, &popup.item, "Start", 0);
     }
 
+    /// The client's centre print: its line, and the time it started.
+    pub(crate) fn center_print(&mut self, text: &sim::PopUpText) {
+        self.menus.center_print = Some((self.world.ms, self.popup_text(text)));
+    }
+
     /// `CG_HidePopUps`: each centre popup's `Hide`, at once.
     pub(crate) fn hide_popups(&mut self) {
         for item in CENTRE_POPUPS {
