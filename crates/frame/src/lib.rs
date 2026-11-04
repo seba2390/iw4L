@@ -1,3 +1,9 @@
+/// The material a menu draws a game's extra camera's view with.
+pub const EXTRA_CAMERA_MATERIAL: &str = "extracam2d";
+/// That view as a picture: its renderer binds the camera's target to this.
+pub const EXTRA_CAMERA_IMAGE: bevy::asset::Handle<bevy::image::Image> =
+    bevy::asset::uuid_handle!("2d7cc77e-016c-423e-8b94-557801e36676");
+
 pub mod scope;
 pub use scope::{
     InMatch, InRound, MatchScope, RoundPhase, ScopeApp, ScopeEpoch, ScopePlugin, ScopeRegistry,

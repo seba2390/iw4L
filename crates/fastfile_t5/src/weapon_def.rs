@@ -314,6 +314,12 @@ impl<'a> WeaponDefView<'a> {
         self.def[0x54f] != 0
     }
 
+    /// The flag at 0x639: an action slot's button takes the weapon however
+    /// little ammo it has.
+    pub fn slot_ignores_ammo(&self) -> bool {
+        self.def[0x639] != 0
+    }
+
     /// `unlimitedAmmo`
     pub fn unlimited_ammo(&self) -> bool {
         self.def[0x358] != 0

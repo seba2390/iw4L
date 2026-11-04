@@ -575,6 +575,8 @@ pub(crate) struct ClientOutput {
     pub(crate) spike_camera: (bool, [f32; 3], [f32; 3]),
     /// The server's camera spike toggle for the local client.
     pub(crate) spike_toggled: bool,
+    /// The camera spike's view shows static (`SetExtraCamStatic`).
+    pub(crate) spike_static: bool,
     next_vision_call: u32,
     /// Dynamic entities spawned by script (`CreateDynEntAndLaunch`), by serial.
     pub(crate) spawned_dyn_ents: std::collections::VecDeque<(u32, crate::SpawnedDynEntLaunch)>,
@@ -1096,6 +1098,7 @@ pub(crate) fn advance_client_scripts(server: &mut World) {
                 );
             }
             let extra_camera = super::host::natives::t5_client::extra_camera(&mut client.world);
+            let extra_camera_static = client.world.resource::<ClientOutput>().spike_static;
             let ui3d_windows = client.world.resource::<ClientOutput>().ui3d_windows;
             let alternate_aim = client.world.resource::<ClientOutput>().alternate_aim;
             let scrambler = client.world.resource::<ClientOutput>().scrambler.screen();
@@ -1112,6 +1115,7 @@ pub(crate) fn advance_client_scripts(server: &mut World) {
                     .view_effects
                     .client_screen;
                 screen.extra_camera = extra_camera;
+                screen.extra_camera_static = extra_camera_static;
                 screen.ui3d_windows = ui3d_windows;
                 screen.alternate_aim = alternate_aim;
                 (
