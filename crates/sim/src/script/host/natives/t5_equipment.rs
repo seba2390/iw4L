@@ -60,6 +60,11 @@ pub(crate) fn camera_spike_toggled(world: &World, client: u32) -> bool {
 }
 
 pub(crate) fn register(registry: &mut NativeRegistry) {
+    // Both share a handler that returns at once in BlackOpsMP.exe.
+    registry.register(Function, "sendranks", |_, _, _| Ok(Value::Undefined));
+    registry.register(Function, "setplayerteamrank", |_, _, _| {
+        Ok(Value::Undefined)
+    });
     // `playBattleChatterToTeam(alias, enemyAlias, team[, skip])`: a temp sound
     // on the speaker heard by that team's players.
     registry.register(
