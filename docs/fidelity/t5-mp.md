@@ -163,11 +163,8 @@ Each open section names the issue that works it.
 - [ ] **G** Lethal, tactical and equipment items (`_weaponobjects.gsc`):
       `t5.mp.launch_entity`: `launch` only reaches a missile (no base game
       script launches anything else). `t5.mp.fakefire_shots`: a decoy's burst
-      arrives as one call, so it sounds shorter than its shot count; the
-      camera spike
-      (`ActionSlotOneButtonPressed`, `SetCameraSpikeActive`, the extra
-      camera); concussion and the tactical insertion are not verified in
-      a run; a smoke or gas grenade's own lingering smoke entity (Black
+      arrives as one call, so it sounds shorter than its shot count; a smoke or
+      gas grenade's own lingering smoke entity (Black
       Ops keeps its explosion entity 61 s) is `t5.weapons.grenade`.
       `t5.mp.grenade_stick`: a sticking grenade that strikes a dead
       player (Black Ops links it to the player's body) or a vehicle
@@ -507,12 +504,8 @@ Each open section names the issue that works it.
       and run on `mp_nuked`. Not implemented yet, each faulting the thread
       that calls it: the vehicle queries (#660).
 - [ ] **V** `t5.csc.extra_camera`: the camera spike's extra camera draws its
-      view while the client scripts have it on, and `IsCameraSpikeToggled`
-      reads the server's `SetCameraSpikeActive`. Open: its field of view stays
-      65 (its scripts set none and Black Ops' default is not read), the
-      static (`SetExtraCamStatic`) does not draw, and the sound listener does
-      not move to the spike while toggled. Not verified in a run (#848): the placing and the view
-      on screen.
+      view in the `spike_cam` menu while toggled. Open: its view has no sky
+      (black), and the sound listener does not move to the spike while toggled.
 - [ ] **V** `t5.csc.filters`: the client keeps what the filter and overlay
       builtins check (`map_material`'s 64 slots; three filters of 16
       passes, three overlays, with Black Ops' ranges and usage errors), but
@@ -625,7 +618,7 @@ Each open section names the issue that works it.
       view (27), the teams (38–41), the compass (42), the objective icon
       and obituary dvars (43, 46), the scoreboard (44) and the popups' bit
       (45) are answered. The rest are not (a UI menu open 24, scoped aim
-      33, the camera spike and guided missile 28/34/50, the flash 23, …),
+      33, the guided missile 28/50, the flash 23, …),
       and bit 45 does not test the scoped sniper view that hides popups.
 - [ ] **V** `t5.hud.killcam_visibility`: during a killcam the popups' bit
       (45) is not answered (#667).
@@ -726,6 +719,13 @@ Each open section names the issue that works it.
       or with `specialty_noname` is not marked. His name fades by
       `cg_enemyNameFadeIn` and `Out` or `cg_friendlyNameFadeOut`; the crosshair
       takes the team colours (`cg_crosshairEnemyColor`).
+
+- [x] **V** The camera spike, concussion and tactical insertion (#848): each
+      ran in a match. The spike places, shows its view top left (bits 34 to 36,
+      static, `extracam2d` in a menu) and toggles; an empty equipment slot does
+      not raise it (the client's `+actionslot`); a thrown item's `getGroundEnt`
+      no longer faults. An insertion respawns its owner. A concussion washes
+      the screen.
 
 - [x] **V** `t5.csc.animate_ui`, `t5.mp.wager_popup` (#852): the client
       script's `AnimateUI` and the medal, rank up, wager, killstreak and game

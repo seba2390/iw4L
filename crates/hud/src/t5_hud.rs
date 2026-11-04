@@ -30,6 +30,9 @@ const CG_PLAYER_WEAPON_AMMO_CLIP: i32 = 120;
 const CG_PLAYER_WEAPON_AMMO_CLIP_DUAL_WIELD: i32 = 121;
 const CG_PLAYER_WEAPON_AMMO_STOCK: i32 = 122;
 const CG_PLAYER_WEAPON_LOW_AMMO_WARNING: i32 = 123;
+/// The material expression of the camera spike's static: `compass_static`.
+const EXTRA_CAMERA_STATIC_EXP: &str = "t5 s:636f6d706173735f737461746963";
+
 /// Black Ops' popup owner draws: a line of text, the rank's name (which Black
 /// Ops types out letter by letter) and the rank's icon.
 const CG_POPUP_TEXT: i32 = 336;
@@ -99,6 +102,8 @@ pub(crate) struct T5HudState<'a> {
     pub selector: Option<T5Selector>,
     /// The visibility bits the scripts set (UI and match flags).
     pub ui_flags: u32,
+    /// The extra camera is on, and its view shows static.
+    pub extra_camera: [bool; 2],
 }
 
 /// The game's compass for a frame: its rules, where its map lies, the map's
@@ -668,6 +673,7 @@ impl ExprHost for T5HudHost<'_, '_> {
             ui_flags: self.state.ui_flags,
             dvar: &|name| self.state.dvars.float(name),
             selecting_location: self.state.selector.is_some(),
+            extra_camera: self.state.extra_camera,
         };
         rule(bit, &view)
             .map(i32::from)
@@ -2618,6 +2624,12 @@ pub(crate) fn paint(
         let mut hook =
             |args: OwnerDrawArgs<'_>, frame: &mut ChromeFrame| paint_owner(&host, args, frame);
         let overrides = menus.and_then(|menus| crate::menus::hud_item_overrides(menus, &menu.name));
+        // The camera spike's static: its material shows only while the extra
+        // camera's static is on.
+        let no_static = !state.extra_camera[1];
+        let skip = move |item: &asset_game::MenuItem| {
+            no_static && item.material_exp == EXTRA_CAMERA_STATIC_EXP
+        };
         let assets = ChromeAssets {
             catalog: Some(catalog),
             localize,
@@ -2634,6 +2646,7 @@ pub(crate) fn paint(
                 Some(&mut hook),
                 crate::chrome::ChromeMenuOverrides {
                     items,
+                    skip: Some(&skip),
                     ..Default::default()
                 },
             ),

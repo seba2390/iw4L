@@ -368,6 +368,8 @@ pub struct VisibilityView<'a> {
     pub dvar: &'a dyn Fn(&str) -> Option<f32>,
     /// The location selector is open.
     pub selecting_location: bool,
+    /// The extra camera is on, and its view shows static.
+    pub extra_camera: [bool; 2],
 }
 
 /// What a game's hint or message owner draw (its number) shows this frame.

@@ -835,6 +835,15 @@ fn mp_visibility_bit(
             crate::movement::unpack(&mut player).0.e_flags & e_flags::VEHICLE_VIEW != 0
         }
         28 if other_flags() & 0x18 != 0 => true,
+        // The camera spike's view; the player's other crosshair hides it.
+        34 => {
+            let [on, is_static] = view.extra_camera;
+            let mut player = *view.player;
+            (on || is_static)
+                && crate::movement::unpack(&mut player).0.e_flags & EF_OTHER_CROSSHAIR == 0
+        }
+        35 => view.extra_camera[0],
+        36 => view.extra_camera[1],
         38 => view.team == 0,
         39 => view.team == 2,
         40 => view.team == 1,

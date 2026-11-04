@@ -1570,7 +1570,13 @@ fn register_entity(registry: &mut NativeRegistry) {
         Ok(Value::Int(linked.into()))
     });
     registry.register(Method, "getgroundent", |world, receiver, _| {
-        let id = ClientId(player_id(world, receiver)?);
+        // Another entity's own ground: a thrown item's matters only on a
+        // vehicle, the one thing the scripts ask of it, and none exist (#660).
+        let Ok(id) = player_id(world, receiver) else {
+            super::engine::entity_id(world, receiver)?;
+            return Ok(Value::Undefined);
+        };
+        let id = ClientId(id);
         let number = FrameWorld::from_world(world)
             .player(id)
             .map_or(-1, |ps| ps.ground_entity_num);

@@ -1047,6 +1047,18 @@ impl PlayerMovement for T5Movement {
         pack(player, &mut ps, &mut last);
     }
 
+    /// Equipment that has run out stays put (the client's `+actionslot`).
+    fn action_slot_takes_empty(&self, weapon: &game_api::movement::GameWeapon) -> bool {
+        let Some(def) = fastfile_t5::weapon_def::WeaponDefView::new(&weapon.def, &weapon.variant)
+        else {
+            return true;
+        };
+        const OFFHAND_SLOT_EQUIPMENT: i32 = 3;
+        def.offhand_slot() != OFFHAND_SLOT_EQUIPMENT
+            || def.unlimited_ammo()
+            || def.slot_ignores_ammo()
+    }
+
     fn cursor_hints(&self) -> &'static [&'static str] {
         &[
             "HINT_NONE",

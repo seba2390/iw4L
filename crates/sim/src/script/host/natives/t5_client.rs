@@ -1792,8 +1792,9 @@ pub(crate) fn extra_camera(world: &mut World) -> Option<game_api::ExtraCamera> {
 /// Black Ops' extra camera: one client entity whose view the renderer draws
 /// for the materials that show it. Each native takes its arguments in the
 /// game's order: the count, then the local client.
-/// The camera spike's field of view, which its scripts do not set.
-const SPIKE_CAMERA_FOV: f32 = 65.0;
+/// The camera spike's field of view (`cg_fovExtraCam`'s default): its scripts
+/// set none.
+const SPIKE_CAMERA_FOV: f32 = 30.0;
 
 /// `GetInKillcam` and `SetFlagAsAway`, which Black Ops multiplayer's client
 /// keeps in its own state: the client VM here knows neither a killcam nor
@@ -1914,12 +1915,15 @@ fn register_extra_camera(registry: &mut NativeRegistry) {
         world.resource_mut::<ClientOutput>().spike_camera.0 = int(args, 1)? != 0;
         Ok(Value::Undefined)
     });
-    registry.register(Function, "setextracamstatic", |_, _, args| {
+    registry.register(Function, "setextracamstatic", |world, _, args| {
         if args.len() != 2 {
-            return Err("Incorrect number of parameters passed to SetExtraCamStatic()\nUSAGE: SetExtraCamStatic( <localClientNum>, <active> )\n".into());
+            return Err(
+                "Incorrect number of parameters passed to SetExtraCamStatic()\nUSAGE: SetExtraCamStatic( localClientNum, static )\n"
+                    .to_owned(),
+            );
         }
         local_index(args)?;
-        int(args, 1)?;
+        world.resource_mut::<ClientOutput>().spike_static = int(args, 1)? != 0;
         Ok(Value::Undefined)
     });
     registry.register(Function, "setextracamorigin", |world, _, args| {
