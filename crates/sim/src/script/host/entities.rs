@@ -733,7 +733,10 @@ impl RoundScript {
                 // A game that lists its engine's entity fields keeps only
                 // those and its listed keys (a struct only the latter).
                 let strict = entity_fields.map(|fields| {
-                    let own = fields.get(&key).filter(|_| classname != "script_struct");
+                    let own = fields
+                        .get(&format!("{classname}.{key}"))
+                        .or_else(|| fields.get(&key))
+                        .filter(|_| classname != "script_struct");
                     own.or_else(|| keys.get(&key))
                 });
                 let value = match key.as_str() {

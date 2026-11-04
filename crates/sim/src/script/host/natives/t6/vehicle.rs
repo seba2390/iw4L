@@ -16,9 +16,9 @@ use std::collections::BTreeMap;
 
 /// Units a second in a mile an hour.
 const MPH: f32 = 17.6;
-/// The speed a vehicle drives at when no node it has passed sets one
-/// (`t6.vehicles.path`).
-const DEFAULT_MPH: f32 = 30.0;
+/// The speed (units a second) an end node with none of its own takes, as
+/// the engine's path build gives it.
+const END_SPEED: f32 = 1.0;
 /// The least travel still driven in a tick.
 const MIN_STEP: f32 = 1e-3;
 /// `sighttracepassed`'s masks, without and with bodies.
@@ -122,28 +122,22 @@ pub(super) fn velocity(world: &mut World, id: u64) -> Option<[f32; 3]> {
     }
 }
 
-/// The node a node's `target` names.
-fn next_node(world: &mut World, node: u64) -> Option<u64> {
-    let target = text(world, node, "target")?;
-    let ids: Vec<u64> = world
-        .resource::<RoundScript>()
-        .entities
-        .iter()
-        .filter(|(_, entity)| entity.classname.starts_with("info_vehicle_node"))
-        .map(|(id, _)| *id)
-        .collect();
-    ids.into_iter()
-        .find(|&id| text(world, id, "targetname").as_deref() == Some(target.as_str()))
-}
-
-/// A node's `speed` in units a second, when it sets one.
-fn node_speed(world: &mut World, node: u64) -> Option<f32> {
-    match field(world, node, "speed") {
-        Value::Int(n) => Some(n as f32 * MPH),
-        Value::Float(f) => Some(f * MPH),
-        Value::String(text) => text.trim().parse::<f32>().ok().map(|mph| mph * MPH),
+/// A node key read as a number, when the node has it.
+fn key_number(world: &mut World, node: u64, key: &str) -> Option<f32> {
+    match field(world, node, key) {
+        Value::Int(n) => Some(n as f32),
+        Value::Float(f) => Some(f),
+        Value::String(text) => text.trim().parse::<f32>().ok(),
         _ => None,
     }
+}
+
+/// The speed a vehicle's path gives it where it is: the two nodes' speeds
+/// blended by how far it is between them, as the engine's path step does.
+fn path_speed(links: &NodeLinks, path: Drive) -> f32 {
+    let speed = |node: u64| links.speed.get(&node).copied().unwrap_or(END_SPEED);
+    let (from, to) = (speed(path.from), speed(path.to));
+    from + (to - from) * path.t.clamp(0.0, 1.0)
 }
 
 fn vehicle(world: &mut World, receiver: &Value) -> Result<u64, String> {
@@ -352,7 +346,7 @@ fn ease(vehicles: &mut PathVehicles, id: u64, seconds: f32) -> f32 {
         .get(&id)
         .or_else(|| vehicles.speed.get(&id))
         .copied()
-        .unwrap_or(DEFAULT_MPH * MPH);
+        .unwrap_or(END_SPEED);
     let target = vehicles.max.get(&id).map_or(target, |max| target.min(*max));
     let eases = vehicles.held.contains_key(&id) || vehicles.resuming.contains(&id);
     let current = vehicles.current.get(&id).copied();
@@ -414,6 +408,9 @@ struct NodeLinks {
     next: BTreeMap<u64, u64>,
     prev: BTreeMap<u64, u64>,
     tension: BTreeMap<u64, f32>,
+    /// Each node's speed in units a second, filled as the engine's path
+    /// build does.
+    speed: BTreeMap<u64, f32>,
 }
 
 fn node_links(world: &mut World) -> std::sync::Arc<NodeLinks> {
@@ -432,6 +429,8 @@ fn node_links(world: &mut World) -> std::sync::Arc<NodeLinks> {
     let mut names = BTreeMap::new();
     let mut targets = BTreeMap::new();
     let mut own = BTreeMap::new();
+    let mut own_speed = BTreeMap::new();
+    let mut own_lookahead = BTreeMap::new();
     let mut at = BTreeMap::new();
     for &node in &nodes {
         if let Some(name) = text(world, node, "targetname") {
@@ -440,14 +439,15 @@ fn node_links(world: &mut World) -> std::sync::Arc<NodeLinks> {
         if let Some(target) = text(world, node, "target") {
             targets.insert(node, target);
         }
-        let set = match field(world, node, "tension") {
-            Value::Float(f) => Some(f),
-            Value::Int(n) => Some(n as f32),
-            Value::String(text) => text.parse().ok(),
-            _ => None,
-        };
-        if let Some(set) = set {
+        if let Some(set) = key_number(world, node, "tension") {
             own.insert(node, set);
+        }
+        // A key below 0 counts as none, as the engine's spawn reads it.
+        if let Some(mph) = key_number(world, node, "speed").filter(|&mph| mph >= 0.0) {
+            own_speed.insert(node, mph * MPH);
+        }
+        if let Some(set) = key_number(world, node, "lookahead").filter(|&set| set >= 0.0) {
+            own_lookahead.insert(node, set);
         }
         at.insert(node, origin(world, node));
     }
@@ -470,7 +470,13 @@ fn node_links(world: &mut World) -> std::sync::Arc<NodeLinks> {
             .sum::<f32>()
             .sqrt()
     };
-    let walk = |start: u64, links: &BTreeMap<u64, u64>| -> Option<(f32, f32)> {
+    // The nearest node either way along the links whose value counts, with
+    // its value and the path distance to it.
+    let walk = |start: u64,
+                links: &BTreeMap<u64, u64>,
+                values: &BTreeMap<u64, f32>,
+                counts: fn(f32) -> bool|
+     -> Option<(f32, f32)> {
         let mut node = start;
         let mut dist = 0.0;
         for _ in 0..nodes.len() {
@@ -480,37 +486,65 @@ fn node_links(world: &mut World) -> std::sync::Arc<NodeLinks> {
             }
             dist += gap(node, step);
             node = step;
-            if let Some(&set) = own.get(&node) {
+            if let Some(&set) = values.get(&node).filter(|&&set| counts(set)) {
                 return Some((set, dist));
             }
         }
         None
     };
-    let tension = nodes
-        .iter()
-        .map(|&node| {
-            let value = own.get(&node).copied().unwrap_or_else(|| {
-                match (walk(node, &prev), walk(node, &next)) {
-                    (Some((before, near)), Some((after, far))) => {
-                        before + (after - before) * near / (near + far)
+    // A node without its own value takes the nearest set values either way
+    // along the path, blended by the distance to each; one set value alone
+    // is taken as it is, and none is 0.
+    let fill = |values: &BTreeMap<u64, f32>, counts: fn(f32) -> bool| -> BTreeMap<u64, f32> {
+        nodes
+            .iter()
+            .map(|&node| {
+                let value = values.get(&node).copied().unwrap_or_else(|| {
+                    match (
+                        walk(node, &prev, values, counts),
+                        walk(node, &next, values, counts),
+                    ) {
+                        (Some((before, near)), Some((after, far))) if near + far > 0.0 => {
+                            before + (after - before) * near / (near + far)
+                        }
+                        (Some(_), Some(_)) => 0.0,
+                        (Some((only, _)), None) | (None, Some((only, _))) => only,
+                        (None, None) => 0.0,
                     }
-                    (Some((only, _)), None) | (None, Some((only, _))) => only,
-                    (None, None) => 0.0,
-                }
-            });
-            (node, value)
-        })
-        .collect();
+                });
+                (node, value)
+            })
+            .collect()
+    };
+    let tension = fill(&own, |_| true);
+    let mut speed = fill(&own_speed, |set| set >= 0.0);
+    let lookahead = fill(&own_lookahead, |set| set > 0.0);
+    // A node whose speed or lookahead is not above 0 ends the path, and an
+    // end node with no speed takes 1.
+    let mut next = next;
+    for &node in &nodes {
+        if speed[&node] <= 0.0 || lookahead[&node] <= 0.0 {
+            next.remove(&node);
+        }
+        if !next.contains_key(&node) && speed[&node] <= 0.0 {
+            speed.insert(node, END_SPEED);
+        }
+    }
+    prev.retain(|to, from| next.get(from) == Some(to));
     diag::debug!(
         Sim,
-        "vehicle nodes: {}, {} with their own tension",
+        "vehicle nodes: {}, with their own tension {}, speed {}, lookahead {}; {} end the path",
         nodes.len(),
-        own.len()
+        own.len(),
+        own_speed.len(),
+        own_lookahead.len(),
+        nodes.iter().filter(|node| !next.contains_key(node)).count()
     );
     let links = std::sync::Arc::new(NodeLinks {
         next,
         prev,
         tension,
+        speed,
     });
     world.insert_resource(Built(links.clone()));
     links
@@ -599,7 +633,7 @@ fn follow(
         left -= ((1.0 - path.t) * length).max(0.0);
         at = b;
         reached.push(path.to);
-        match next_node(world, path.to) {
+        match links.next.get(&path.to).copied() {
             Some(next) => {
                 path = Drive {
                     from: path.to,
@@ -632,7 +666,11 @@ fn drive(world: &mut World) {
         let Some(mut path) = world.resource::<PathVehicles>().driving.get(&id).copied() else {
             continue;
         };
-        let speed = ease(&mut world.resource_mut::<PathVehicles>(), id, seconds);
+        let links = node_links(world);
+        let along = path_speed(&links, path);
+        let mut vehicles = world.resource_mut::<PathVehicles>();
+        vehicles.speed.insert(id, along);
+        let speed = ease(&mut vehicles, id, seconds);
         if super::super::super::players::now_ms(world) % 1000 < i64::from(crate::MATCH_TICK_MS) {
             let at = origin(world, id);
             let angles = field(world, id, "angles");
@@ -641,15 +679,9 @@ fn drive(world: &mut World) {
                 "vehicle {id}: speed {speed:.0} at {at:.0?} angles {angles:?}"
             );
         }
-        let links = node_links(world);
         let start = origin(world, id);
         let (next, at, reached, ended) = follow(world, &links, path, start, speed * seconds);
         path = next;
-        for &node in &reached {
-            if let Some(mph) = node_speed(world, node) {
-                world.resource_mut::<PathVehicles>().speed.insert(id, mph);
-            }
-        }
         let was = origin(world, id);
         if (0..3).any(|i| (at[i] - was[i]).abs() > MIN_STEP) {
             let was_angles = match field(world, id, "angles") {
@@ -1018,13 +1050,14 @@ pub(super) fn register(registry: &mut NativeRegistry) {
                 .get(&id)
                 .ok_or("Can't start path on a vehicle that hasn't been attached")?,
         };
-        if let Some(speed) = node_speed(world, start) {
+        let links = node_links(world);
+        if let Some(&speed) = links.speed.get(&start) {
             world
                 .get_resource_or_insert_with(PathVehicles::default)
                 .speed
                 .insert(id, speed);
         }
-        match next_node(world, start) {
+        match links.next.get(&start).copied() {
             Some(next) => {
                 world
                     .get_resource_or_insert_with(PathVehicles::default)
