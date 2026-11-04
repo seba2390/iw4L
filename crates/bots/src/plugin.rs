@@ -9,6 +9,7 @@ use net::{
 use playerstate_iw4::buttons;
 use sim::{ClientAction, ClientLifecycle, SimWorld, Tick};
 
+use crate::intent::PathOutcome;
 use crate::nav::{self, NAV_HULL, NAV_SCHEMA, NavGraph, RouteStats};
 use crate::query::{Budgeted, QueryCounters, QuerySubsystem, TraceBudget};
 use crate::roster::{
@@ -497,6 +498,7 @@ fn think_bots(mut p: ThinkBots) {
     let count = p.roster.bots.len();
     let start = (p.clock.tick as usize / 2) % count.max(1);
     let mut controller_us = 0u64;
+    let mut bad_paths = Vec::new();
     let seed = p.roster.seed;
     for offset in 0..count {
         let bot = &mut p.roster.bots[(start + offset) % count];
@@ -567,6 +569,16 @@ fn think_bots(mut p: ThinkBots) {
                 if p.clock.time_ms < order.attack_until_ms {
                     cmd.buttons |= buttons::ATTACK;
                 }
+                // A script's goal it cannot get to.
+                if order.goal.is_some()
+                    && (brain.stuck(p.clock.tick)
+                        || matches!(
+                            brain.intent().path,
+                            PathOutcome::Unreachable | PathOutcome::IncompleteGraph
+                        ))
+                {
+                    bad_paths.push(bot.id);
+                }
             }
             cmd
         } else {
@@ -586,6 +598,9 @@ fn think_bots(mut p: ThinkBots) {
             }
         }
         p.cmds.push(bot.id, None, cmd, None);
+    }
+    for id in bad_paths {
+        p.world.0.report_bot_bad_path(id);
     }
     if count == 0 {
         return;

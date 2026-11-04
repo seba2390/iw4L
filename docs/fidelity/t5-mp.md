@@ -680,8 +680,12 @@ Each open section names the issue that works it.
       their loadout by `bot_give_loadout`), but IW4L's host bots move, aim
       and shoot them, not Black Ops' engine bot code. A script's goal
       (`setscriptgoal`, heard as `goal` on arrival) outranks the host bot's
-      own tasks, and `pressusebutton`/`pressattackbutton` reach its command;
-      `bad_path` never fires, the scripted enemy is only `getthreat`'s answer,
+      own tasks, fights included: on the way it shoots what it sees without
+      leaving the route (IW4L's own rule; the engine bot code was not read).
+      `pressusebutton`/`pressattackbutton` reach its command. `bad_path` is
+      IW4L's own rule, once a goal: no route, stuck, or within the goal's
+      radius but more than 72 units above or below it (a crate still in the
+      air, or on a roof). The scripted enemy is only `getthreat`'s answer,
       and the goal's straight line stands in for
       `getlookaheaddist`/`getlookaheaddir`. Bots fire rarely and seldom land kills on
       Black Ops' weapons (#709).
