@@ -31,9 +31,6 @@ const BULLET_MASK_CHARACTERS: u32 = 0x0280_e033;
 /// water contents.
 const WATER_REACH: f32 = 200.0;
 const CONTENTS_WATER: u32 = 0x20;
-/// How far below a platform's box a rider's feet may be (his origin rests
-/// on its floor brushes).
-const RIDER_SLACK: f32 = 2.0;
 /// Entity numbers below this are entities (the world's and none above).
 const ENTITYNUM_NONE: i32 = 1023;
 /// The most nodes a vehicle passes in one tick.
@@ -160,48 +157,24 @@ fn node(world: &mut World, value: &Value) -> Result<u64, String> {
     Ok(id)
 }
 
-/// Whether a player stands on a platform: on something (not in the air)
-/// inside the platform model's bounds, turned by its yaw
+/// Whether a player stands on a platform: the entity his movement trace
+/// stands him on is the platform's, as the engine's ground entity is
 /// (`t6.vehicles.platform`).
-fn riding(world: &mut World, platform: u64, client: u32, at: [f32; 3]) -> bool {
-    let Some(model) = text(world, platform, "model") else {
-        return false;
-    };
-    let center = origin(world, platform);
-    let yaw = match field(world, platform, "angles") {
-        Value::Vector(v) => v[1],
-        _ => 0.0,
-    };
-    let frame = crate::frame::FrameWorld::from_world(world);
-    if crate::script_player::ground_entity(&frame, crate::ClientId(client))
-        .is_none_or(|n| n == ENTITYNUM_NONE)
-    {
-        return false;
-    }
-    let Some((mid, half)) = frame
-        .model_capability(&model)
-        .flatten()
-        .and_then(|c| c.bounds)
+fn riding(world: &mut World, platform: u64, client: u32) -> bool {
+    let Some(number) = world
+        .resource::<RoundScript>()
+        .entities
+        .get(&platform)
+        .map(|entity| entity.number)
     else {
         return false;
     };
-    let (sin, cos) = (-yaw).to_radians().sin_cos();
-    let rel = [at[0] - center[0], at[1] - center[1], at[2] - center[2]];
-    let local = [
-        rel[0] * cos - rel[1] * sin,
-        rel[0] * sin + rel[1] * cos,
-        rel[2],
-    ];
-    (0..2).all(|i| (local[i] - mid[i]).abs() <= half[i])
-        && local[2] >= mid[2] - half[2] - RIDER_SLACK
-        && local[2] <= mid[2] + half[2]
+    let frame = crate::frame::FrameWorld::from_world(world);
+    crate::script_player::ground_entity(&frame, crate::ClientId(client)) == Some(number)
 }
 
 /// The platform a player rides, if any.
 fn platform_of(world: &mut World, client: u32) -> Option<u64> {
-    let at = crate::frame::FrameWorld::from_world(world)
-        .player(crate::ClientId(client))?
-        .origin;
     let platforms: Vec<u64> = world
         .get_resource::<PathVehicles>()?
         .platforms
@@ -210,7 +183,7 @@ fn platform_of(world: &mut World, client: u32) -> Option<u64> {
         .collect();
     platforms
         .into_iter()
-        .find(|&platform| riding(world, platform, client, at))
+        .find(|&platform| riding(world, platform, client))
 }
 
 /// The players standing on a moving platform ride it: moved with it and
@@ -222,28 +195,10 @@ fn carry_riders(world: &mut World, id: u64, from: [f32; 3], to: [f32; 3], turn: 
         .keys()
         .copied()
         .collect();
-    // Who stood on it where it was, before it moved.
+    // Who stood on it as it was, before it moved.
     let riders: Vec<u32> = clients
         .into_iter()
-        .filter(|&client| {
-            let Some(at) = crate::frame::FrameWorld::from_world(world)
-                .player(crate::ClientId(client))
-                .map(|ps| ps.origin)
-            else {
-                return false;
-            };
-            let moved_origin = origin(world, id);
-            world
-                .resource_mut::<RoundScript>()
-                .set_object_field(id, "origin", Value::Vector(from));
-            let on = riding(world, id, client, at);
-            world.resource_mut::<RoundScript>().set_object_field(
-                id,
-                "origin",
-                Value::Vector(moved_origin),
-            );
-            on
-        })
+        .filter(|&client| riding(world, id, client))
         .collect();
     let clients = riders;
     let turn = (turn + 540.0).rem_euclid(360.0) - 180.0;

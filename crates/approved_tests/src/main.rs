@@ -6,6 +6,7 @@ mod scenario;
 mod scenarios {
     pub mod heavy_gameplay_lifecycle;
     pub mod master_duo_chaos;
+    pub mod zombies_rounds;
 }
 
 use std::path::{Path, PathBuf};
@@ -37,12 +38,31 @@ fn main() {
         Err(message) => {
             eprintln!("{message}");
             eprintln!(
-                "usage: approved_tests <heavy_gameplay_lifecycle|master_duo_chaos> [--seed N | --replay run.json] \
+                "usage: approved_tests <heavy_gameplay_lifecycle|master_duo_chaos|zombies_rounds_t5|zombies_rounds_t6> [--seed N | --replay run.json] \
                  [--cache cold|shared] [--bin path]"
             );
             std::process::exit(2);
         }
     };
+    if let Some(rounds) = scenarios::zombies_rounds::find(&args.scenario) {
+        if args.seed.is_some() || args.replay.is_some() || args.cache != CacheMode::Cold {
+            eprintln!("{} supports --bin only", rounds.name);
+            std::process::exit(2);
+        }
+        std::process::exit(
+            match scenarios::zombies_rounds::run(&root, &args.bin, rounds) {
+                Ok(
+                    scenarios::zombies_rounds::Verdict::Passed
+                    | scenarios::zombies_rounds::Verdict::Skipped,
+                ) => 0,
+                Ok(scenarios::zombies_rounds::Verdict::Failed) => 1,
+                Err(error) => {
+                    eprintln!("approved_tests: {error}");
+                    1
+                }
+            },
+        );
+    }
     if args.scenario == scenarios::master_duo_chaos::NAME {
         if args.seed.is_some() || args.replay.is_some() || args.cache != CacheMode::Cold {
             eprintln!(
@@ -448,7 +468,7 @@ fn prepare_cache(root: &Path, run_dir: &Path, mode: CacheMode) -> Result<Value, 
     }
 }
 
-fn utc_stamp() -> String {
+pub(crate) fn utc_stamp() -> String {
     let secs = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
         .map(|d| d.as_secs())
