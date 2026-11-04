@@ -370,6 +370,27 @@ pub struct VisibilityView<'a> {
     pub selecting_location: bool,
     /// The extra camera is on, and its view shows static.
     pub extra_camera: [bool; 2],
+    /// The flash or shell shock's screen is up.
+    pub flashbanged: bool,
+    /// A UI menu holds the keys.
+    pub ui_open: bool,
+    /// What the visibility bits read of the weapons in hand.
+    pub weapon: VisibilityWeapon,
+}
+
+/// The weapon fields a game's visibility bits read.
+#[derive(Clone, Copy, Debug, Default, PartialEq)]
+pub struct VisibilityWeapon {
+    /// The held weapon's `missileGuidance`.
+    pub missile_guidance: i32,
+    /// The held weapon's clip is empty.
+    pub clip_empty: bool,
+    /// The view's weapon's `fuelTankWeapon`.
+    pub fuel_tank: bool,
+    /// The view's weapon's `adsOverlayInterface`.
+    pub overlay_interface: i32,
+    /// The view's weapon's sight overlay shows.
+    pub overlay_shown: bool,
 }
 
 /// What a game's hint or message owner draw (its number) shows this frame.
