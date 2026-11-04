@@ -38,6 +38,7 @@ const EXTRA_CAMERA_STATIC_EXP: &str = "t5 s:636f6d706173735f737461746963";
 const CG_POPUP_TEXT: i32 = 336;
 const CG_RANK_POPUP_NAME: i32 = 338;
 const CG_RANK_POPUP_ICON: i32 = 339;
+const CG_PLAYER_EMBLEM: i32 = 389;
 const CG_WAGER_LIFE_ALIVE: i32 = 126;
 const CG_WAGER_LIFE_DEAD: i32 = 127;
 const CG_WAGER_BULLETS: i32 = 128;
@@ -1625,6 +1626,8 @@ fn paint_owner(
         FULL_MAP_MAP => paint_full_map(state, &args, frame),
         FULL_MAP_LOCATOR => paint_locator(state, &args, frame),
         CG_POPUP_TEXT | CG_RANK_POPUP_NAME => paint_popup_text(host, &args, frame),
+        // A player's emblem (`t5.hud.player_card_emblem`): no player has one.
+        CG_PLAYER_EMBLEM => OwnerDrawPaint::Painted,
         CG_RANK_POPUP_ICON => paint_rank_popup_icon(host, &args, frame),
         n => match state.owner_hints.iter().find(|(draw, _)| *draw == n) {
             Some((_, hint)) => paint_owner_hint(&args, hint, frame),
