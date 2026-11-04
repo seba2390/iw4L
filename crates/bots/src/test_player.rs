@@ -63,8 +63,10 @@
 //!
 //! `IW4L_TEST_PLACE=1` (with `IW4L_TEST_WIELD`): two seconds after the
 //! wielded weapon comes up, he looks level, a quarter turn further each
-//! time, and holds fire for half a second, as a player setting down
-//! equipment he carries does.
+//! time, lets go of fire for two commands and holds it for half a
+//! second (and eight commands at least), as a player setting down equipment he carries does. With the
+//! weapon still in hand 3 s later he tries again; once it has left his hand
+//! he no longer asks for it.
 //!
 //! `IW4L_TEST_THROW=1` (with any fighting mode): every 15 s it holds its
 //! lethal grenade's button for half a second at an actor in sight farther
@@ -157,6 +159,24 @@ const THROW_FROM: f32 = 250.0;
 /// The place aid waits this long with the weapon up, then holds fire.
 const PLACE_AFTER_MS: i32 = 2000;
 const PLACE_HOLD_MS: i32 = 500;
+/// Before holding fire he sends this many commands with it let go: a riot
+/// shield is raised only by a fresh press, and at a high timescale one
+/// command spans several ticks.
+const PLACE_RELEASES: u32 = 2;
+/// He holds fire for at least this many commands as well.
+const PLACE_HOLDS: u32 = 8;
+/// With the weapon still in hand this long after the hold, he tries again
+/// (a press while the weapon is still coming up does nothing).
+const PLACE_RETRY_MS: i32 = 3000;
+
+#[derive(Clone, Copy)]
+struct Placing {
+    weapon: u32,
+    releases: u32,
+    holds: u32,
+    hold_until: Option<i32>,
+    facing: f32,
+}
 /// The walk test: when and how often it walks, and the end of each of its
 /// phases (jump, walk, sprint, crouch, prone), from the walk's start.
 const WALK_START_MS: i32 = 10_000;
@@ -370,11 +390,14 @@ pub(crate) struct TestPlayer {
     last_done_ms: i32,
     /// The down test's last life state and last stand seen.
     seen: Option<(ClientLifecycle, i32, Option<i32>)>,
-    /// The place aid: since when the wielded weapon is up, and until when it
-    /// holds fire facing which way; how many it set down.
+    /// The place aid: since when the wielded weapon is up; the commands it
+    /// has sent with fire let go, until when it then holds fire, and facing
+    /// which way; how many it set down.
     wielded_since_ms: Option<i32>,
-    placing: Option<(i32, f32)>,
+    placing: Option<Placing>,
     placements: u32,
+    /// The weapons he has set down, which he no longer asks for.
+    placed: Vec<u32>,
     /// The walk test's walk under way, and when it next walks.
     walk: Option<Walk>,
     next_walk_ms: i32,
@@ -1316,6 +1339,7 @@ pub(crate) fn drive_test_player(
         && let Some(wanted) = names
             .split(',')
             .filter_map(|name| world.0.weapon_index_by_script_name(name))
+            .filter(|wanted| !test.placed.contains(wanted))
             .find(|wanted| ps.weapons.iter().any(|&w| w as u32 == *wanted))
     {
         cmd.weapon = wanted as u16;
@@ -1365,19 +1389,45 @@ pub(crate) fn drive_test_player(
                     world.0.weapon_script_name(ps.weapon),
                     fmt_point(ps.origin)
                 );
-                test.placing = Some((clock.time_ms + PLACE_HOLD_MS, facing));
+                test.placing = Some(Placing {
+                    weapon: ps.weapon,
+                    releases: 0,
+                    holds: 0,
+                    hold_until: None,
+                    facing,
+                });
             }
-            let Some((until, facing)) = test.placing else {
+            let Some(placing) = test.placing.as_mut() else {
                 return;
             };
-            aim_cmd(&mut cmd, [0.0, facing, 0.0]);
-            if clock.time_ms < until {
-                cmd.buttons |= buttons::ATTACK;
+            aim_cmd(&mut cmd, [0.0, placing.facing, 0.0]);
+            cmd.buttons &= !buttons::ATTACK;
+            if placing.releases < PLACE_RELEASES {
+                placing.releases += 1;
+            } else {
+                let until = *placing
+                    .hold_until
+                    .get_or_insert(clock.time_ms + PLACE_HOLD_MS);
+                if clock.time_ms < until || placing.holds < PLACE_HOLDS {
+                    placing.holds += 1;
+                    cmd.buttons |= buttons::ATTACK;
+                } else if clock.time_ms >= until + PLACE_RETRY_MS {
+                    test.placing = None;
+                }
             }
             cmds.push(id, cmd);
             return;
         }
     } else {
+        // The weapon he was setting down left his hand: it is down.
+        if let Some(Placing {
+            weapon,
+            hold_until: Some(_),
+            ..
+        }) = test.placing
+        {
+            test.placed.push(weapon);
+        }
         test.wielded_since_ms = None;
         test.placing = None;
     }
