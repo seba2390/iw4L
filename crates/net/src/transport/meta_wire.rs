@@ -665,6 +665,7 @@ pub(super) fn decode_snapshot_meta_body(
             area_entities,
             objectives,
             bot_orders: Vec::new(),
+            bot_tuning: None,
             turret_models,
             entity_dobjs,
             entities,

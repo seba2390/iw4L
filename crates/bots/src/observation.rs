@@ -30,6 +30,8 @@ pub enum KnowledgeSource {
 pub struct Contact {
     pub id: ClientId,
     pub origin: [f32; 3],
+    /// How fast it moved when seen; zero for a contact from memory.
+    pub velocity: [f32; 3],
     pub source: KnowledgeSource,
     pub seen_tick: u32,
     pub confidence: f32,
@@ -143,6 +145,9 @@ pub struct WeaponFacts {
     pub quick_drop_time_ms: i32,
     pub reload_time_ms: i32,
     pub reload_empty_time_ms: i32,
+    /// The trigger is held for this weapon (full auto, or Black Ops' fire
+    /// type 6) rather than pressed shot by shot.
+    pub holds_fire: bool,
 }
 
 /// One owned weapon with the ammunition the match state holds for it.
@@ -276,6 +281,9 @@ pub struct BotObservation {
     pub events: Vec<BotEvent>,
     pub objective: Option<ModeObjective>,
     pub objectives: Vec<ModeObjective>,
+    /// The game's own bot dvars, when its scripts set them (Black Ops'
+    /// `sv_bot*`); the host's own rules otherwise.
+    pub tuning: Option<sim::BotTuning>,
 }
 
 impl BotObservation {

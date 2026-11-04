@@ -67,6 +67,13 @@ pub struct HostController {
     progress_origin: Option<[f32; 3]>,
     progress_tick: u32,
     escape: Option<([f32; 3], u32)>,
+    /// Black Ops' bot rules (`obs.tuning`): their rolls, the level time the
+    /// trigger may be pressed again, and the aimed height on the target and
+    /// until when it holds.
+    rng: u64,
+    next_fire_ms: i32,
+    aim_height: f32,
+    aim_hold_until_ms: i32,
 }
 
 impl HostController {
@@ -101,7 +108,84 @@ impl HostController {
             progress_origin: None,
             progress_tick: 0,
             escape: None,
+            rng: seed | 1,
+            next_fire_ms: 0,
+            aim_height: TARGET_EYE_HEIGHT * 0.5,
+            aim_hold_until_ms: 0,
         }
+    }
+
+    /// A roll between the two, both included.
+    fn roll_ms(&mut self, (low, high): (i32, i32)) -> i32 {
+        self.rng ^= self.rng << 13;
+        self.rng ^= self.rng >> 7;
+        self.rng ^= self.rng << 17;
+        if high <= low {
+            return low;
+        }
+        low + (self.rng % (high - low + 1) as u64) as i32
+    }
+
+    /// A new target: Black Ops' bot fires on one within
+    /// `sv_botCloseDistance` at once, and on another after a reaction of
+    /// `sv_botMinReactionTime` to `sv_botMaxReactionTime`; and it aims anew.
+    /// The host's own reaction is its aggression's.
+    fn react_to(&mut self, obs: &BotObservation, target: Contact) {
+        self.last_target = Some(target.id);
+        let delay = if let Some(tuning) = obs.tuning {
+            self.aim_hold_until_ms = 0;
+            let close = tuning.close_distance;
+            if dist2(obs.self_state.origin, target.origin) <= close * close {
+                0
+            } else {
+                (self.roll_ms(tuning.reaction_ms).max(0) as u32).div_ceil(TICK_MS)
+            }
+        } else {
+            (6.0 - self.aggression * 4.0).max(2.0) as u32
+        };
+        self.reaction_until = obs.tick.saturating_add(delay);
+    }
+
+    /// Where the shot goes on a target. Black Ops' bot leads it by
+    /// `sv_botTargetLeadBias` server frames and aims at a random height
+    /// between its feet and its eyes, rolled again every
+    /// `sv_botMinPitchTime` to `sv_botMaxPitchTime`; the host aims at its
+    /// chest.
+    fn aim_point(&mut self, obs: &BotObservation, target: Contact) -> [f32; 3] {
+        let Some(tuning) = obs.tuning else {
+            return [target.origin[0], target.origin[1], target.origin[2] + 48.0];
+        };
+        if obs.time_ms >= self.aim_hold_until_ms {
+            let roll = self.roll_ms((0, 1000)) as f32 / 1000.0;
+            self.aim_height = roll * TARGET_EYE_HEIGHT;
+            self.aim_hold_until_ms = obs.time_ms + self.roll_ms(tuning.pitch_hold_ms);
+        }
+        let lead = tuning.lead_frames * TICK_MS as f32 / 1000.0;
+        [
+            target.origin[0] + target.velocity[0] * lead,
+            target.origin[1] + target.velocity[1] * lead,
+            target.origin[2] + target.velocity[2] * lead + self.aim_height,
+        ]
+    }
+
+    /// Black Ops' bot holds the trigger of an automatic weapon and presses
+    /// another's again only `sv_botMinFireTime` to `sv_botMaxFireTime` after
+    /// the last press.
+    fn trigger(&mut self, obs: &BotObservation, fire: bool) -> bool {
+        let Some(tuning) = obs.tuning else {
+            return fire;
+        };
+        if !fire {
+            return false;
+        }
+        if obs.held().is_some_and(|slot| slot.facts.holds_fire) {
+            return true;
+        }
+        if obs.time_ms < self.next_fire_ms {
+            return false;
+        }
+        self.next_fire_ms = obs.time_ms + self.roll_ms(tuning.fire_ms);
+        true
     }
 
     pub(crate) fn cancel_navigation(&mut self) {
@@ -332,6 +416,10 @@ impl HostController {
             && let Some(intent) = self.unstick(obs, world)
         {
             self.intent = intent;
+            self.intent.turn = obs.tuning.map(|tuning| crate::intent::TurnRates {
+                yaw_speed: tuning.yaw_speed,
+                pitch_speed: tuning.pitch_speed,
+            });
             self.task.reason = SwitchReason::ProgressLost;
             self.decision.stage = ActionStage::Approach;
             self.apply_weapon_skill(obs);
@@ -378,6 +466,10 @@ impl HostController {
         if self.task.kind == TaskKind::TouchObj && objective.is_some_and(|o| o.scripted) {
             self.fire_on_the_way(obs, world);
         }
+        self.intent.turn = obs.tuning.map(|tuning| crate::intent::TurnRates {
+            yaw_speed: tuning.yaw_speed,
+            pitch_speed: tuning.pitch_speed,
+        });
         self.decision.stage = if matches!(
             self.intent.path,
             PathOutcome::Blocked | PathOutcome::Unreachable
@@ -750,11 +842,9 @@ impl HostController {
             return BotIntent::default();
         };
         if self.last_target != Some(target.id) {
-            self.last_target = Some(target.id);
-            let reaction = (6.0 - self.aggression * 4.0).max(2.0) as u32;
-            self.reaction_until = obs.tick.saturating_add(reaction);
+            self.react_to(obs, target);
         }
-        let aim_at = [target.origin[0], target.origin[1], target.origin[2] + 48.0];
+        let aim_at = self.aim_point(obs, target);
         if self.wounded(obs) {
             return self.fight_break(obs, world, nav, astar_budget, target);
         }
@@ -795,13 +885,12 @@ impl HostController {
                 }
             }
         }
-        let fire = self.authorize_fire(
-            obs.tick >= self.reaction_until
-                && obs.self_state.ammo_clip != 0
-                && fresh_contact(obs, target)
-                && shot_allowed(shot, target.id),
-            target,
-        );
+        let ready = obs.tick >= self.reaction_until
+            && obs.self_state.ammo_clip != 0
+            && fresh_contact(obs, target)
+            && shot_allowed(shot, target.id);
+        let ready = self.trigger(obs, ready);
+        let fire = self.authorize_fire(ready, target);
         let range = dist2(obs.self_state.origin, target.origin).sqrt();
         let hold = self.hold_range(obs);
         let (move_mode, path, move_goal) = self.fight_position(
@@ -869,20 +958,17 @@ impl HostController {
             return;
         };
         if self.last_target != Some(target.id) {
-            self.last_target = Some(target.id);
-            let reaction = (6.0 - self.aggression * 4.0).max(2.0) as u32;
-            self.reaction_until = obs.tick.saturating_add(reaction);
+            self.react_to(obs, target);
         }
-        let aim_at = [target.origin[0], target.origin[1], target.origin[2] + 48.0];
+        let aim_at = self.aim_point(obs, target);
         world.enter(QuerySubsystem::Tactical);
         let shot = world.shot_ray(obs.eye(), aim_at, obs.self_state.id);
-        let fire = self.authorize_fire(
-            obs.tick >= self.reaction_until
-                && obs.self_state.ammo_clip != 0
-                && fresh_contact(obs, target)
-                && shot_allowed(shot, target.id),
-            target,
-        );
+        let ready = obs.tick >= self.reaction_until
+            && obs.self_state.ammo_clip != 0
+            && fresh_contact(obs, target)
+            && shot_allowed(shot, target.id);
+        let ready = self.trigger(obs, ready);
+        let fire = self.authorize_fire(ready, target);
         self.intent.look_at = Some(aim_at);
         self.intent.fire = fire;
     }
@@ -919,20 +1005,19 @@ impl HostController {
         astar_budget: &mut u32,
         target: Contact,
     ) -> BotIntent {
-        let aim_at = [target.origin[0], target.origin[1], target.origin[2] + 48.0];
+        let aim_at = self.aim_point(obs, target);
         let away = away_from(obs.self_state.origin, target.origin, 192.0);
         world.enter(QuerySubsystem::Tactical);
-        let fire = self.authorize_fire(
-            self.aggression > self.self_preserve
-                && obs.tick >= self.reaction_until
-                && obs.self_state.ammo_clip != 0
-                && fresh_contact(obs, target)
-                && shot_allowed(
-                    world.shot_ray(obs.eye(), aim_at, obs.self_state.id),
-                    target.id,
-                ),
-            target,
-        );
+        let ready = self.aggression > self.self_preserve
+            && obs.tick >= self.reaction_until
+            && obs.self_state.ammo_clip != 0
+            && fresh_contact(obs, target)
+            && shot_allowed(
+                world.shot_ray(obs.eye(), aim_at, obs.self_state.id),
+                target.id,
+            );
+        let ready = self.trigger(obs, ready);
+        let fire = self.authorize_fire(ready, target);
         let (move_mode, path, move_goal) =
             self.route(obs.self_state.origin, away, world, nav, astar_budget);
         BotIntent {
@@ -1410,6 +1495,9 @@ enum SeekKind {
 
 /// A goal the scripts set outranks every task of the bot's own.
 const SCRIPTED_GOAL_UTILITY: f32 = 200.0;
+/// A server frame, and how far above its feet a standing target's eyes are.
+const TICK_MS: u32 = 50;
+const TARGET_EYE_HEIGHT: f32 = 60.0;
 
 fn objective_utility(obs: &BotObservation, obj: ModeObjective, route_length: Option<f32>) -> f32 {
     let travel_ms = route_length.unwrap_or_else(|| dist2(obs.self_state.origin, obj.origin).sqrt())

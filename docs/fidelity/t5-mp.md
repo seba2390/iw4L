@@ -682,8 +682,24 @@ Each open section names the issue that works it.
 
 - [ ] **G** `t5.bots.host_ai`: test clients join through Black Ops' own
       `_bot.gsc` (`addtestclient`; their team and class by `menuresponse`,
-      their loadout by `bot_give_loadout`), but IW4L's host bots move, aim
-      and shoot them, not Black Ops' engine bot code. A script's goal
+      their loadout by `bot_give_loadout`), but IW4L's host bots move and
+      choose their targets, not Black Ops' engine bot code. How they react,
+      fire and aim is Black Ops' own once `_bot.gsc` has set its `sv_bot*`
+      dvars by difficulty (#870): a target inside `sv_botCloseDistance` is shot
+      at once and another after `sv_botMinReactionTime` to
+      `sv_botMaxReactionTime`; an automatic weapon (fire types 0 and 6) holds
+      the trigger and another presses again after `sv_botMinFireTime` to
+      `sv_botMaxFireTime`; the trigger goes down wherever the view is; the aim
+      leads the target by `sv_botTargetLeadBias` server frames; each 50 ms the
+      view covers the angle left times `sv_botYawSpeed` (slowed past 100°) or
+      `sv_botPitchSpeed`, times 0.05; the sight cone is `sv_botFov`. IW4L's
+      own: the aimed height (Black Ops holds a pitch, rolled between a target's
+      feet and eyes every `sv_botMinPitchTime` to `sv_botMaxPitchTime`, a third
+      of the way up when close by a weapon field not read) is held as a height
+      on a 60-unit-tall target. Not ported: aiming down the sights
+      (`sv_botMinAdsTime`, `sv_botMaxAdsTime`), crouching, strafing, grenades,
+      sprint and melee distances, the ADS turn speeds (bots never aim down the
+      sights), and Black Ops' choice of target. A script's goal
       (`setscriptgoal`, heard as `goal` on arrival) outranks the host bot's
       own tasks, fights included: on the way it shoots what it sees without
       leaving the route (IW4L's own rule; the engine bot code was not read).
@@ -692,8 +708,7 @@ Each open section names the issue that works it.
       radius but more than 72 units above or below it (a crate still in the
       air, or on a roof). The scripted enemy is only `getthreat`'s answer,
       and the goal's straight line stands in for
-      `getlookaheaddist`/`getlookaheaddir`. Bots fire rarely and seldom land kills on
-      Black Ops' weapons (#709).
+      `getlookaheaddist`/`getlookaheaddir` (#709).
 
 ## Audio (#668)
 

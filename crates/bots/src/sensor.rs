@@ -82,7 +82,11 @@ pub fn observe_focused(
                 },
         ];
         let (forward, _, _) = angle_vectors(ps.viewangles);
-        let half = (SIGHT_FOV_DEG * 0.5).to_radians().cos();
+        let fov = snapshot
+            .meta
+            .bot_tuning
+            .map_or(SIGHT_FOV_DEG, |tuning| tuning.fov);
+        let half = (fov * 0.5).to_radians().cos();
         // Rotate probes so occluded clients at the front of the snapshot cannot
         // monopolize perception.
         let mut probes = SIGHT_PROBES;
@@ -115,6 +119,7 @@ pub fn observe_focused(
                 Visibility::Seen => seen.push(Contact {
                     id: *id,
                     origin: other.origin,
+                    velocity: other.velocity,
                     source: KnowledgeSource::CurrentlySeen,
                     seen_tick: snapshot.tick.0,
                     confidence: 1.0,
@@ -156,6 +161,7 @@ pub fn observe_focused(
                 .min_by(|a, b| dist2(ps.origin, a.origin).total_cmp(&dist2(ps.origin, b.origin)))
         }),
         objectives,
+        tuning: snapshot.meta.bot_tuning,
     })
 }
 
