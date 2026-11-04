@@ -709,9 +709,13 @@ Each open section names the issue that works it.
 
 ## Networking and private matches (#663, #665, #666)
 
-- [ ] **G** No private match: the end of a match does not return members
-      to the lobby, classes do not reach the host, the host's game settings
-      do not reach the scripts.
+- [ ] **G** Private match: the host's front end starts a match from
+      the lobby, and its end loads `ui_viewer_mp` and opens the lobby again
+      (the game's own path is its party code, not read: `map_rotate` 8757c0
+      goes on to the map rotation, which a private match leaves to the
+      lobby; IW4L returns there directly). Open: a second client's join,
+      classes reaching the host from it, and the host's game settings
+      reaching the scripts (#665).
 - [ ] **G** No two-machine multiplayer test; prediction and lag
       compensation of Black Ops' movement and weapons are unmeasured.
 
