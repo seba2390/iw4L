@@ -262,6 +262,7 @@ pub struct MenuAnimState {
     pub rect: MenuRect,
     pub fore_color: [f32; 4],
     pub back_color: [f32; 4],
+    pub text_scale: f32,
     pub on_enter: Vec<MenuEvent>,
 }
 

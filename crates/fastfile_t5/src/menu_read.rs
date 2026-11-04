@@ -60,6 +60,7 @@ const ANIM_PARAMS_NAME: usize = 0;
 const ANIM_PARAMS_RECT: usize = 4;
 const ANIM_PARAMS_FORE_COLOR: usize = 32;
 const ANIM_PARAMS_BACK_COLOR: usize = 48;
+const ANIM_PARAMS_TEXT_SCALE: usize = 0x60;
 
 const ITEM_TYPE: usize = 164;
 const ITEM_DVAR: usize = 176;
@@ -349,6 +350,7 @@ pub struct AnimStateRead {
     pub rect: MenuRectRead,
     pub fore_color: [f32; 4],
     pub back_color: [f32; 4],
+    pub text_scale: f32,
     /// Its event handlers: `onEnter` runs when an animation reaches it.
     pub handlers: Vec<EventHandlerRead>,
 }
@@ -360,6 +362,7 @@ fn anim_state(s: &ZoneStream<'_>, state: Ptr) -> AnimStateRead {
         rect: rect_at(s, state.at(ANIM_PARAMS_RECT)),
         fore_color: color_at(s, state, ANIM_PARAMS_FORE_COLOR),
         back_color: color_at(s, state, ANIM_PARAMS_BACK_COLOR),
+        text_scale: f32_at(s, state, ANIM_PARAMS_TEXT_SCALE),
         handlers: event_handlers(s, ptr_at(s, state, ANIM_PARAMS_HANDLERS)),
     }
 }

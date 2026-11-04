@@ -30,6 +30,11 @@ const CG_PLAYER_WEAPON_AMMO_CLIP: i32 = 120;
 const CG_PLAYER_WEAPON_AMMO_CLIP_DUAL_WIELD: i32 = 121;
 const CG_PLAYER_WEAPON_AMMO_STOCK: i32 = 122;
 const CG_PLAYER_WEAPON_LOW_AMMO_WARNING: i32 = 123;
+/// Black Ops' popup owner draws: a line of text, the rank's name (which Black
+/// Ops types out letter by letter) and the rank's icon.
+const CG_POPUP_TEXT: i32 = 336;
+const CG_RANK_POPUP_NAME: i32 = 338;
+const CG_RANK_POPUP_ICON: i32 = 339;
 const CG_WAGER_LIFE_ALIVE: i32 = 126;
 const CG_WAGER_LIFE_DEAD: i32 = 127;
 const CG_WAGER_BULLETS: i32 = 128;
@@ -555,6 +560,8 @@ fn team_field(state: &T5HudState<'_>, team: i32, field: &str) -> Result<Operand,
 struct T5HudHost<'a, 'b> {
     state: &'a T5HudState<'b>,
     localize: Option<&'a LocalizeCatalog>,
+    locals: Option<&'a crate::playercard::UiLocalVars>,
+    menus: Option<&'a crate::menus::ScriptMenus>,
 }
 
 impl ExprHost for T5HudHost<'_, '_> {
@@ -633,8 +640,11 @@ impl ExprHost for T5HudHost<'_, '_> {
         };
         team_field(self.state, other, field)
     }
-    fn local_var_string(&self, _name: &str) -> Result<Operand, ExprError> {
-        Err(ExprError::Host("local var"))
+    fn local_var_string(&self, name: &str) -> Result<Operand, ExprError> {
+        match self.locals {
+            Some(locals) => Ok(Operand::Str(locals.string(name))),
+            None => Err(ExprError::Host("local var")),
+        }
     }
     fn time_left(&self) -> Result<i32, ExprError> {
         Ok(self.state.time_left_ms)
@@ -1328,11 +1338,88 @@ fn paint_competitive_scores(
     OwnerDrawPaint::Painted
 }
 
+/// Black Ops' popup lines (owner draws 336 and 338): the item's text in its
+/// colour, at its text alignment.
+fn paint_popup_text(
+    host: &T5HudHost<'_, '_>,
+    args: &OwnerDrawArgs<'_>,
+    frame: &mut ChromeFrame,
+) -> OwnerDrawPaint {
+    let Some(mut text) = args.text.clone() else {
+        return OwnerDrawPaint::Painted;
+    };
+    if args.color[3] == 0.0 {
+        return OwnerDrawPaint::Painted;
+    }
+    crate::chrome::expand_bindings(&mut text, host);
+    match push_owner_text(args, &text, args.color, frame) {
+        Ok(()) => OwnerDrawPaint::Painted,
+        Err(kind) => OwnerDrawPaint::Gap(kind),
+    }
+}
+
+/// The rank popup's icon (owner draw 339): the local variable's material in
+/// the item's alpha, swinging about a point below it while its swing lasts.
+fn paint_rank_popup_icon(
+    host: &T5HudHost<'_, '_>,
+    args: &OwnerDrawArgs<'_>,
+    frame: &mut ChromeFrame,
+) -> OwnerDrawPaint {
+    let Some(material) = host
+        .locals
+        .map(|locals| locals.string("rankUpPopUpIcon0"))
+        .filter(|material| !material.is_empty())
+    else {
+        return OwnerDrawPaint::Painted;
+    };
+    let rect = args.rect;
+    let color = [1.0, 1.0, 1.0, args.color[3]];
+    let namespace = args.assets.namespace();
+    let Some(angle) = host
+        .menus
+        .and_then(|menus| menus.rank_icon)
+        .map(|swing| swing.angle)
+    else {
+        push_pic_at(
+            args, namespace, material, rect.x, rect.y, rect.w, rect.h, color, frame,
+        );
+        return OwnerDrawPaint::Painted;
+    };
+    let (sin, cos) = angle.to_radians().sin_cos();
+    let arm = rect.y + 100.0;
+    let applied = args.surface.apply_rect(
+        rect.x + rect.w * 0.5 + (1.0 - cos) - sin * arm,
+        rect.y - sin + cos * arm - arm,
+        rect.w,
+        rect.h,
+        rect.horz_align as i32,
+        rect.vert_align as i32,
+    );
+    frame.list.cmds.push(Draw2dCmd {
+        material_namespace: namespace,
+        x: applied.x,
+        y: applied.y,
+        w: applied.w,
+        h: applied.h,
+        s0: 0.0,
+        t0: 0.0,
+        s1: 1.0,
+        t1: 1.0,
+        color,
+        material,
+        op: Draw2dOp::RotatedPic { deg: angle },
+        provenance: Draw2dProvenance::OwnerDraw(args.item.owner_draw),
+        layer: 1,
+    });
+    OwnerDrawPaint::Painted
+}
+
 fn paint_owner(
-    state: &T5HudState<'_>,
+    host: &T5HudHost<'_, '_>,
     args: OwnerDrawArgs<'_>,
     frame: &mut ChromeFrame,
 ) -> OwnerDrawPaint {
+    let state = host.state;
     let ammo = state.ammo.as_ref().filter(|_| !state.hide_ammo);
     match args.item.owner_draw {
         CG_PLAYER_WEAPON_BACKGROUND => {
@@ -1497,6 +1584,8 @@ fn paint_owner(
         }
         FULL_MAP_MAP => paint_full_map(state, &args, frame),
         FULL_MAP_LOCATOR => paint_locator(state, &args, frame),
+        CG_POPUP_TEXT | CG_RANK_POPUP_NAME => paint_popup_text(host, &args, frame),
+        CG_RANK_POPUP_ICON => paint_rank_popup_icon(host, &args, frame),
         n => match state.owner_hints.iter().find(|(draw, _)| *draw == n) {
             Some((_, hint)) => paint_owner_hint(&args, hint, frame),
             None => OwnerDrawPaint::Gap(ChromeGapKind::OwnerDraw),
@@ -2456,8 +2545,15 @@ pub(crate) fn paint(
     state: &T5HudState<'_>,
     surface: &crate::surface::Hud2dSurface,
     exprs: &mut crate::expr_cache::MenuExprCache,
+    menus: Option<&crate::menus::ScriptMenus>,
+    locals: Option<&crate::playercard::UiLocalVars>,
 ) -> (Draw2dList, Vec<String>) {
-    let host = T5HudHost { state, localize };
+    let host = T5HudHost {
+        state,
+        localize,
+        locals,
+        menus,
+    };
     let mut list = Draw2dList::default();
     let mut errors = Vec::new();
     let multiplayer = dvar_truthy(state, "ui_multiplayer");
@@ -2520,20 +2616,38 @@ pub(crate) fn paint(
             }
         }
         let mut hook =
-            |args: OwnerDrawArgs<'_>, frame: &mut ChromeFrame| paint_owner(state, args, frame);
-        let frame = execute_chrome_menu_ex(
-            menu,
-            &host,
-            surface,
-            ChromeAssets {
-                catalog: Some(catalog),
-                localize,
-            },
-            ChromeMenuAnim::IDENTITY,
-            exprs,
-            MenuVisOnError::HideAll,
-            Some(&mut hook),
-        );
+            |args: OwnerDrawArgs<'_>, frame: &mut ChromeFrame| paint_owner(&host, args, frame);
+        let overrides = menus.and_then(|menus| crate::menus::hud_item_overrides(menus, &menu.name));
+        let assets = ChromeAssets {
+            catalog: Some(catalog),
+            localize,
+        };
+        let frame = match &overrides {
+            Some(items) => crate::chrome::execute_chrome_menu_overrides(
+                menu,
+                &host,
+                surface,
+                assets,
+                ChromeMenuAnim::IDENTITY,
+                exprs,
+                MenuVisOnError::HideAll,
+                Some(&mut hook),
+                crate::chrome::ChromeMenuOverrides {
+                    items,
+                    ..Default::default()
+                },
+            ),
+            None => execute_chrome_menu_ex(
+                menu,
+                &host,
+                surface,
+                assets,
+                ChromeMenuAnim::IDENTITY,
+                exprs,
+                MenuVisOnError::HideAll,
+                Some(&mut hook),
+            ),
+        };
         if let Some((item, error)) = frame.vis_errors.first() {
             errors.push(format!("{} item {item}: {error}", menu.name));
         } else if let Some((item, kind)) = frame.coverage.gap_ids.first() {

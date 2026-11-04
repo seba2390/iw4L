@@ -8,6 +8,7 @@ pub(crate) struct ItemState {
     pub(crate) back: Option<[f32; 4]>,
     /// Where an animation has moved the item.
     pub(crate) rect: Option<asset_game::MenuRect>,
+    pub(crate) text_scale: Option<f32>,
     pub(crate) anim: Option<ItemAnim>,
 }
 
@@ -31,9 +32,46 @@ pub(crate) struct ItemAnim {
     pub(crate) from_rect: asset_game::MenuRect,
     pub(crate) from_fore: [f32; 4],
     pub(crate) from_back: [f32; 4],
+    pub(crate) from_text_scale: f32,
     pub(crate) to: usize,
     pub(crate) start_ms: i32,
     pub(crate) duration_ms: i32,
+}
+
+/// The rank popup's icon: it starts tilted and swings to rest as its popup
+/// ends, by Black Ops' own per-frame step.
+#[derive(Clone, Copy, Debug)]
+pub(crate) struct RankIconSwing {
+    pub(crate) start_ms: i32,
+    pub(crate) angle: f32,
+    pub(crate) velocity: f32,
+}
+
+/// How long the icon swings, and its first tilt in degrees.
+const RANK_ICON_SWING_MS: i32 = 2500;
+pub(crate) const RANK_ICON_TILT: f32 = 7.0;
+
+impl RankIconSwing {
+    /// The next frame's angle; `None` once the swing is over.
+    pub(crate) fn step(&mut self, now_ms: i32) -> Option<f32> {
+        let left = self
+            .start_ms
+            .wrapping_add(RANK_ICON_SWING_MS)
+            .wrapping_sub(now_ms);
+        if left <= 0 {
+            return None;
+        }
+        let k = (left as f32 * 0.0004).powi(2);
+        let limit = k * RANK_ICON_TILT;
+        if limit < self.angle {
+            self.velocity = k * -0.5;
+        }
+        if self.angle < -limit {
+            self.velocity = k * 0.5;
+        }
+        self.angle += self.velocity;
+        Some(self.angle)
+    }
 }
 
 /// A list box's cursor and first row, kept while its menu is closed as the
@@ -103,6 +141,11 @@ pub struct ScriptMenus {
     pub(crate) current_attachment: i32,
     pub(crate) current_option: i32,
     pub(crate) list_positions: std::collections::HashMap<(String, usize), ListPos>,
+    /// The HUD menus the game animates, which no stack holds: their items as
+    /// they stand, by the menu's lowercased name.
+    pub(crate) hud_items: std::collections::HashMap<String, Vec<ItemState>>,
+    /// The rank popup's icon as it swings.
+    pub(crate) rank_icon: Option<RankIconSwing>,
 }
 
 impl ScriptMenus {

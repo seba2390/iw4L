@@ -212,6 +212,8 @@ pub(crate) struct ChromeItemOverride {
     pub text_literal: Option<bool>,
     pub text_align: Option<(i32, f32, f32)>,
     pub rect: Option<MenuRect>,
+    /// Where an animation has moved the item's text size.
+    pub text_scale: Option<f32>,
     pub style: Option<i32>,
     pub background: Option<&'static str>,
     /// The degrees the background picture turns about its centre, as
@@ -365,11 +367,49 @@ pub(crate) fn execute_chrome_menu_overrides(
             let h: &mut dyn FnMut(OwnerDrawArgs<'_>, &mut ChromeFrame) -> OwnerDrawPaint = &mut **h;
             h
         });
+        // An item faded out paints nothing, so it costs no copy.
+        let animated_text = state
+            .text_scale
+            .filter(|_| state.fore.is_none_or(|fore| fore[3] != 0.0))
+            .map(|text_scale| MenuItem {
+                text_scale,
+                ..item.clone()
+            });
         paint_item(
-            menu, index, item, state, host, surface, assets, anim, exprs, &parent, hook, &mut frame,
+            menu,
+            index,
+            animated_text.as_ref().unwrap_or(item),
+            state,
+            host,
+            surface,
+            assets,
+            anim,
+            exprs,
+            &parent,
+            hook,
+            &mut frame,
         );
     }
     frame
+}
+
+/// Each `[{command}]` in the text becomes `[key]`, for a command with a key.
+pub(crate) fn expand_bindings(text: &mut String, host: &dyn ExprHost) {
+    let mut at = 0;
+    while let Some(start) = text[at..].find("[{") {
+        let start = start + at;
+        let Some(end) = text[start + 2..].find("}]") else {
+            break;
+        };
+        let end = start + 2 + end;
+        if let Some(label) = host.binding_label(&text[start + 2..end]) {
+            let replacement = format!("[{label}]");
+            text.replace_range(start..end + 2, &replacement);
+            at = start + replacement.len();
+        } else {
+            at = end + 2;
+        }
+    }
 }
 
 /// The menu's own window under its items: a fullscreen menu's background
@@ -1066,21 +1106,7 @@ fn paint_text(
             return;
         }
     };
-    let mut at = 0;
-    while let Some(start) = resolved.text[at..].find("[{") {
-        let start = start + at;
-        let Some(end) = resolved.text[start + 2..].find("}]") else {
-            break;
-        };
-        let end = start + 2 + end;
-        if let Some(label) = host.binding_label(&resolved.text[start + 2..end]) {
-            let replacement = format!("[{label}]");
-            resolved.text.replace_range(start..end + 2, &replacement);
-            at = start + replacement.len();
-        } else {
-            at = end + 2;
-        }
-    }
+    expand_bindings(&mut resolved.text, host);
     if resolved.text.is_empty() {
         frame.coverage.painted();
         return;

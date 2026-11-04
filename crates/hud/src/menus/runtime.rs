@@ -222,6 +222,11 @@ impl Runner<'_, '_> {
                 self.close(&target(&name));
             }
             Command::Escape(name) => self.escape(&target(&name)),
+            Command::ChangeState { state, ms } => {
+                if let Some(index) = item {
+                    self.change_state(menu, index, &state, ms);
+                }
+            }
             Command::SetFocus(name) => {
                 // The first of that name that shows, else the last.
                 let visible = self.visible_items(menu);

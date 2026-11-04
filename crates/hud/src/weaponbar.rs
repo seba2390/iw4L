@@ -692,6 +692,7 @@ pub(crate) struct WeaponbarInput<'w, 's> {
     vis: HudPlayerVisInput<'w>,
     mode: Option<Res<'w, game_api::ModeRules>>,
     game_fires: Res<'w, crate::compass::GameCompassFires>,
+    script_menus: Option<Res<'w, crate::menus::ScriptMenus>>,
     hint_latch: Local<'s, crate::t5_hud::T5HintLatch>,
     score_latch: Local<'s, crate::t5_hud::T5ScoreLatch>,
     deadscreen_latch: Local<'s, crate::t5_hud::T5DeadscreenLatch>,
@@ -1105,6 +1106,8 @@ pub(crate) fn update_weaponbar(
             &state,
             &surface,
             &mut exprs,
+            client_input.script_menus.as_deref(),
+            Some(&*local_vars),
         );
         for error in errors {
             gaps.raise(GapCause::WeaponbarPaint { error });

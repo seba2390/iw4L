@@ -1795,10 +1795,6 @@ pub(crate) fn extra_camera(world: &mut World) -> Option<game_api::ExtraCamera> {
 /// The camera spike's field of view, which its scripts do not set.
 const SPIKE_CAMERA_FOV: f32 = 65.0;
 
-/// The `AnimateUI` moves already reported as not ported.
-#[derive(bevy_ecs::prelude::Resource, Default)]
-struct AnimateUiAsked(std::collections::BTreeSet<(String, String, String)>);
-
 /// `GetInKillcam` and `SetFlagAsAway`, which Black Ops multiplayer's client
 /// keeps in its own state: the client VM here knows neither a killcam nor
 /// the compass's flag icons, so both log and take the living default.
@@ -1883,14 +1879,11 @@ fn register_extra_camera(registry: &mut NativeRegistry) {
         let menu = string(args, 1)?;
         let item = string(args, 2)?;
         let state = string(args, 3)?;
-        int(args, 4)?;
-        let mut asked = world.get_resource_or_insert_with(AnimateUiAsked::default);
-        if asked.0.insert((menu.clone(), item.clone(), state.clone())) {
-            diag::warn!(
-                Sim,
-                "t5.csc.animate_ui: AnimateUI({menu}, {item}, {state}) does not move the menu's items"
-            );
-        }
+        let ms = int(args, 4)?;
+        world
+            .resource_mut::<ClientOutput>()
+            .ui_animations
+            .push((menu, item, state, ms));
         Ok(Value::Undefined)
     });
     // Black Ops multiplayer's extra camera (the camera spike's view): its
