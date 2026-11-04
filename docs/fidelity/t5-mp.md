@@ -748,7 +748,16 @@ Each open section names the issue that works it.
       run. Open: the room's lobby shows a stale player count on the host and
       `Public lobby ended` on both after a match (#665).
 - [ ] **G** No two-machine multiplayer test; prediction and lag
-      compensation of Black Ops' movement and weapons are unmeasured.
+      compensation of Black Ops' movement and weapons are unmeasured, and no
+      latency was added (#666). What one machine shows (an M1 Pro: host and a
+      client through a local master, `mp_nuked` tdm, 2026-11-05): with the two
+      players alone the host sends the client 20 snapshots a second at 3.5 to
+      4.3 KB/s (about 200 bytes each); with 16 bots added (18 players) it sends
+      22.4 to 24.6 KB/s, at the 25 000 bytes a second budget, which holds back
+      18 to 39 % of the snapshots (11.5 to 16.4 sent a second, 1.4 to 2.0 KB
+      each, the largest 5.2 KB, about 340 entities). Black Ops' own rate
+      limits (`rate`, `sv_maxRate`, `snaps`) are not compared. Frame time with
+      18 players was recorded (a Perfetto trace) but not summarised.
 
 ## Closed
 
