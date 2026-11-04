@@ -561,6 +561,7 @@ pub(crate) fn update_script_menus(
             } => runner.animate(menu, item, state, *ms),
             sim::MenuCommandKind::PopUp(popup) => runner.popup(popup),
             sim::MenuCommandKind::HidePopUps => runner.hide_popups(),
+            sim::MenuCommandKind::CenterPrint(text) => runner.center_print(text),
         }
     }
 
