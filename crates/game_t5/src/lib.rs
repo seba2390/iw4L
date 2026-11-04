@@ -411,8 +411,14 @@ impl game_api::GameScripts for T5 {
         }
     }
 
+    /// The announcer and battle chatter switches (`scr_allowannouncer`,
+    /// `scr_allowbattlechatter`, read by `_globallogic.gsc` and
+    /// `_battlechatter_mp.gsc`) are set by none of the private match's
+    /// configs, and BlackOpsMP.exe's registration of them was not found:
+    /// Black Ops' system link and splitscreen configs set both to 1, which
+    /// IW4L takes when no config sets them (`t5.mp.announcer_switch`).
     fn config_defaults(&self) -> &'static [(&'static str, &'static str)] {
-        &[]
+        &[("scr_allowannouncer", "1"), ("scr_allowbattlechatter", "1")]
     }
 }
 
