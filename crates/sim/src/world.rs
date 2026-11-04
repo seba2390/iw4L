@@ -2761,6 +2761,7 @@ impl SimState {
                     .as_ref()
                     .map(crate::AreaEntityWorldSnapshot::capture),
                 bot_orders: Vec::new(),
+                bot_tuning: None,
                 turret_models: Vec::new(),
                 entity_dobjs: self
                     .entity_collision_capabilities

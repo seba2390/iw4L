@@ -85,7 +85,24 @@ impl Motor {
             self.armed = Some(obs.self_state.life_sequence);
         }
         let dt = dt_ms.max(1) as f32;
-        if let Some(at) = intent.look_at {
+        if let (Some(at), Some(turn)) = (intent.look_at, intent.turn) {
+            let desire = look_angles(obs.eye(), at);
+            self.yaw = angle_normalize_360(bot_turn(
+                self.yaw,
+                desire[1],
+                yaw_turn_speed(turn.yaw_speed, angle_subtract(desire[1], self.yaw).abs()),
+                dt,
+            ));
+            self.pitch = bot_turn(
+                self.pitch,
+                desire[0].clamp(-PITCH_LIMIT, PITCH_LIMIT),
+                turn.pitch_speed,
+                dt,
+            );
+            self.yaw_vel = 0.0;
+            self.pitch_vel = 0.0;
+            self.last_look = Some(at);
+        } else if let Some(at) = intent.look_at {
             if self
                 .last_look
                 .is_none_or(|old| dist2(old, at) > 48.0 * 48.0)
@@ -144,7 +161,9 @@ impl Motor {
             weapon_mapped: weapon,
             ..UserCmd::default()
         };
-        if intent.fire && self.weapon_on_target(obs, intent) {
+        // Black Ops' bot presses once its reaction is over, wherever the view
+        // is; the host's waits for its aim.
+        if intent.fire && (intent.turn.is_some() || self.weapon_on_target(obs, intent)) {
             cmd.buttons |= buttons::ATTACK;
         }
         if intent.use_button {
@@ -179,6 +198,29 @@ impl Motor {
         angle_subtract(desire[1], self.yaw).abs() <= FIRE_CONE_DEG
             && (desire[0] - self.pitch).abs() <= FIRE_CONE_DEG
     }
+}
+
+/// Black Ops' bot turn: each 50 ms the angle left shrinks by the speed times
+/// 0.05; under a thousandth of a degree, or when the step would pass it, the
+/// view lands on it.
+fn bot_turn(current: f32, target: f32, speed: f32, dt: f32) -> f32 {
+    let diff = angle_subtract(target, current);
+    let step = diff * speed * 0.05 * (dt / 50.0);
+    if diff.abs() > 0.001 && step.abs() <= diff.abs() {
+        current + step
+    } else {
+        target
+    }
+}
+
+/// Black Ops slows a bot's yaw over 100 degrees from its target, down to no
+/// less than 1.
+fn yaw_turn_speed(speed: f32, off: f32) -> f32 {
+    if off < 100.0 {
+        return speed;
+    }
+    let slowed = speed - off / 180.0 * speed;
+    if 1.0 - slowed >= 0.0 { 1.0 } else { slowed }
 }
 
 fn look_angles(from: [f32; 3], to: [f32; 3]) -> [f32; 3] {

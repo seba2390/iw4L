@@ -145,6 +145,9 @@ pub struct SnapshotMeta {
 
     /// What the scripts tell their bots to do; the host's own, not sent.
     pub bot_orders: Vec<BotOrder>,
+    /// How the game's own bots react, fire and turn, when its scripts set it;
+    /// the host's own, not sent.
+    pub bot_tuning: Option<BotTuning>,
     /// The game's scripted turrets, as a client's draw reads them.
     pub turret_models: Vec<TurretModelRow>,
 
@@ -325,6 +328,26 @@ pub struct BotOrder {
     pub use_until_ms: i32,
     /// Attack until this level time.
     pub attack_until_ms: i32,
+}
+
+/// Black Ops' bot dvars (`sv_bot*`), which `_bot.gsc` sets by difficulty.
+/// Times are milliseconds; turn speeds are the share of the remaining angle
+/// a bot turns a second.
+#[derive(Clone, Copy, Debug, Default, PartialEq)]
+pub struct BotTuning {
+    pub reaction_ms: (i32, i32),
+    pub fire_ms: (i32, i32),
+    pub pitch_hold_ms: (i32, i32),
+    pub yaw_speed: f32,
+    pub yaw_speed_ads: f32,
+    pub pitch_speed: f32,
+    pub pitch_speed_ads: f32,
+    /// The whole sight cone, degrees.
+    pub fov: f32,
+    /// How many server frames ahead it aims at a target.
+    pub lead_frames: f32,
+    /// Within this a bot fires with no reaction time.
+    pub close_distance: f32,
 }
 
 /// A scripted turret as a client's draw reads it: Black Ops' client draws an

@@ -422,6 +422,7 @@ impl WorldQuery for SimWorld {
             quick_drop_time_ms: facts.quick_drop_time_ms,
             reload_time_ms: facts.reload_time_ms,
             reload_empty_time_ms: facts.reload_empty_time_ms,
+            holds_fire: matches!(facts.fire_type, 0 | 6),
         })
     }
 }

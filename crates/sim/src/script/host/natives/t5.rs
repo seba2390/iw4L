@@ -2118,6 +2118,36 @@ pub(crate) fn publish_bot_orders(world: &World, snapshot: &mut crate::Snapshot) 
             attack_until_ms: script.attack_until_ms,
         })
         .collect();
+    snapshot.meta.bot_tuning = bot_tuning(world);
+}
+
+/// Black Ops' bot dvars, once `_bot.gsc`'s `bot_set_difficulty` has set them.
+fn bot_tuning(world: &World) -> Option<crate::BotTuning> {
+    let dvars = &world.get_resource::<crate::script::MatchScript>()?.dvars;
+    dvars.get("sv_botminreactiontime")?;
+    let f = |name: &str, default: f32| {
+        dvars
+            .get(name)
+            .and_then(|value| value.trim().parse::<f32>().ok())
+            .unwrap_or(default)
+    };
+    // The defaults are the ones BlackOpsMP.exe registers, for the dvars the
+    // difficulty does not set.
+    let range = |low: &str, low_default: f32, high: &str, high_default: f32| {
+        (f(low, low_default) as i32, f(high, high_default) as i32)
+    };
+    Some(crate::BotTuning {
+        reaction_ms: range("sv_botminreactiontime", 0.0, "sv_botmaxreactiontime", 0.0),
+        fire_ms: range("sv_botminfiretime", 0.0, "sv_botmaxfiretime", 0.0),
+        pitch_hold_ms: range("sv_botminpitchtime", 500.0, "sv_botmaxpitchtime", 1000.0),
+        yaw_speed: f("sv_botyawspeed", 4.0),
+        yaw_speed_ads: f("sv_botyawspeedads", 5.0),
+        pitch_speed: f("sv_botpitchspeed", 2.0),
+        pitch_speed_ads: f("sv_botpitchspeedads", 5.0),
+        fov: f("sv_botfov", 70.0),
+        lead_frames: f("sv_bottargetleadbias", 0.0),
+        close_distance: f("sv_botclosedistance", 256.0),
+    })
 }
 
 /// A bot's controller cannot get to its script goal: it hears `bad_path`, once a

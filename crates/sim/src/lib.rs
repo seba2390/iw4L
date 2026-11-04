@@ -130,7 +130,7 @@ pub use game_api::movement::{AimCandidate, MeleeTarget};
 pub use game_api::post::VisionCall;
 pub use game_api::post::{FlameOverlay, PoisonOverlay, ReviveFx, ScreenFilter, ScreenOverlays};
 pub use match_state::{
-    BotOrder, CLIENT_VISION_TAIL, ClassDef, ClassRejectReason, ClientLifecycle,
+    BotOrder, BotTuning, CLIENT_VISION_TAIL, ClassDef, ClassRejectReason, ClientLifecycle,
     ClientLightOverride, ClientScreen, ClientSnapshotMeta, ConfigurationChangeRejectReason,
     DroppedItemAmmo, EntityEventPayload, EntityEventRecord, EntityScriptVectors, EventAudience,
     EventRecord, GUMP_SLOTS, GiveRejectReason, HealthRegenCensus, HideFade, InputReceipt,

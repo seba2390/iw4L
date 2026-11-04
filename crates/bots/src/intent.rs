@@ -34,6 +34,18 @@ pub struct BotIntent {
     /// selection is held through every phase of the change, not pulsed once.
     pub weapon: Option<u16>,
     pub path: PathOutcome,
+    /// How the view turns toward `look_at`, when the game's own bots say
+    /// (Black Ops' `sv_botYawSpeed`, `sv_botPitchSpeed`); the host motor's
+    /// slew otherwise.
+    pub turn: Option<TurnRates>,
+}
+
+/// Black Ops' bot turn: each 50 ms the view covers the angle left times the
+/// speed times 0.05, and lands on the target when that would pass it.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct TurnRates {
+    pub yaw_speed: f32,
+    pub pitch_speed: f32,
 }
 
 impl Default for BotIntent {
@@ -50,6 +62,7 @@ impl Default for BotIntent {
             sprint: false,
             weapon: None,
             path: PathOutcome::None,
+            turn: None,
         }
     }
 }
