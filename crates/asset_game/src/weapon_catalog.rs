@@ -411,6 +411,24 @@ pub struct VehicleMotion {
     /// The `steerGraph` raw file's points; `steer_points` of them count.
     pub steer_graph: [[f32; 2]; 8],
     pub steer_points: u8,
+    /// The file's `cameraMode`: an index of first, chase, view, strafe,
+    /// horse, oldtank. It picks how the driver's command steers.
+    pub camera_mode: u8,
+    /// The front wheels' full lock, radians (`nitrous_steer_angle_max`).
+    pub steer_angle_max: f32,
+    /// `nitrous_steer_speed`.
+    pub steer_speed: f32,
+    /// `nitrous_tire_fric_side`, `nitrous_tire_fric_brake`.
+    pub tire_fric_side: f32,
+    pub tire_fric_brake: f32,
+    /// `nitrous_bbox_max_x` less `nitrous_bbox_min_x`.
+    pub body_length: f32,
+    /// `nitrous_wheel_radius`.
+    pub wheel_radius: f32,
+    /// `autoHandbrakeMinSpeed`, inches a second.
+    pub auto_handbrake_min_speed: f32,
+    /// `nitrous_peel_out_max_speed`.
+    pub peel_out_max_speed: f32,
 }
 
 #[derive(Clone, Copy, Debug, Default, PartialEq)]

@@ -1,5 +1,7 @@
 use super::*;
 
+/// Black Ops' `cameraMode` names, by their index.
+const T5_CAMERA_MODES: [&str; 6] = ["first", "chase", "view", "strafe", "horse", "oldtank"];
 /// Black Ops' vehicle classes, a vehicle file's `type`.
 const T5_VEHICLE_CLASSES: [&str; 7] = [
     "4 wheel",
@@ -110,6 +112,20 @@ impl WeaponCatalog {
                 },
                 steer_graph,
                 steer_points,
+                camera_mode: parts
+                    .chunks(2)
+                    .find(|pair| pair[0] == "cameraMode")
+                    .and_then(|pair| pair.get(1))
+                    .and_then(|mode| T5_CAMERA_MODES.iter().position(|name| name == mode))
+                    .unwrap_or(0) as u8,
+                steer_angle_max: value("nitrous_steer_angle_max"),
+                steer_speed: value("nitrous_steer_speed"),
+                tire_fric_side: value("nitrous_tire_fric_side"),
+                tire_fric_brake: value("nitrous_tire_fric_brake"),
+                body_length: value("nitrous_bbox_max_x") - value("nitrous_bbox_min_x"),
+                wheel_radius: value("nitrous_wheel_radius"),
+                auto_handbrake_min_speed: value("autoHandbrakeMinSpeed") * MPH,
+                peel_out_max_speed: value("nitrous_peel_out_max_speed"),
             },
         );
     }
