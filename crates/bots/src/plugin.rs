@@ -555,6 +555,19 @@ fn think_bots(mut p: ThinkBots) {
             );
             controller_us += started.elapsed().as_micros() as u64;
             cmd.server_time = p.clock.time_ms;
+            if let Some(order) = snapshot
+                .meta
+                .bot_orders
+                .iter()
+                .find(|order| order.client == bot.id.0)
+            {
+                if p.clock.time_ms < order.use_until_ms {
+                    cmd.buttons |= buttons::USE;
+                }
+                if p.clock.time_ms < order.attack_until_ms {
+                    cmd.buttons |= buttons::ATTACK;
+                }
+            }
             cmd
         } else {
             continue;

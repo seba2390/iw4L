@@ -674,12 +674,12 @@ Each open section names the issue that works it.
 - [ ] **G** `t5.bots.host_ai`: test clients join through Black Ops' own
       `_bot.gsc` (`addtestclient`; their team and class by `menuresponse`,
       their loadout by `bot_give_loadout`), but IW4L's host bots move, aim
-      and shoot them, not Black Ops' engine bot code. The bot natives keep
-      what the scripts set: `setscriptgoal`/`hasscriptgoal`, the scripted
-      enemy (`getthreat` answers only that), the straight line to the goal
-      for `getlookaheaddist`/`getlookaheaddir`; the host bots ignore the
-      goal and `pressusebutton`/`pressattackbutton`, so bots do not pick up
-      care packages or revive. Bots fire rarely and seldom land kills on
+      and shoot them, not Black Ops' engine bot code. A script's goal
+      (`setscriptgoal`, heard as `goal` on arrival) outranks the host bot's
+      own tasks, and `pressusebutton`/`pressattackbutton` reach its command;
+      `bad_path` never fires, the scripted enemy is only `getthreat`'s answer,
+      and the goal's straight line stands in for
+      `getlookaheaddist`/`getlookaheaddir`. Bots fire rarely and seldom land kills on
       Black Ops' weapons (#709).
 
 ## Audio (#668)

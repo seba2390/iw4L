@@ -130,17 +130,17 @@ pub use game_api::movement::{AimCandidate, MeleeTarget};
 pub use game_api::post::VisionCall;
 pub use game_api::post::{FlameOverlay, PoisonOverlay, ReviveFx, ScreenFilter, ScreenOverlays};
 pub use match_state::{
-    CLIENT_VISION_TAIL, ClassDef, ClassRejectReason, ClientLifecycle, ClientLightOverride,
-    ClientScreen, ClientSnapshotMeta, ConfigurationChangeRejectReason, DroppedItemAmmo,
-    EntityEventPayload, EntityEventRecord, EntityScriptVectors, EventAudience, EventRecord,
-    GUMP_SLOTS, GiveRejectReason, HealthRegenCensus, HideFade, InputReceipt, ItemPickupRecord,
-    KillcamHud, LinkedWeaponView, LoadoutSpec, LocationSelection, LodScaleRigid, MENU_COMMAND_TAIL,
-    MatchEndReason, MenuCommand, MenuCommandKind, MenuPopUp, PelletFxRecord, PersonalClass,
-    PopUpText, RadarMode, RemoteMissile, RngDebugMeta, SIM_EVENT_ROSTER, SOUND_REPORTS_LENGTH,
-    SPAWNED_DYN_ENT_TAIL, ScriptBlur, ScriptControls, ScriptDepthOfField, ScriptDvars, ScriptSeat,
-    SimEvent, SimEventRow, SnapshotMeta, SpawnedDynEntLaunch, TargetBoxDvar,
-    UNRELIABLE_SIM_EVENT_COUNT, ViewEffects, VisionChange, VisionLerp, is_postfx_dvar,
-    sim_event_is_reliable,
+    BotOrder, CLIENT_VISION_TAIL, ClassDef, ClassRejectReason, ClientLifecycle,
+    ClientLightOverride, ClientScreen, ClientSnapshotMeta, ConfigurationChangeRejectReason,
+    DroppedItemAmmo, EntityEventPayload, EntityEventRecord, EntityScriptVectors, EventAudience,
+    EventRecord, GUMP_SLOTS, GiveRejectReason, HealthRegenCensus, HideFade, InputReceipt,
+    ItemPickupRecord, KillcamHud, LinkedWeaponView, LoadoutSpec, LocationSelection, LodScaleRigid,
+    MENU_COMMAND_TAIL, MatchEndReason, MenuCommand, MenuCommandKind, MenuPopUp, PelletFxRecord,
+    PersonalClass, PopUpText, RadarMode, RemoteMissile, RngDebugMeta, SIM_EVENT_ROSTER,
+    SOUND_REPORTS_LENGTH, SPAWNED_DYN_ENT_TAIL, ScriptBlur, ScriptControls, ScriptDepthOfField,
+    ScriptDvars, ScriptSeat, SimEvent, SimEventRow, SnapshotMeta, SpawnedDynEntLaunch,
+    TargetBoxDvar, UNRELIABLE_SIM_EVENT_COUNT, ViewEffects, VisionChange, VisionLerp,
+    is_postfx_dvar, sim_event_is_reliable,
 };
 pub use player_anim_script::{
     AnimConditions, AnimScriptCommand, AnimScriptCondition, AnimScriptItem, PlayerAnimScript,
