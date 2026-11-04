@@ -38,17 +38,17 @@ Each open section names the issue that works it.
       models, `collision_wall_*` / `collision_geo_*`) spawns a solid script
       model carrying the model; whether players and bullets collide with it
       as in Black Ops is not checked.
-- [ ] **V** On Firing Range a jeep stands above the sandbags it should rest
-      on (seen from the pre-match spectator view); not yet traced to the
-      model, its destructible script or the map's entity data (#669).
-- [ ] **G** Rotating objects (`clientscripts/mp/_rotating_object.csc`, on
-      Launch, Crisis, Grid, Firing Range, Summit, Radiation and WMD) run
-      without a fault on WMD, but they were not seen turning. Elevators
-      (`_elevator.gsc`, placed by structs) were not looked for on any map;
-      no base map has a `shutter_*`, `wire`, `explodable_barrel` or
-      `flammable_crate` entity by targetname (#669).
-- [ ] **V** A destructible's debris models (`destructible spawn-model debris
-      unavailable`, the Nuketown mannequins' limbs) are not spawned (#669).
+- [ ] **V** On Firing Range one jeep (`veh_jeep_destructible_mp` at 537.8, 1613.4,
+      -43) stands with its wheels about 20 units off the ground, level. Black Ops'
+      spawn of a destructible script model does not move it, so it reads as the
+      map's own data, unless a static model it rests on is missing. Not compared
+      with Black Ops running (#669).
+- [ ] **V** `t5.mp.destructible_debris_rule`: a stage's spawn models (the Nuketown
+      mannequins' limbs) fly from the piece's tag along its launch, and need a
+      physics preset, as Black Ops' client does. They are script models on the
+      runtime's plain falling body, not dynamic entities with Black Ops' physics;
+      with no launch they rise at a fixed speed rather than taking the hit's force,
+      and the launch's random point is not applied.
 - [ ] **V** `t5.csc.in_killcam`: `GetInKillcam` answers false, the client VM
       knowing no killcam. `t5.csc.flag_away`: `SetFlagAsAway` does not reach
       the compass's flag icons.
@@ -703,6 +703,12 @@ Each open section names the issue that works it.
       compensation of Black Ops' movement and weapons are unmeasured.
 
 ## Closed
+
+- [x] **G** Rotating objects (#669): `_rotating_object.csc` turns the map's objects
+      on the client (seen on Radiation: a wall fan's blades, half a second apart).
+      No base map has an `elevator_trigger`, so `_elevator.gsc` returns at once.
+      No base map has a `shutter_*`, `wire`, `explodable_barrel` or
+      `flammable_crate` entity by targetname.
 
 - [x] **V** `t5.mp.challenge_popup`, `t5.mp.rank_popup_type_on` (#860): a
       milestone's popup reads its row (`mp/statsmilestones1..4.csv`) and draws
