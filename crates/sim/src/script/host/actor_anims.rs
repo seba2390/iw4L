@@ -374,7 +374,10 @@ fn client_use_tree(world: &mut World, receiver: &Value, name: &str) -> Result<Va
         Some((id, entity)) => (id, entity.number),
         None => return Err("not an entity".into()),
     };
-    if number < crate::script::client::present::CLIENT_ENTITY_BASE {
+    let server_based = number < crate::script::client::present::CLIENT_ENTITY_BASE;
+    // Only the zombies client refuses a server's entity; its clips reach the
+    // server's copy.
+    if server_based && !world.contains_resource::<crate::script::client::ClientPlaysServerAnims>() {
         return Err("UseAnimTree: Entity is a server-based entity.".into());
     }
     if tree_named(world, name).is_none() {
@@ -382,6 +385,9 @@ fn client_use_tree(world: &mut World, receiver: &Value, name: &str) -> Result<Va
     }
     if !has_model(world, id) {
         return Err("Cannot set an animtree into an entity that has no model.".into());
+    }
+    if server_based {
+        return Ok(Value::Undefined);
     }
     attach(world, id, name)
 }
@@ -489,7 +495,14 @@ fn set_anim(
         .unwrap_or(DEFAULT_GOAL_TIME)
         .max(0.0);
     let rate = optional(args, at + 2, float)?.unwrap_or(1.0);
-    if actor_id(world, receiver).is_err() {
+    let server_based = world.resource::<RoundScript>().client
+        && world
+            .resource::<RoundScript>()
+            .entity(receiver)
+            .is_some_and(|(_, entity)| {
+                entity.number < crate::script::client::present::CLIENT_ENTITY_BASE
+            });
+    if server_based || actor_id(world, receiver).is_err() {
         let id = super::natives::engine::entity_id(world, receiver)?;
         let name = anim_name(args, anim_at)?;
         if let Some(entity) = world.resource_mut::<RoundScript>().entities.get_mut(&id) {

@@ -730,6 +730,11 @@ pub(crate) struct ClientEntityDobjs(
     pub(crate) std::collections::BTreeMap<u64, crate::AuthorityDObjState>,
 );
 
+/// Black Ops multiplayer's client plays a clip on a server's entity
+/// (`UseAnimTree` and `SetAnim`), which its zombies client refuses.
+#[derive(Resource, Default)]
+pub(crate) struct ClientPlaysServerAnims;
+
 /// A client entity turned into a primary light (`makelight`).
 #[derive(Clone, Debug)]
 pub(crate) struct ClientLight {
@@ -937,6 +942,9 @@ pub(crate) fn install(
         &level.destructible_defs,
     )?;
     let multiplayer = runs_multiplayer_scripts(server);
+    if multiplayer {
+        world.insert_resource(ClientPlaysServerAnims);
+    }
     let local = {
         let mut runtime = world.resource_mut::<RoundScript>();
         let object = runtime
@@ -1132,6 +1140,7 @@ pub(crate) fn advance_client_scripts(server: &mut World) {
             super::host::natives::t5_poison::frame(server, 0);
             publish_client_lights(server, &client.world);
             present::present(server, &mut client);
+            deliver_server_anims(server, &mut client);
             deliver_tag_effects(server, &mut client);
         }
     }
@@ -1211,6 +1220,32 @@ fn sync_model_table(server: &World, client: &mut World) {
             .map(|(_, model)| model.as_str());
         if let Some(model) = model.filter(|m| !m.is_empty() && !m.starts_with(['*', '?'])) {
             table.names.insert(model.to_ascii_lowercase());
+        }
+    }
+}
+
+/// Hands the clips the client set on the server's entities to the server's
+/// copies.
+fn deliver_server_anims(server: &mut World, client: &mut ClientScripts) {
+    let mirrored: Vec<(u64, u64)> = client
+        .mirrored
+        .iter()
+        .map(|(server_id, entry)| (*server_id, entry.client_object))
+        .collect();
+    for (server_id, client_object) in mirrored {
+        let clip = client
+            .world
+            .resource_mut::<RoundScript>()
+            .entities
+            .get_mut(&client_object)
+            .and_then(|entity| entity.anim_op.take());
+        if let Some(clip) = clip
+            && let Some(entity) = server
+                .resource_mut::<RoundScript>()
+                .entities
+                .get_mut(&server_id)
+        {
+            entity.anim_op = Some(clip);
         }
     }
 }
