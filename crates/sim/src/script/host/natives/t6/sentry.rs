@@ -70,6 +70,9 @@ const PENETRATION_TABLE: &str = "info/bullet_penetration_mp";
 const PENETRATION_TABLE_HEADER: &str = "BULLET_PEN_TABLE";
 const PENETRATION_TYPES: [&str; 3] = ["small", "medium", "large"];
 const PENETRATION_COUNT: (&str, i32) = ("penetrationcount", 5);
+/// A penetrating bullet's next impact and its exit are shown only this far
+/// from the last.
+const PENETRATION_MIN_FX_DIST: (&str, f32) = ("bullet_penetrationminfxdist", 30.0);
 /// A charge-shot weapon's bullet always passes this many surfaces.
 const FIRE_CHARGE_SHOT: i32 = 8;
 const CHARGE_SHOT_PENETRATIONS: i32 = 5;
@@ -77,6 +80,8 @@ const CHARGE_SHOT_PENETRATIONS: i32 = 5;
 const EXIT_BACK: f32 = 0.01;
 /// Surfaces any bullet passes: flagged so, or water.
 const SURF_FULL_DEPTH: u32 = 0x4;
+/// The sky shows no impact.
+const SURF_SKY: u32 = 0x4;
 const WATER: u32 = 20;
 const FULL_DEPTH: f32 = 100.0;
 const SURF_NO_PENETRATE: u32 = 0x100;
@@ -1040,19 +1045,21 @@ fn strike(
     struck: &Struck,
     damage_scale: f32,
     dflags: i32,
-) -> Result<(), String> {
+) -> Result<u8, String> {
     let Value::Object(target) = struck.entity else {
-        return Ok(());
+        return Ok(0);
     };
     let location = hit_location(struck.collider);
     if location == damage::RIOTSHIELD {
         return Err("t6.turret.riotshield_hit: a turret's bullet striking a riot shield is not implemented yet".into());
     }
     if !takes_damage(world, target) {
-        return Ok(());
+        return Ok(0);
     }
     let turret = Value::Object(id);
     let amount = (damage_at(def, muzzle, struck.point) as f32 * damage_scale) as i32;
+    let head = u8::from(location == 1 || location == 2);
+    let alive_before = is_sentient(world, target) && health(world, target) > 0;
     damage::damage(
         world,
         &struck.entity,
@@ -1078,7 +1085,80 @@ fn strike(
             located: false,
             time_offset: 0,
         },
-    )
+    )?;
+    let killed = alive_before && (!live(world, target) || health(world, target) <= 0);
+    Ok(head | if killed { 2 } else { 0 })
+}
+
+fn health(world: &mut World, id: u64) -> i32 {
+    int_field(world, id, "health")
+}
+
+/// A shot's impacts, as Black Ops 2 marks them with its default client-side
+/// bullets (`sv_clientSideBullets`): no event from the server, each drawn by
+/// the clients. The turret's own impacts go to them as IW4L's client-drawn
+/// impact records, numbered within the shot.
+struct Impacts {
+    shooter: i32,
+    weapon: u32,
+    shot: u32,
+    segment: u16,
+}
+
+impl Impacts {
+    fn new(world: &mut World, id: u64, weapon: u32) -> Self {
+        let shooter = world
+            .resource::<RoundScript>()
+            .entities
+            .get(&id)
+            .map_or(-1, |entity| entity.number);
+        let shot = FrameWorld::from_world(world).alloc_shot_id().0;
+        Self {
+            shooter,
+            weapon,
+            shot,
+            segment: 0,
+        }
+    }
+
+    /// The impact where a trace from `start` struck: none in the sky, past
+    /// the end, or on a riot shield (its own events). `flags` are the
+    /// struck body's head and kill bits; `exit` where the bullet left a
+    /// surface it went through.
+    fn add(&mut self, world: &mut World, start: [f32; 3], struck: &Struck, flags: u8, exit: bool) {
+        if self.shooter < 0
+            || struck.flags & SURF_SKY != 0
+            || hit_location(struck.collider) == damage::RIOTSHIELD
+        {
+            return;
+        }
+        let mut surface_flags = struck.flags;
+        if exit {
+            surface_flags |= crate::combat::IMPACT_EXIT_SURFACE;
+        }
+        let segment = self.segment;
+        self.segment = self.segment.saturating_add(1);
+        FrameWorld::from_world(world).push_pellet_fx(crate::PelletFxRecord {
+            attacker: self.shooter,
+            weapon: self.weapon,
+            correlation: self.shot,
+            fire_cause: None,
+            pellet: 0,
+            segment,
+            hand: 0,
+            start,
+            end: struck.point,
+            normal: struck.normal,
+            surf_type: ((struck.flags >> 20) & 0x3f) as u8,
+            surface_flags,
+            flesh_flags: if matches!(struck.entity, Value::Object(_)) {
+                flags & 0x3
+            } else {
+                0
+            },
+            path: false,
+        });
+    }
 }
 
 /// The engine's advance past a hit: past an entity from the hit, leaving
@@ -1114,6 +1194,7 @@ fn bullet(
     muzzle: [f32; 3],
     end: [f32; 3],
     dir: [f32; 3],
+    impacts: &mut Impacts,
 ) -> Result<(), String> {
     let mut start = muzzle;
     let mut ignore = Value::Object(id);
@@ -1122,7 +1203,8 @@ fn bullet(
         let Some(struck) = bullet_trace(world, start, end, dir, &ignore, 0) else {
             return Ok(());
         };
-        strike(world, id, def, muzzle, dir, &struck, damage_scale, 0)?;
+        let flags = strike(world, id, def, muzzle, dir, &struck, damage_scale, 0)?;
+        impacts.add(world, start, &struck, flags, false);
         if struck.flags & SURF_PASS != 0 {
             let (advanced, from, left_out) = advance(&struck, dir, PASS_OFFSET);
             if !advanced {
@@ -1219,11 +1301,18 @@ fn penetrate(
     muzzle: [f32; 3],
     end: [f32; 3],
     dir: [f32; 3],
+    impacts: &mut Impacts,
 ) -> Result<(), String> {
     let Some(mut struck) = bullet_trace(world, muzzle, end, dir, &Value::Object(id), 0) else {
         return Ok(());
     };
-    strike(world, id, def, muzzle, dir, &struck, 1.0, 0)?;
+    let mut flags = strike(world, id, def, muzzle, dir, &struck, 1.0, 0)?;
+    impacts.add(world, muzzle, &struck, flags, false);
+    let min_fx = dvar_f32(world, PENETRATION_MIN_FX_DIST);
+    let far = |a: [f32; 3], b: [f32; 3]| {
+        let d = sub(a, b);
+        dot(d, d) > min_fx * min_fx
+    };
     let table = depth_table(world)?;
     let count = if def.fire_type == FIRE_CHARGE_SHOT {
         CHARGE_SHOT_PENETRATIONS
@@ -1280,11 +1369,31 @@ fn penetrate(
                 return Ok(());
             }
         }
+        if !all_solid {
+            // Where it came out, shown when far enough from the next hit
+            // (or the bullet's end), unless that is the sky.
+            if let Some(exit) = &exit {
+                let next_point = next.as_ref().map_or(end, |next| next.point);
+                if far(next_point, exit.point)
+                    && next.as_ref().is_none_or(|next| next.flags & SURF_SKY == 0)
+                {
+                    let out = Struck {
+                        normal: dir,
+                        ..exit.clone()
+                    };
+                    impacts.add(world, exit_start, &out, flags, true);
+                }
+            }
+        }
         let Some(next) = next else {
             return Ok(());
         };
         if !all_solid {
-            strike(
+            let shown = match &exit {
+                Some(exit) => far(next.point, exit.point),
+                None => far(next.point, entry),
+            };
+            flags = strike(
                 world,
                 id,
                 def,
@@ -1294,6 +1403,9 @@ fn penetrate(
                 damage_scale,
                 DFLAG_PENETRATION,
             )?;
+            if shown {
+                impacts.add(world, from, &next, flags, false);
+            }
         }
         struck = next;
     }
@@ -1310,6 +1422,7 @@ fn bullet_fire(
     spread: f32,
     muzzle: presence::TagPose,
     now: i64,
+    impacts: &mut Impacts,
 ) -> Result<(), String> {
     if def.bullet_impact_explode {
         return Err(format!(
@@ -1334,9 +1447,9 @@ fn bullet_fire(
     });
     let dir = normalize(sub(end, origin));
     if def.penetrate_type != 0 {
-        return penetrate(world, id, def, origin, end, dir);
+        return penetrate(world, id, def, origin, end, dir, impacts);
     }
-    bullet(world, id, def, origin, end, dir)
+    bullet(world, id, def, origin, end, dir, impacts)
 }
 
 /// `shootturret`: each of the fire's shots from `tag_flash` along the gun,
@@ -1360,7 +1473,22 @@ pub(super) fn shoot(world: &mut World, id: u64) -> Result<(), String> {
     for _ in 0..shots {
         let muzzle = gun_tag(world, id, turret.aim.gun, "tag_flash")
             .ok_or_else(|| format!("turret '{}' has no tag_flash", turret.weapon))?;
-        bullet_fire(world, id, &def, turret.aim.spread[0], muzzle, now)?;
+        let mut impacts = Impacts::new(world, id, weapon);
+        bullet_fire(
+            world,
+            id,
+            &def,
+            turret.aim.spread[0],
+            muzzle,
+            now,
+            &mut impacts,
+        )?;
+        diag::debug!(
+            Sim,
+            "turret {}: shot with {} impacts",
+            impacts.shooter,
+            impacts.segment
+        );
         fire_event(world, id, weapon, muzzle.0);
     }
     Ok(())
