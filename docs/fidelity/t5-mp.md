@@ -47,14 +47,8 @@ Each open section names the issue that works it.
       (`_elevator.gsc`, placed by structs) were not looked for on any map;
       no base map has a `shutter_*`, `wire`, `explodable_barrel` or
       `flammable_crate` entity by targetname (#669).
-- [ ] **V** Black Ops multiplayer's client `UseAnimTree` refuses only players
-      and actors; IW4L refuses every server entity, the rule read for the
-      zombies client (#669).
 - [ ] **V** A destructible's debris models (`destructible spawn-model debris
-      unavailable`, the Nuketown mannequins' limbs) are not spawned, and a
-      client script's `UseAnimTree` / `SetAnim` on a server entity faults, so
-      a destroyed car does not play `veh_car_destroy`
-      (`clientscripts/mp/_destructible.csc`) (#669).
+      unavailable`, the Nuketown mannequins' limbs) are not spawned (#669).
 - [ ] **V** `t5.csc.in_killcam`: `GetInKillcam` answers false, the client VM
       knowing no killcam. `t5.csc.flag_away`: `SetFlagAsAway` does not reach
       the compass's flag icons.
@@ -718,6 +712,11 @@ Each open section names the issue that works it.
 - [x] **G** `spawnvehicle`, `setvehicleteam`, `boundswouldtelefrag`, Black Ops'
       `physicstrace`, and `usevehicle` on a ground vehicle (#864): an RC-XD spawns
       and seats its player; it does not drive yet (#865).
+
+- [x] **V** A client script's `UseAnimTree` and `SetAnim` on a server entity
+      (#669): only players and actors are refused, as `BlackOpsMP.exe` does, and
+      the clip plays on the server's copy; a destroyed car plays
+      `veh_car_destroy`.
 
 - [x] **V** The camera spike, concussion and tactical insertion (#848): each
       ran in a match. The spike places, shows its view top left (bits 34 to 36,
