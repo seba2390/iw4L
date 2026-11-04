@@ -467,16 +467,32 @@ fn run_session_swap(
     }
 }
 
+/// The match a room's host is running.
+fn room_match_key(bridge: &net::MasterBridge) -> Option<MatchKey> {
+    match bridge.state() {
+        net::MasterBridgeState::Hosting { identity, .. } => {
+            Some(MatchKey::new(identity.room_id.0, identity.epoch))
+        }
+        _ => None,
+    }
+}
+
 fn run_exit_level(
     mut called: MessageReader<frame::ExitLevelCalled>,
     mut transition: ResMut<SessionSwapRequest>,
     mode: Option<Res<game_api::ModeRules>>,
+    room: Option<Res<net::MasterBridge>>,
 ) {
     if called.read().next().is_none() {
         return;
     }
-    // A game whose match goes back to its own lobby loads the lobby's level.
-    if let Some(back) = mode.as_ref().and_then(|mode| mode.level_return) {
+    // A game whose match goes back to its own lobby loads the lobby's level;
+    // a master room's members go back to the room together instead.
+    if let Some(back) = mode
+        .as_ref()
+        .and_then(|mode| mode.level_return)
+        .filter(|_| room.is_none())
+    {
         match transition.request_zone(back.zone.to_owned()) {
             Ok(id) => diag::info!(
                 Sim,
@@ -486,6 +502,12 @@ fn run_exit_level(
             Err(err) => diag::info!(Sim, "session: exitLevel refused — {err}"),
         }
         return;
+    }
+    // A room's host says the match is over, which its members follow.
+    if let Some(room) = room.as_ref()
+        && let Some(key) = room_match_key(room)
+    {
+        room.report_match_ended(key);
     }
     match transition.request_menu() {
         Ok(id) => diag::info!(Sim, "session: exitLevel( false ) → lobby (swap #{id})"),

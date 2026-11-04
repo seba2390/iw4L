@@ -274,7 +274,8 @@ Each milestone names its issues; open rules are in
   - [x] Attack Dogs (#758): they spawn, patrol, traverse, hunt and bite with the owner credited, are hurt, heal, die into a corpse in its death pose, are replaced, and leave when their time is up.
 - [x] Combat Training bots join and fight (#652).
   - [x] Black Ops' `_bot.gsc` adds its bots (`addtestclient`) and picks their team, class and loadout; IW4L's host bots move and shoot them. Black Ops' own bot behaviour is #709.
-- [ ] Private matches with friends: an unlisted lobby, join by invite, teams, game settings, back to the lobby after a match (#663, #665).
+- [x] Private matches with friends: an unlisted lobby, join by invite, teams, game settings, back to the lobby after a match (#663, #665).
+  - [x] Two clients on one machine: a client joins a hosted room by its invite code, picks a team and class from Black Ops' menus, both play to the time limit and go back to the room's lobby together, and the host starts a second match from there.
 - [ ] Two-machine play with prediction and lag compensation (#666).
 - [x] Killcam, final killcam and spectating (#667).
   - [x] On `mp_nuked`: a killcam, a final killcam and an S&D round end replay the killer's view; a dead S&D player follows a living teammate, and a player on the spectator team cycles through the players, each with the followed player's view, viewmodel and ammo. The `SPECTATING` label is `t5.hud.spectator_label` (#651).
