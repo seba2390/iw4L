@@ -24,7 +24,7 @@ pub(crate) use barrier::draw as draw_barriers;
 pub(crate) use damage::zone_location_scale;
 pub(crate) mod dvars;
 mod effect;
-mod entity;
+pub(super) mod entity;
 mod extras;
 pub(crate) mod flame_overlay;
 mod laststand;

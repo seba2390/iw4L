@@ -259,7 +259,7 @@ fn ground_trace(world: &mut World, _: &Value, args: &[Value]) -> Result<Value, S
     )
 }
 
-fn physics_trace(world: &mut World, _: &Value, args: &[Value]) -> Result<Value, String> {
+pub(crate) fn physics_trace(world: &mut World, _: &Value, args: &[Value]) -> Result<Value, String> {
     let (start, end) = (vector(args, 0)?, vector(args, 1)?);
     let mins = if args.len() >= 3 {
         vector(args, 2)?

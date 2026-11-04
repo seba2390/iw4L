@@ -494,7 +494,7 @@ Each open section names the issue that works it.
       catalog plus the multiplayer client's own function and entity method
       tables (`mp_client_catalog.rs`, 48 builtins from `BlackOpsMP.exe`)
       and run on `mp_nuked`. Not implemented yet, each faulting the thread
-      that calls it: the vehicle queries (#660).
+      that calls it: the vehicle queries (#865, #866).
 - [ ] **V** `t5.csc.extra_camera`: the camera spike's extra camera draws its
       view in the `spike_cam` menu while toggled. Open: its view has no sky
       (black), and the sound listener does not move to the spike while toggled.
@@ -1297,3 +1297,7 @@ Each open section names the issue that works it.
 - [x] **G** Every base map loads and plays a Team Deathmatch to its end
       with Black Ops' bots; the only script fault is `testspawnpoint`
       when a bot carries a tactical insertion (#649) (#670).
+
+- [x] **G** `spawnvehicle`, `setvehicleteam`, `boundswouldtelefrag`, Black Ops'
+      `physicstrace`, and `usevehicle` on a ground vehicle (#864): an RC-XD spawns
+      and seats its player; it does not drive yet (#865).
