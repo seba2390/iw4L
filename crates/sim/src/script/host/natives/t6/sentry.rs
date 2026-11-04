@@ -1364,10 +1364,31 @@ pub(super) fn shoot(world: &mut World, id: u64) -> Result<(), String> {
         _ => 1,
     };
     let now = now_ms(world);
+    let weapon = super::weapon::weapon_index(world, &turret.weapon)? as u32;
     for _ in 0..shots {
         let muzzle = gun_tag(world, id, turret.aim.gun, "tag_flash")
             .ok_or_else(|| format!("turret '{}' has no tag_flash", turret.weapon))?;
         bullet_fire(world, id, &def, turret.aim.spread[0], muzzle, now)?;
+        fire_event(world, id, weapon, muzzle.0);
     }
     Ok(())
+}
+
+/// Each shot's fire event on the turret, as the engine adds it: the
+/// turret's weapon, and the shooter's entity number (the turret's own, nobody
+/// using it). The engine's event is its mounted turret's fire, one kind for
+/// the first barrel and another for the rest; the clients get IW4L's weapon
+/// fire, which keeps no barrel (`t6.turret.client_bones`).
+fn fire_event(world: &mut World, id: u64, weapon: u32, muzzle: [f32; 3]) {
+    let Some(number) = world
+        .resource::<RoundScript>()
+        .entities
+        .get(&id)
+        .map(|entity| entity.number)
+        .filter(|&number| number >= 0)
+    else {
+        return;
+    };
+    diag::debug!(Sim, "turret {number}: fire event, weapon {weapon}");
+    super::super::engine::weapon_fire_event(world, number, number, weapon, muzzle);
 }
