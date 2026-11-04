@@ -61,8 +61,6 @@ const BULLET_HITS: usize = 12;
 const PASS_OFFSET: f32 = 0.135;
 const GRAZE: f32 = 0.125;
 const SURF_PASS: u32 = 0x10;
-/// Weapon classes firing several pellets.
-const SPREAD_CLASSES: [i32; 2] = [3, 13];
 const MOD_PISTOL_BULLET: usize = 1;
 const MOD_RIFLE_BULLET: usize = 2;
 const DFLAG_ARMOR_PIERCING: i32 = 2;
@@ -1313,12 +1311,6 @@ fn bullet_fire(
     muzzle: presence::TagPose,
     now: i64,
 ) -> Result<(), String> {
-    if SPREAD_CLASSES.contains(&def.weap_class) {
-        return Err(format!(
-            "t6.turret.pellets: '{}' fires pellets from a turret, which is not implemented yet",
-            def.name
-        ));
-    }
     if def.bullet_impact_explode {
         return Err(format!(
             "t6.turret.impact_explode: '{}' explodes on impact, which is not implemented yet",
