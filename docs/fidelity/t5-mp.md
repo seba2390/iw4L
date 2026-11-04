@@ -696,10 +696,13 @@ Each open section names the issue that works it.
       own: the aimed height (Black Ops holds a pitch, rolled between a target's
       feet and eyes every `sv_botMinPitchTime` to `sv_botMaxPitchTime`, a third
       of the way up when close by a weapon field not read) is held as a height
-      on a 60-unit-tall target. Not ported: aiming down the sights
-      (`sv_botMinAdsTime`, `sv_botMaxAdsTime`), crouching, strafing, grenades,
-      sprint and melee distances, the ADS turn speeds (bots never aim down the
-      sights), and Black Ops' choice of target. A script's goal
+      on a 60-unit-tall target. A bot aims down the sights at a target it
+      sees beyond `sv_botCloseDistance` and turns at `sv_botYawSpeedAds` and
+      `sv_botPitchSpeedAds` while it does; Black Ops' ADS also hangs on two
+      timers (`sv_botMinAdsTime`, `sv_botMaxAdsTime`) whose release is not
+      read, and on weapon fields not read (a bolt action or a class 5 weapon
+      waits for a range of its own). Not ported: crouching, strafing,
+      grenades, sprint and melee distances, and Black Ops' choice of target. A script's goal
       (`setscriptgoal`, heard as `goal` on arrival) outranks the host bot's
       own tasks, fights included: on the way it shoots what it sees without
       leaving the route (IW4L's own rule; the engine bot code was not read).
