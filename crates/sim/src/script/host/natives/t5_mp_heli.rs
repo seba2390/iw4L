@@ -822,6 +822,66 @@ fn set_view_clamp(world: &mut World, _: &Value, args: &[Value]) -> Result<Value,
     Ok(Value::Undefined)
 }
 
+/// The seats of the vehicles no flight runs: a seat ends with its vehicle or
+/// the player's link, as a helicopter's does.
+pub(super) fn end_ground_seats(world: &mut World) {
+    let rows: Vec<(u64, [Option<u32>; SEATS])> = {
+        let flown: Vec<u64> = world
+            .resource::<RoundScript>()
+            .vehicles
+            .keys()
+            .copied()
+            .collect();
+        seats(world)
+            .seats
+            .iter()
+            .filter(|(id, _)| !flown.contains(id))
+            .map(|(id, row)| (*id, *row))
+            .collect()
+    };
+    for (id, row) in rows {
+        let gone = !world.resource::<RoundScript>().entities.contains_key(&id);
+        for (seat, client) in row.iter().enumerate() {
+            let Some(client) = client else {
+                continue;
+            };
+            let unlinked = world
+                .resource::<RoundScript>()
+                .players
+                .get(client)
+                .is_none_or(|slot| slot.link.is_none());
+            if gone || unlinked {
+                leave_seat(world, id, seat, *client);
+            }
+            if gone {
+                super::super::players::unlink_player(world, *client);
+                // Its driver hears the vehicle go: an RC-XD's script ends on it.
+                let player = super::super::players::player_object(world, *client);
+                raise(
+                    world,
+                    player,
+                    "exit_vehicle",
+                    vec![Value::Int(seat as i32), Value::Undefined],
+                );
+            }
+        }
+        if gone {
+            seats(world).seats.remove(&id);
+        }
+    }
+}
+
+/// The driver in a vehicle's first seat.
+pub(super) fn driver_of(world: &mut World, vehicle: u64) -> Option<u32> {
+    seats(world).seats.get(&vehicle)?[0]
+}
+
+/// A driver's forward and right sticks this frame.
+pub(super) fn driver_sticks(world: &mut World, client: u32) -> Option<(i8, i8)> {
+    let pilot = pilot_controls(world, client)?;
+    Some((pilot.forward, pilot.right))
+}
+
 /// The pilot's controls this frame; their command's sticks and keys.
 fn pilot_controls(world: &mut World, client: u32) -> Option<HeliPilot> {
     let id = crate::ClientId(client);
@@ -1047,7 +1107,22 @@ fn height_lock_depth(world: &mut World, origin: [f32; 3]) -> i32 {
 /// BlackOpsMP.exe's test is the means it never takes.
 fn immune_to_damage(world: &mut World, receiver: &Value, args: &[Value]) -> Result<Value, String> {
     let means = string(args, 1)?;
-    let remote = flight(world, receiver)?.piloted.motion.remote_control;
+    let remote = match flight(world, receiver) {
+        Ok(heli) => heli.piloted.motion.remote_control,
+        // A ground vehicle: its file's.
+        Err(_) => {
+            let vehicle = vehicle_id(receiver)?;
+            let Value::String(kind) = world
+                .resource_mut::<RoundScript>()
+                .object_field(vehicle, "vehicletype")
+            else {
+                return Err("entity is not a vehicle".into());
+            };
+            FrameWorld::from_world(world)
+                .vehicle_motion(&kind)
+                .is_some_and(|motion| motion.remote_control)
+        }
+    };
     let immune = match &*means {
         "MOD_PISTOL_BULLET"
         | "MOD_RIFLE_BULLET"
@@ -1116,9 +1191,10 @@ fn finish_damage(world: &mut World, receiver: &Value, args: &[Value]) -> Result<
     let means = string(args, 4)?;
     let point = optional(args, 6, vector)?;
     let dir = args.get(7).cloned().unwrap_or(Value::Undefined);
-    let heli = *flight(world, receiver)?;
+    let heli = flight(world, receiver).ok().copied();
     let splash = matches!(&*means, "MOD_GRENADE_SPLASH" | "MOD_PROJECTILE_SPLASH");
-    let dealt = (damage as f32 * damage_share(world, &heli, point, splash)) as i32;
+    let share = heli.map_or(1.0, |heli| damage_share(world, &heli, point, splash));
+    let dealt = (damage as f32 * share) as i32;
     let weapon = args.get(5).cloned().unwrap_or(Value::Undefined);
     apply_damage(world, receiver, dealt, attacker, dir, point, &means, weapon);
     Ok(Value::Undefined)
@@ -1136,10 +1212,20 @@ fn finish_radius_damage(
     let means = string(args, 6)?;
     let point = optional(args, 8, vector)?;
     let radius = float(args, 9)?;
-    let heli = *flight(world, receiver)?;
+    let heli = flight(world, receiver).ok().copied();
+    let origin = match heli {
+        Some(heli) => heli.origin,
+        None => match world
+            .resource_mut::<RoundScript>()
+            .object_field(vehicle_id(receiver)?, "origin")
+        {
+            Value::Vector(origin) => origin,
+            _ => [0.0; 3],
+        },
+    };
     let distance = point.map_or(0.0, |at| {
         (0..3)
-            .map(|i| (at[i] - heli.origin[i]) * (at[i] - heli.origin[i]))
+            .map(|i| (at[i] - origin[i]) * (at[i] - origin[i]))
             .sum::<f32>()
             .sqrt()
     });
@@ -1147,7 +1233,8 @@ fn finish_radius_damage(
         return Ok(Value::Undefined);
     }
     let at_range = inner + (outer - inner) * distance / radius;
-    let dealt = (at_range * damage_share(world, &heli, point, true)) as i32;
+    let share = heli.map_or(1.0, |heli| damage_share(world, &heli, point, true));
+    let dealt = (at_range * share) as i32;
     let weapon = args.get(7).cloned().unwrap_or(Value::Undefined);
     apply_damage(
         world,

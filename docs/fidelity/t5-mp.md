@@ -286,6 +286,16 @@ Each open section names the issue that works it.
 
 ## Killstreaks (#656–#662)
 
+- [ ] **G** `t5.mp.rcxd_physics`: the RC-XD rolls along the ground by its file's
+      top speed and acceleration, stopped by what it hits; Black Ops' car
+      (`isNitrous`) is a rigid body with wheels. It does not drift, jump or
+      flip, and the client does not predict it (#865).
+- [ ] **V** `t5.mp.rcxd_client`: the RC-XD's client scripts fault: a vehicle has
+      no `vehicleclass` or `vehicletype` on the client, and `ispeelingout`,
+      `iswheelsliding`, `iswheelcolliding`, `getwheelsurface`, `getmaxspeed`,
+      `getmaxreversespeed`, `getthrottle`, `islocalclientdriver` are not
+      answered, so its tread effects and screen dust do not run (#866).
+
 - [ ] **G** The action slot button builtins
       (`actionSlotOneButtonPressed` … `Four`) read a slot as pressed for the
       server tick its press arrives in and the next: the client sends a
@@ -545,7 +555,7 @@ Each open section names the issue that works it.
       while the screen flashes or a UI menu is open are not applied.
       Hit markers, score popups, medals and the end-of-match scoreboard
       are not drawn as Black Ops draws them; `gametypename`, `isintermission`,
-      `spectatingclient`, `isinguidedmissile` and `isdemoplaying` are not
+      `spectatingclient` and `isinguidedmissile` are not
       answered, so the items they gate do not draw. `player()` answers
       `score`, `kills`, `deaths` and `place`; its other fields are not
       answered.
@@ -595,12 +605,10 @@ Each open section names the issue that works it.
       keeps beyond those it shows is not read. A print's wrap measures the
       window's font at its text scale, in virtual pixels; the unit Black
       Ops' wrap measures in is not compared.
-- [ ] **V** `t5.hud.obituary_popups`: an obituary naming the local player
-      does not open Black Ops' killed / killed-by player card
-      (`playercard`, `playerkilled` in `hud_popups`: `CGAME_KILLED`,
-      `CGAME_KILLEDBY`, the team-kill strings, rank icon and clan tag),
+- [ ] **V** `t5.hud.player_card_emblem`: the kill player card has no gamercard
+      background or emblem (`emblemPlayerBackgroundMaterial`, owner draw 389),
       and a Second Chance revive (`syrette_mp`) does not centre-print
-      `CGAME_YOUREVIVED` / `CGAME_YOUWEREREVIVED`.
+      `CGAME_YOUREVIVED` / `CGAME_YOUWEREREVIVED` (#854).
 - [ ] **V** `t5.hud.mp_visibility_bits` (`GameCodeHud::visibility_bit`):
       Black Ops' client rebuilds 64 HUD visibility bits a frame; the script
       UI flags (0–3), the match flags (4–16), demo playback (19, 20, 31,
@@ -659,25 +667,26 @@ Each open section names the issue that works it.
 
 - [ ] **V** `t5.mp.challenge_popup`: `displaychallengecomplete` does not
       reach the HUD: the milestone's name and description (seven cases by the
-      table's type column) are not read (#860).
-- [ ] **V** `t5.mp.team_message_popup`: `displayteammessage` does not reach
-      the HUD: the sender's rank, name, emblem and gamercard (#860).
+      table's type column) are not read (#860). Only a ranked match reaches it.
 - [ ] **V** `t5.mp.rank_popup_type_on`: the rank popup's first line shows at
       once; Black Ops types it out letter by letter (#860).
 - [ ] **V** `t5.mp.contract_popup`: `displaycontract` does not reach the HUD.
       Contracts come from the online service: a private match has none.
+
+- [ ] **V** `t5.hud.decode_fx`: `setCOD7DecodeFX` types its text in and fades it
+      as a pulse does, not with Black Ops' scrambled letters (#651).
 
 ## Bots (#652, #709)
 
 - [ ] **G** `t5.bots.host_ai`: test clients join through Black Ops' own
       `_bot.gsc` (`addtestclient`; their team and class by `menuresponse`,
       their loadout by `bot_give_loadout`), but IW4L's host bots move, aim
-      and shoot them, not Black Ops' engine bot code. The bot natives keep
-      what the scripts set: `setscriptgoal`/`hasscriptgoal`, the scripted
-      enemy (`getthreat` answers only that), the straight line to the goal
-      for `getlookaheaddist`/`getlookaheaddir`; the host bots ignore the
-      goal and `pressusebutton`/`pressattackbutton`, so bots do not pick up
-      care packages or revive. Bots fire rarely and seldom land kills on
+      and shoot them, not Black Ops' engine bot code. A script's goal
+      (`setscriptgoal`, heard as `goal` on arrival) outranks the host bot's
+      own tasks, and `pressusebutton`/`pressattackbutton` reach its command;
+      `bad_path` never fires, the scripted enemy is only `getthreat`'s answer,
+      and the goal's straight line stands in for
+      `getlookaheaddist`/`getlookaheaddir`. Bots fire rarely and seldom land kills on
       Black Ops' weapons (#709).
 
 ## Audio (#668)
@@ -1301,3 +1310,14 @@ Each open section names the issue that works it.
 - [x] **G** `spawnvehicle`, `setvehicleteam`, `boundswouldtelefrag`, Black Ops'
       `physicstrace`, and `usevehicle` on a ground vehicle (#864): an RC-XD spawns
       and seats its player; it does not drive yet (#865).
+
+- [x] **V** `t5.hud.obituary_popups` (#854): a kill puts up the killer's and the
+      victim's player card (`playerCard`, `playerKilled`): `CGAME_KILLED`,
+      `CGAME_KILLEDBY`, the team-kill lines, the name and rank. `isDemoPlaying`
+      answers 0.
+
+- [x] **G** A script's `switchToWeapon` reaches the client's selection, and a
+      deleted vehicle's driver hears `exit_vehicle` (#865).
+
+- [x] **V** `t5.mp.team_message_popup` (#860): `displayTeamMessage` slides out
+      the player's name, rank and the line; no emblem (`t5.hud.player_card_emblem`).

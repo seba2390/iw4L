@@ -7,9 +7,11 @@ use std::collections::BTreeSet;
 use std::sync::Arc;
 
 use super::super::args::{float, int};
+use crate::frame::FrameWorld;
 use crate::script::Namespace::Method;
 use crate::script::host::tables::{table, table_search};
 use crate::script::{NativeRegistry, Value};
+use crate::world::ClientId;
 use crate::{MenuCommandKind, MenuPopUp, PopUpText};
 
 /// The ids of the popups not shown that have been logged.
@@ -23,6 +25,8 @@ const RANK_ICON_TABLE: &str = "mp/rankIconTable.csv";
 const STATS_TABLE: &str = "mp/statstable.csv";
 /// The rank table's column of the CoD Points a rank pays.
 const RANK_COD_POINTS_COLUMN: usize = 17;
+/// The rank table's short rank number, as a popup shows it.
+const RANK_SHORT_COLUMN: usize = 14;
 /// `displayWagerPopup`'s sound, which the client always plays.
 const WAGER_SOUND: &str = "uin_challenge_repeatable";
 
@@ -238,6 +242,131 @@ fn not_shown(
     super::player::present(world, receiver, key, args)
 }
 
+/// A rank's icon, by its prestige, and its short rank.
+fn rank_row(world: &World, rank: i32, prestige: i32) -> Option<(String, String)> {
+    let row = rank.to_string();
+    Some((
+        cell(world, RANK_ICON_TABLE, &row, prestige as usize + 1)?,
+        cell(world, RANK_TABLE, &row, RANK_SHORT_COLUMN)?,
+    ))
+}
+
+/// `displayTeamMessage(message, player[, sound])`: the slide-out naming the
+/// player, with their rank. A player past the top of the table shows none.
+fn display_team_message(
+    world: &mut World,
+    receiver: &Value,
+    args: &[Value],
+) -> Result<Value, String> {
+    let about = super::player::player(world, super::super::args::arg(args, 1)?)?;
+    let (name, rank, prestige) = {
+        let frame = FrameWorld::from_world(world);
+        let Some(meta) = frame.client_meta(ClientId(about)) else {
+            return Ok(Value::Undefined);
+        };
+        let end = meta.name.iter().position(|byte| *byte == 0);
+        let name = String::from_utf8_lossy(&meta.name[..end.unwrap_or(meta.name.len())]);
+        (name.into_owned(), meta.rank, meta.prestige)
+    };
+    let mut locals = vec![
+        (
+            "teamMessage".to_owned(),
+            PopUpText::plain(optional_text(args, 0)),
+        ),
+        ("teamMessageName".to_owned(), PopUpText::name(name)),
+        ("teamClanTagPopUp".to_owned(), PopUpText::name("")),
+    ];
+    if let Some((icon, short)) = rank_row(world, rank, prestige) {
+        locals.push(("teamMessageRankIcon".to_owned(), PopUpText::name(icon)));
+        locals.push(("teamMessageRank".to_owned(), PopUpText::plain(short)));
+    }
+    let popup = MenuPopUp {
+        menu: "teamMessageSlideOut".to_owned(),
+        item: "SlideOut".to_owned(),
+        locals,
+        hide_others: false,
+        sound: optional_text(args, 2),
+    };
+    send(world, receiver, popup)
+}
+
+/// The player card an obituary puts up for the one who killed and the one who
+/// died (the client's obituary): the other player's name and rank, under the
+/// kill's line. A revive and a suicide put up none.
+pub(super) fn obituary_cards(
+    world: &mut World,
+    victim: Option<ClientId>,
+    attacker: Option<ClientId>,
+    weapon: &str,
+) {
+    let (Some(victim), Some(attacker)) = (victim, attacker) else {
+        return;
+    };
+    if victim == attacker || weapon == "syrette_mp" {
+        return;
+    }
+    let card = |world: &mut World, about: ClientId, line: &str, team_line: &str| {
+        let (team_kill, name, rank, prestige) = {
+            let frame = FrameWorld::from_world(world);
+            let (killer, killed) = (frame.client_meta(attacker)?, frame.client_meta(victim)?);
+            let meta = frame.client_meta(about)?;
+            (
+                killer.client_state_team != 0
+                    && killer.client_state_team == killed.client_state_team,
+                {
+                    let end = meta.name.iter().position(|byte| *byte == 0);
+                    String::from_utf8_lossy(&meta.name[..end.unwrap_or(meta.name.len())])
+                        .into_owned()
+                },
+                meta.rank,
+                meta.prestige,
+            )
+        };
+        let mut locals = vec![
+            (
+                "killStringPopUp".to_owned(),
+                PopUpText::plain(if team_kill { team_line } else { line }),
+            ),
+            ("namePopUp".to_owned(), PopUpText::name(name)),
+            ("clanTagPopUp".to_owned(), PopUpText::name("")),
+        ];
+        if let Some((icon, short)) = rank_row(world, rank, prestige) {
+            locals.push(("rankIconPopUp".to_owned(), PopUpText::name(icon)));
+            locals.push(("rankPopUp".to_owned(), PopUpText::plain(short)));
+        }
+        Some(locals)
+    };
+    for (viewer, about, line, team_line) in [
+        (attacker, victim, "CGAME_KILLED", "CGAME_TEAMKILLED"),
+        (victim, attacker, "CGAME_KILLEDBY", "CGAME_TEAMKILLEDBY"),
+    ] {
+        let Some(locals) = card(world, about, line, team_line) else {
+            continue;
+        };
+        super::player::send_menu_command(
+            world,
+            viewer.0,
+            MenuCommandKind::PopUp(MenuPopUp {
+                menu: "playerCard".to_owned(),
+                item: "playerCardPopUp".to_owned(),
+                locals,
+                hide_others: false,
+                sound: String::new(),
+            }),
+        );
+        super::player::send_menu_command(
+            world,
+            viewer.0,
+            MenuCommandKind::Animate {
+                menu: "playerKilled".to_owned(),
+                item: "playerCardPopUp".to_owned(),
+                state: "Start".to_owned(),
+                ms: 0,
+            },
+        );
+    }
+}
+
 /// `clearCenterPopups()`.
 fn clear_center_popups(
     world: &mut World,
@@ -278,13 +407,5 @@ pub(crate) fn register(registry: &mut NativeRegistry) {
             args,
         )
     });
-    registry.register(Method, "displayteammessage", |world, receiver, args| {
-        not_shown(
-            world,
-            receiver,
-            "displayteammessage",
-            "t5.mp.team_message_popup",
-            args,
-        )
-    });
+    registry.register(Method, "displayteammessage", display_team_message);
 }

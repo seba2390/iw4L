@@ -60,6 +60,7 @@ pub(crate) fn register(registry: &mut NativeRegistry) {
             .and_then(|value| client(world, value).ok())
             .flatten();
         let name = string(args, 2)?;
+        super::t5_popups::obituary_cards(world, victim, attacker, &name);
         let weapon = crate::script_player::weapon_named(&FrameWorld::from_world(world), &name)?;
         let means_name = string(args, 3)?;
         let means = MEANS

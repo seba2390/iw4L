@@ -662,6 +662,7 @@ pub(super) fn decode_snapshot_meta_body(
             world_objects: sim::WorldObjectSnapshot::default(),
             area_entities,
             objectives,
+            bot_orders: Vec::new(),
             entity_dobjs,
             entities,
             script_movers,
