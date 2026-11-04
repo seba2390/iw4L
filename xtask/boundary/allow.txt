@@ -48,6 +48,7 @@ mixed sim
 mixed xmodel_runtime
 mixed xtask
 pattern crates/approved_tests/src/scenarios/heavy_gameplay_lifecycle.rs "<game>" 1
+pattern crates/approved_tests/src/scenarios/zombies_rounds.rs "<gametype>" 1
 pattern crates/asset_anim/src/animtree.rs FamilyId::<game> 7
 pattern crates/asset_anim/src/animtree.rs anim_iw4:: 1
 pattern crates/asset_anim/src/atr_compile.rs anim_iw4:: 2
