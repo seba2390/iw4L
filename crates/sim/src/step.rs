@@ -503,7 +503,7 @@ fn run_players_system(ecs: &mut World) {
             if let Some(movement) = crate::game_move::rules(&world) {
                 let moved_from = ps.origin;
                 let solid_models = if content.clip_hulls().is_some() {
-                    crate::world::solid_pieces::solid_models(world.entity_collision_capabilities())
+                    crate::world::solid_pieces::solid_models(&world)
                 } else {
                     Vec::new()
                 };
@@ -2301,7 +2301,7 @@ fn spectator_game_move(
     id: ClientId,
     cmd: &UserCmd,
     tick: crate::world::Tick,
-    model_brushes: &[SimBrush],
+    model_brushes: &crate::world::ModelBrushes,
 ) {
     let Some(movement) = crate::game_move::rules(world) else {
         return;
@@ -2348,7 +2348,7 @@ fn spectator_game_move(
         .move_trace()
     };
     let solid_models = if content.clip_hulls().is_some() {
-        crate::world::solid_pieces::solid_models(world.entity_collision_capabilities())
+        crate::world::solid_pieces::solid_models(&world)
     } else {
         Vec::new()
     };
@@ -2397,15 +2397,12 @@ fn spectator_game_move(
 /// (which its clipmask lets through unless it names bodies).
 pub(crate) struct ActorClip {
     linked_brushes: Vec<LinkedBrushCollisionBrush>,
-    model_brushes: Vec<SimBrush>,
+    model_brushes: crate::world::ModelBrushes,
     /// The players' bodies, then the live actors'.
     bodies: Vec<PlayerBodyClip>,
     players: usize,
     /// The solid models with movement brushes, for a game's own sweep.
-    solid_models: Vec<(
-        game_api::collision::Placement,
-        std::sync::Arc<xmodel_runtime::RetainedModelCapability>,
-    )>,
+    solid_models: Vec<crate::world::solid_pieces::SolidModel>,
 }
 
 impl ActorClip {
@@ -2426,7 +2423,7 @@ impl ActorClip {
                     .mode
                     .is_some_and(|mode| mode.actor_physics.is_some())
             {
-                crate::world::solid_pieces::solid_models(world.entity_collision_capabilities())
+                crate::world::solid_pieces::solid_models(&world)
             } else {
                 Vec::new()
             },
@@ -2592,7 +2589,7 @@ struct ClipBackend<'a> {
     self_entnum: u16,
     cmodels: &'a [clipmap_iw4::ClipCmodel],
     linked_brushes: &'a [LinkedBrushCollisionBrush],
-    model_brushes: &'a [SimBrush],
+    model_brushes: &'a crate::world::ModelBrushes,
     /// A sweep that starts inside a body and leaves it is not stopped by it
     /// (an actor's sweep).
     leaves_bodies: bool,

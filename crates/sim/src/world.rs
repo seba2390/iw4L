@@ -42,7 +42,7 @@ use crate::world_objects::WorldObjectState;
 use crate::{WeaponScriptSounds, WeaponSetup};
 use std::collections::HashMap;
 use std::sync::Arc;
-use trace_iw4::{Trace, trace_box, trace_capsule};
+use trace_iw4::{ENTITYNUM_WORLD, HITTYPE_ENTITY, HITTYPE_GLASS, Trace, trace_box, trace_capsule};
 use weapon_iw4::{BulletPenFacts, WeaponCombatFacts};
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, PartialOrd, Ord)]
@@ -1436,15 +1436,16 @@ impl SimState {
         &self.entity_collision_capabilities
     }
 
-    pub(crate) fn model_movement_brushes(&self) -> Vec<SimBrush> {
+    pub(crate) fn model_movement_brushes(&self) -> ModelBrushes {
         self.model_movement_brushes_where(|_| true)
     }
 
     pub(crate) fn model_movement_brushes_where(
         &self,
         keep: impl Fn(&EntityCollisionCapabilities) -> bool,
-    ) -> Vec<SimBrush> {
+    ) -> ModelBrushes {
         let mut brushes = Vec::new();
+        let mut owners = Vec::new();
         for row in self
             .entity_collision_capabilities
             .iter()
@@ -1457,6 +1458,10 @@ impl SimState {
             if capability.movement_brushes.is_empty() {
                 continue;
             }
+            let owner = row
+                .entity_number
+                .and_then(|n| u16::try_from(n).ok())
+                .unwrap_or(ENTITYNUM_WORLD);
             let plane_transform = dobj.world_from_model.inverse().transpose();
             for brush in &capability.movement_brushes {
                 let planes = brush
@@ -1480,9 +1485,10 @@ impl SimState {
                     plane_surface_flags: brush.plane_surface_flags.clone(),
                     glass_encoded: 0,
                 });
+                owners.push(owner);
             }
         }
-        brushes
+        ModelBrushes { brushes, owners }
     }
 
     pub(crate) fn entity_collision_capabilities_mut(
@@ -3510,29 +3516,62 @@ fn player_controller_input(ps: &PlayerState) -> xmodel_runtime::PlayerController
     }
 }
 
+/// The solid models' movement brushes in world space, each with the entity
+/// number a sweep that meets it reports (the world's for a model no entity
+/// owns).
+#[derive(Clone, Debug, Default)]
+pub(crate) struct ModelBrushes {
+    pub(crate) brushes: Vec<SimBrush>,
+    pub(crate) owners: Vec<u16>,
+}
+
+impl std::ops::Deref for ModelBrushes {
+    type Target = [SimBrush];
+
+    fn deref(&self) -> &[SimBrush] {
+        &self.brushes
+    }
+}
+
 pub(crate) fn clip_move_to_model_brushes(
     mut hit: Trace,
-    brushes: &[SimBrush],
+    brushes: &ModelBrushes,
     input: movement_iw4::GroundTraceInput,
 ) -> Trace {
     if hit.fraction == 0.0 || brushes.is_empty() {
         return hit;
     }
-    let other = trace_capsule(
-        brushes.iter().map(brush_ref),
-        input.start,
-        input.end,
-        input.mins,
-        input.maxs,
-        input.tracemask,
-    );
-    let startsolid = hit.startsolid | other.startsolid;
-    let allsolid = hit.allsolid | other.allsolid;
-    if other.fraction < hit.fraction {
-        hit = other;
+    // Each owner's brushes are one entity: the nearest it meets is reported
+    // as that entity, as the game's trace reports the entity it hit.
+    let mut start = 0;
+    while start < brushes.brushes.len() {
+        let owner = brushes.owners[start];
+        let end = start
+            + brushes.owners[start..]
+                .iter()
+                .take_while(|&&o| o == owner)
+                .count();
+        let mut other = trace_capsule(
+            brushes.brushes[start..end].iter().map(brush_ref),
+            input.start,
+            input.end,
+            input.mins,
+            input.maxs,
+            input.tracemask,
+        );
+        start = end;
+        let startsolid = hit.startsolid | other.startsolid;
+        let allsolid = hit.allsolid | other.allsolid;
+        if other.fraction < hit.fraction {
+            if other.hit_type != HITTYPE_GLASS {
+                other.hit_type = HITTYPE_ENTITY;
+                other.hit_id = owner;
+            }
+            hit = other;
+        }
+        hit.startsolid = startsolid;
+        hit.allsolid = allsolid;
     }
-    hit.startsolid = startsolid;
-    hit.allsolid = allsolid;
     hit
 }
 

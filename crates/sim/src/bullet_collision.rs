@@ -1077,6 +1077,9 @@ pub struct EntityCollisionCapabilities {
     pub hidden: bool,
     pub solid: bool,
     pub followed_pose: Option<([f32; 3], [f32; 3])>,
+    /// The entity number of the script entity the row follows, once it has
+    /// followed one: what a sweep meeting its model's brushes reports.
+    pub entity_number: Option<i32>,
 }
 
 impl EntityCollisionCapabilities {
@@ -1093,6 +1096,7 @@ impl EntityCollisionCapabilities {
             hidden: false,
             solid: true,
             followed_pose: None,
+            entity_number: None,
         }
     }
 

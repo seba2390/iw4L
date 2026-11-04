@@ -21,7 +21,7 @@ pub(crate) struct SolidScene<'a> {
     pub(crate) cmodels: &'a SimClipCmodels,
     pub(crate) linked: &'a [LinkedBrushCollisionBrush],
     /// The solid models with movement brushes, each where it stands.
-    pub(crate) models: &'a [(Placement, Arc<xmodel_runtime::RetainedModelCapability>)],
+    pub(crate) models: &'a [SolidModel],
     pub(crate) bodies: &'a [crate::step::PlayerBodyClip],
 }
 
@@ -301,8 +301,13 @@ fn entities<'s>(
             }
         }
     }
-    for (placement, capability) in scene.models {
-        let placement = *placement;
+    for model in scene.models {
+        // A sweep passes the entity it is for, as the game's trace does.
+        if model.entity == pass_entity {
+            continue;
+        }
+        let placement = model.placement;
+        let capability = &model.capability;
         for brush in &capability.movement_brushes {
             if brush.contents & mask == 0 || brush.planes.len() < 6 {
                 continue;
@@ -328,7 +333,7 @@ fn entities<'s>(
                 maxs: world_box.1,
                 placement: Some(placement),
                 contents: brush.contents,
-                entity: ENTITY_WORLD,
+                entity: model.entity,
             });
         }
     }
@@ -358,11 +363,22 @@ fn entities<'s>(
     }
 }
 
-/// The solid models that have movement brushes, each with where it stands.
-pub(crate) fn solid_models(
-    rows: &[crate::bullet_collision::EntityCollisionCapabilities],
-) -> Vec<(Placement, Arc<xmodel_runtime::RetainedModelCapability>)> {
-    rows.iter()
+/// A solid model with movement brushes: where it stands, its brushes, and
+/// the entity a sweep that meets them reports (the world for a model no
+/// entity owns).
+#[derive(Clone)]
+pub(crate) struct SolidModel {
+    pub(crate) placement: Placement,
+    pub(crate) capability: Arc<xmodel_runtime::RetainedModelCapability>,
+    pub(crate) entity: i32,
+}
+
+/// The solid models that have movement brushes, each with where it stands
+/// and the entity number of the script entity that owns it.
+pub(crate) fn solid_models(world: &crate::frame::FrameWorld) -> Vec<SolidModel> {
+    world
+        .entity_collision_capabilities()
+        .iter()
         .filter(|row| row.solid)
         .filter_map(|row| {
             let dobj = row.dobj.as_ref()?;
@@ -371,8 +387,8 @@ pub(crate) fn solid_models(
                 return None;
             }
             let m = dobj.world_from_model;
-            Some((
-                Placement {
+            Some(SolidModel {
+                placement: Placement {
                     origin: m.w_axis.truncate().to_array(),
                     axis: [
                         m.x_axis.truncate().to_array(),
@@ -380,8 +396,9 @@ pub(crate) fn solid_models(
                         m.z_axis.truncate().to_array(),
                     ],
                 },
-                Arc::clone(capability),
-            ))
+                capability: Arc::clone(capability),
+                entity: row.entity_number.unwrap_or(ENTITY_WORLD),
+            })
         })
         .collect()
 }
