@@ -545,7 +545,7 @@ Each open section names the issue that works it.
       while the screen flashes or a UI menu is open are not applied.
       Hit markers, score popups, medals and the end-of-match scoreboard
       are not drawn as Black Ops draws them; `gametypename`, `isintermission`,
-      `spectatingclient`, `isinguidedmissile` and `isdemoplaying` are not
+      `spectatingclient` and `isinguidedmissile` are not
       answered, so the items they gate do not draw. `player()` answers
       `score`, `kills`, `deaths` and `place`; its other fields are not
       answered.
@@ -595,12 +595,10 @@ Each open section names the issue that works it.
       keeps beyond those it shows is not read. A print's wrap measures the
       window's font at its text scale, in virtual pixels; the unit Black
       Ops' wrap measures in is not compared.
-- [ ] **V** `t5.hud.obituary_popups`: an obituary naming the local player
-      does not open Black Ops' killed / killed-by player card
-      (`playercard`, `playerkilled` in `hud_popups`: `CGAME_KILLED`,
-      `CGAME_KILLEDBY`, the team-kill strings, rank icon and clan tag),
+- [ ] **V** `t5.hud.player_card_emblem`: the kill player card has no gamercard
+      background or emblem (`emblemPlayerBackgroundMaterial`, owner draw 389),
       and a Second Chance revive (`syrette_mp`) does not centre-print
-      `CGAME_YOUREVIVED` / `CGAME_YOUWEREREVIVED`.
+      `CGAME_YOUREVIVED` / `CGAME_YOUWEREREVIVED` (#854).
 - [ ] **V** `t5.hud.mp_visibility_bits` (`GameCodeHud::visibility_bit`):
       Black Ops' client rebuilds 64 HUD visibility bits a frame; the script
       UI flags (0–3), the match flags (4–16), demo playback (19, 20, 31,
@@ -1301,3 +1299,8 @@ Each open section names the issue that works it.
 - [x] **G** `spawnvehicle`, `setvehicleteam`, `boundswouldtelefrag`, Black Ops'
       `physicstrace`, and `usevehicle` on a ground vehicle (#864): an RC-XD spawns
       and seats its player; it does not drive yet (#865).
+
+- [x] **V** `t5.hud.obituary_popups` (#854): a kill puts up the killer's and the
+      victim's player card (`playerCard`, `playerKilled`): `CGAME_KILLED`,
+      `CGAME_KILLEDBY`, the team-kill lines, the name and rank. `isDemoPlaying`
+      answers 0.
