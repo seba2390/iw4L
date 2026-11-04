@@ -39,6 +39,10 @@ const CG_POPUP_TEXT: i32 = 336;
 const CG_RANK_POPUP_NAME: i32 = 338;
 const CG_RANK_POPUP_ICON: i32 = 339;
 const CG_PLAYER_EMBLEM: i32 = 389;
+/// The rank's name: a letter each `popInLetterFXTime`, decaying at 4 s for 1 s.
+const RANK_LINE_LETTER_MS: i32 = 40;
+const RANK_LINE_DECAY_START_MS: i32 = 4000;
+const RANK_LINE_DECAY_MS: i32 = 1000;
 /// The centre print (the obituary's revive lines), and how long a line stays.
 const CG_CENTER_PRINT: i32 = 90;
 const CENTER_TIME_DEFAULT_SECONDS: f32 = 5.0;
@@ -1435,10 +1439,31 @@ fn paint_popup_text(
         return OwnerDrawPaint::Painted;
     }
     crate::chrome::expand_bindings(&mut text, host);
-    match push_owner_text(args, &text, args.color, frame) {
-        Ok(()) => OwnerDrawPaint::Painted,
-        Err(kind) => OwnerDrawPaint::Gap(kind),
+    if let Err(kind) = push_owner_text(args, &text, args.color, frame) {
+        return OwnerDrawPaint::Gap(kind);
     }
+    // The rank's name types itself out from the popup's start.
+    if args.item.owner_draw == CG_RANK_POPUP_NAME
+        && let Some(birth_time) = host.menus.and_then(|menus| menus.rank_line_start)
+        && let Some(Draw2dCmd {
+            op: Draw2dOp::TextRun { fx, .. },
+            ..
+        }) = frame.list.cmds.last_mut()
+    {
+        let letter_time = host
+            .state
+            .dvars
+            .float("popInLetterFXTime")
+            .map_or(RANK_LINE_LETTER_MS, |value| value as i32);
+        *fx = Some(crate::hudelem::pulse_text_fx(
+            host.state.ms,
+            birth_time,
+            letter_time,
+            RANK_LINE_DECAY_START_MS,
+            RANK_LINE_DECAY_MS,
+        ));
+    }
+    OwnerDrawPaint::Painted
 }
 
 /// The centre print (owner draw 90): the line, half its width left of the
