@@ -143,6 +143,9 @@ pub struct SnapshotMeta {
 
     pub area_entities: Option<crate::AreaEntityWorldSnapshot>,
 
+    /// What the scripts tell their bots to do; the host's own, not sent.
+    pub bot_orders: Vec<BotOrder>,
+
     pub entity_dobjs: Vec<(
         crate::AuthorityModelOwner,
         xmodel_runtime::DObjSemanticState,
@@ -307,4 +310,17 @@ impl<'a> ScriptDvars<'a> {
             line.replace(&format!("&&{}", i + 1), arg)
         }))
     }
+}
+
+/// A bot's orders from the scripts (Black Ops' `SetScriptGoal`, `PressUseButton`
+/// and `PressAttackButton`).
+#[derive(Clone, Copy, Debug, Default, PartialEq)]
+pub struct BotOrder {
+    pub client: u32,
+    /// Where to go, and how near counts.
+    pub goal: Option<([f32; 3], f32)>,
+    /// Hold use until this level time.
+    pub use_until_ms: i32,
+    /// Attack until this level time.
+    pub attack_until_ms: i32,
 }

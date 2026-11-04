@@ -2083,14 +2083,76 @@ fn entity_number_origin(
 
 /// What the scripts asked of each test client: its goal, its scripted
 /// enemy and the buttons it should press. The host's bots move and fight
-/// on their own (`t5.bots.host_ai`); these are kept for the scripts.
+/// on their own (`t5.bots.host_ai`), but go where they are sent and press what
+/// they are told to.
 #[derive(bevy_ecs::prelude::Resource, Default)]
 struct BotScriptState(BTreeMap<u32, BotScript>);
 
 #[derive(Default)]
 struct BotScript {
     goal: Option<([f32; 3], f32)>,
+    /// The goal's `goal` notify has gone out.
+    arrived: bool,
     enemy: Option<Value>,
+    use_until_ms: i32,
+    attack_until_ms: i32,
+}
+
+/// How far above or below a goal a bot may stand and have reached it.
+const BOT_GOAL_HEIGHT: f32 = 72.0;
+
+/// The scripts' orders as the host's bots read them.
+pub(crate) fn publish_bot_orders(world: &World, snapshot: &mut crate::Snapshot) {
+    let Some(state) = world.get_resource::<BotScriptState>() else {
+        return;
+    };
+    snapshot.meta.bot_orders = state
+        .0
+        .iter()
+        .map(|(client, script)| crate::BotOrder {
+            client: *client,
+            goal: script.goal,
+            use_until_ms: script.use_until_ms,
+            attack_until_ms: script.attack_until_ms,
+        })
+        .collect();
+}
+
+/// Each frame a bot that has reached its goal hears `goal`, once.
+fn notify_bots_at_goal(world: &mut World) {
+    let Some(state) = world.get_resource::<BotScriptState>() else {
+        return;
+    };
+    let waiting: Vec<(u32, [f32; 3], f32)> = state
+        .0
+        .iter()
+        .filter(|(_, script)| !script.arrived)
+        .filter_map(|(client, script)| script.goal.map(|(goal, r)| (*client, goal, r)))
+        .collect();
+    for (client, goal, radius) in waiting {
+        let frame = FrameWorld::from_world(world);
+        let Some(origin) = frame.player(ClientId(client)).map(|ps| ps.origin) else {
+            continue;
+        };
+        let (dx, dy, dz) = (
+            origin[0] - goal[0],
+            origin[1] - goal[1],
+            origin[2] - goal[2],
+        );
+        if dx * dx + dy * dy > radius * radius || dz.abs() > BOT_GOAL_HEIGHT {
+            continue;
+        }
+        if let Some(script) = world
+            .resource_mut::<BotScriptState>()
+            .into_inner()
+            .0
+            .get_mut(&client)
+        {
+            script.arrived = true;
+        }
+        let player = super::super::players::player_object(world, client);
+        crate::script::runtime::raise(world, player, "goal", Vec::new());
+    }
 }
 
 fn bot_script<'a>(world: &'a mut World, receiver: &Value) -> Result<&'a mut BotScript, String> {
@@ -2153,7 +2215,9 @@ fn register_bots(registry: &mut NativeRegistry) {
     registry.register(Method, "setscriptgoal", |world, receiver, args| {
         let goal = vector(args, 0)?;
         let radius = optional(args, 1, float)?.unwrap_or(0.0);
-        bot_script(world, receiver)?.goal = Some((goal, radius));
+        let script = bot_script(world, receiver)?;
+        script.goal = Some((goal, radius));
+        script.arrived = false;
         Ok(Value::Undefined)
     });
     registry.register(Method, "clearscriptgoal", |world, receiver, _| {
@@ -2204,13 +2268,20 @@ fn register_bots(registry: &mut NativeRegistry) {
             }
         })))
     });
-    // The host bots press their own buttons (`t5.bots.host_ai`).
-    for name in ["pressattackbutton", "pressusebutton"] {
-        registry.register(Method, name, |world, receiver, _| {
-            player_id(world, receiver)?;
-            Ok(Value::Undefined)
-        });
-    }
+    // `pressUseButton(seconds)`: use held until then.
+    registry.register(Method, "pressusebutton", |world, receiver, args| {
+        let seconds = float(args, 0)?;
+        let now = crate::level_time_ms(world.resource::<crate::step::StepRequest>().tick);
+        bot_script(world, receiver)?.use_until_ms = now + (seconds * 1000.0) as i32;
+        Ok(Value::Undefined)
+    });
+    // `pressAttackButton()`: attack for the next command.
+    registry.register(Method, "pressattackbutton", |world, receiver, _| {
+        let now = crate::level_time_ms(world.resource::<crate::step::StepRequest>().tick);
+        bot_script(world, receiver)?.attack_until_ms = now + 50;
+        Ok(Value::Undefined)
+    });
+    registry.on_tick(notify_bots_at_goal);
 }
 
 /// `player shellShock(name, seconds)`. Zombies' keeps a running shock that
