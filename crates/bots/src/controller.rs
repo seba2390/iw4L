@@ -359,6 +359,12 @@ impl HostController {
                 &mut self.route_goal,
                 &mut self.route_work,
             );
+            // A script's goal stays the goal when no route reaches it: the
+            // controller walks at it and the host hears `bad_path`, which is
+            // the scripts' cue to drop it.
+            if objective.is_none() {
+                objective = obs.objective.filter(|o| o.scripted);
+            }
             next = self.pick_task(obs, objective);
         }
         let switched = next.kind != self.task.kind;
@@ -369,6 +375,9 @@ impl HostController {
         let previous = self.decision.objective;
         self.decision.objective = objective.filter(|_| self.task.kind == TaskKind::TouchObj);
         self.intent = self.intent_for(obs, world, nav, astar_budget, objective);
+        if self.task.kind == TaskKind::TouchObj && objective.is_some_and(|o| o.scripted) {
+            self.fire_on_the_way(obs, world);
+        }
         self.decision.stage = if matches!(
             self.intent.path,
             PathOutcome::Blocked | PathOutcome::Unreachable
@@ -847,6 +856,35 @@ impl HostController {
             path,
             ..BotIntent::default()
         }
+    }
+
+    /// On the way to a script's goal the bot keeps its feet on the route and
+    /// turns its gun on what it sees: the goal outranks the fight, not the
+    /// shooting.
+    fn fire_on_the_way(&mut self, obs: &BotObservation, world: &mut impl WorldQuery) {
+        if self.intent.use_button {
+            return;
+        }
+        let Some(target) = self.pick_fight_target(obs) else {
+            return;
+        };
+        if self.last_target != Some(target.id) {
+            self.last_target = Some(target.id);
+            let reaction = (6.0 - self.aggression * 4.0).max(2.0) as u32;
+            self.reaction_until = obs.tick.saturating_add(reaction);
+        }
+        let aim_at = [target.origin[0], target.origin[1], target.origin[2] + 48.0];
+        world.enter(QuerySubsystem::Tactical);
+        let shot = world.shot_ray(obs.eye(), aim_at, obs.self_state.id);
+        let fire = self.authorize_fire(
+            obs.tick >= self.reaction_until
+                && obs.self_state.ammo_clip != 0
+                && fresh_contact(obs, target)
+                && shot_allowed(shot, target.id),
+            target,
+        );
+        self.intent.look_at = Some(aim_at);
+        self.intent.fire = fire;
     }
 
     fn pick_fight_target(&self, obs: &BotObservation) -> Option<Contact> {

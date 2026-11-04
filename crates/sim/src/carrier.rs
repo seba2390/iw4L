@@ -424,6 +424,11 @@ impl SimWorld {
         self.ecs.resource::<crate::PersistentDataStore>()
     }
 
+    /// A bot's controller cannot get to the goal its script gave it.
+    pub fn report_bot_bad_path(&mut self, id: crate::ClientId) {
+        crate::script::host::natives::t5::report_bot_bad_path(&mut self.ecs, id.0);
+    }
+
     /// The test clients: the host's bots, and those the scripts added.
     pub fn test_clients(&self) -> Vec<crate::ClientId> {
         self.ecs
