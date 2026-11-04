@@ -290,6 +290,11 @@ Each open section names the issue that works it.
       top speed and acceleration, stopped by what it hits; Black Ops' car
       (`isNitrous`) is a rigid body with wheels. It does not drift, jump or
       flip, and the client does not predict it (#865).
+- [ ] **V** `t5.mp.rcxd_client`: the RC-XD's client scripts fault: a vehicle has
+      no `vehicleclass` or `vehicletype` on the client, and `ispeelingout`,
+      `iswheelsliding`, `iswheelcolliding`, `getwheelsurface`, `getmaxspeed`,
+      `getmaxreversespeed`, `getthrottle`, `islocalclientdriver` are not
+      answered, so its tread effects and screen dust do not run (#866).
 
 - [ ] **G** The action slot button builtins
       (`actionSlotOneButtonPressed` … `Four`) read a slot as pressed for the
