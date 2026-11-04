@@ -29,6 +29,16 @@ const TRIM_EPSILON: f32 = 0.0001;
 /// A path this short (or shorter) that was cut at 32 points is planned
 /// again from where the actor stands.
 const SHORT_TRUNCATED: usize = 8;
+/// The backtrack: from this amount on, it takes back completed path until
+/// their area reaches this share of the amount, over points no farther than
+/// 256 across and 48 up or down from the actor; the area it took back goes
+/// onto the amount, cut by this factor while the lookahead is not settled
+/// (and again when it gave up early).
+const BACKTRACK_FLOOR: f32 = 64.0;
+const BACKTRACK_SHARE: f32 = 0.176_470_55;
+const BACKTRACK_REACH_SQ: f32 = 65_536.0;
+const BACKTRACK_HEIGHT: f32 = 48.0;
+const BACKTRACK_CUT: f32 = 0.75;
 
 /// `flags`: the lookahead reached the path's end, the lookahead was walked
 /// to (and grew twice), the path was cut at 32 points.
@@ -37,6 +47,11 @@ const SETTLED: u32 = 0x2;
 const SETTLED_TWICE: u32 = 0x400;
 const TRUNCATED: u32 = 0x4;
 const HELD: u32 = 0x1000;
+/// The backtrack gave up early; it took the path back; no area is given
+/// back.
+const BACKTRACK_GAVE_UP: u32 = 0x20;
+const BACKTRACKED: u32 = 0x8000;
+const NO_BACKTRACK_AREA: u32 = 0x4000;
 const CLEARED_EACH_UPDATE: u32 = 0x8020;
 const SHRINK_CLEARS: u32 = 0x403;
 
@@ -402,15 +417,16 @@ impl Follow {
     }
 
     /// `Path_UpdateLookahead`. The actor at `pos`; `adjust` takes the area
-    /// of the completed path off the amount. With `may_replan`, returns
-    /// false (and leaves the lookahead) once the actor is past its current
-    /// point and the link it walks has been cut, or its cut-short path runs
-    /// low: the engine plans again from there, and goes on with this path
-    /// when that fails.
+    /// of the completed path off the amount; `backtrack` takes completed
+    /// path back while the actor is still short of its current point. With
+    /// `may_replan`, returns false (and leaves the lookahead) once the actor
+    /// is past its current point and the link it walks has been cut, or its
+    /// cut-short path runs low: the engine plans again from there, and goes
+    /// on with this path when that fails.
     pub(super) fn update(
         &mut self,
         pos: [f32; 3],
-        (force, adjust, may_replan): (bool, bool, bool),
+        (force, adjust, backtrack, may_replan): (bool, bool, bool, bool),
         probe: &mut dyn Probe,
     ) -> bool {
         self.flags &= !CLEARED_EACH_UPDATE;
@@ -437,9 +453,155 @@ impl Follow {
             if adjust {
                 self.completed_area(pos);
             }
+        } else if backtrack && self.look.amount >= BACKTRACK_FLOOR {
+            self.backtrack(pos);
         }
         self.step(pos, force, probe);
         true
+    }
+
+    /// `Path_Backtrack`, for an actor short of its current point: walks the
+    /// completed points back from where its segment starts, adding each
+    /// segment's area (its length times the actor's distance from its line,
+    /// less what is left of the current one), and moves the current point
+    /// back to where the area reaches its share of the amount, where the
+    /// plane through the actor across the lookahead meets the path, or to
+    /// the path's start. The area gained goes onto the amount.
+    ///
+    /// When a point is too far or too high it gives up: as the engine does,
+    /// the path then keeps one point more than the last it reached, and the
+    /// current point is left at the end of the segment it keeps, its full
+    /// length still to walk.
+    fn backtrack(&mut self, pos: [f32; 3]) {
+        if self.len < 2 {
+            return;
+        }
+        enum End {
+            GaveUp,
+            Behind,
+            Cut(f32),
+            Start,
+        }
+        let target = self.look.amount * BACKTRACK_SHARE;
+        let [lx, ly, _] = self.look.dir;
+        let along = |p: [f32; 3]| (p[0] - pos[0]) * lx + (p[1] - pos[1]) * ly;
+        let perp_of = |q: &Point| {
+            ((q.origin[1] - pos[1]) * q.dir[0] - q.dir[1] * (q.origin[0] - pos[0])).abs()
+        };
+        let far =
+            |p: [f32; 3]| (p[0] - pos[0]).powi(2) + (p[1] - pos[1]).powi(2) > BACKTRACK_REACH_SQ;
+        // `k` the completed point behind, the segment from it ending at
+        // `k - 1`.
+        let mut k = self.len - 1;
+        let mut perp = perp_of(&self.pts[k - 1]);
+        let mut area = -(self.curr_length * perp);
+        let end = 'walk: {
+            if far(self.pts[k].origin) {
+                break 'walk End::GaveUp;
+            }
+            loop {
+                let p = self.pts[k];
+                if (p.origin[2] - pos[2]).abs() > BACKTRACK_HEIGHT {
+                    break 'walk End::GaveUp;
+                }
+                let behind = along(p.origin);
+                if behind <= 0.0 {
+                    let ahead = along(self.pts[k - 1].origin);
+                    if ahead <= 0.0 {
+                        break 'walk End::Behind;
+                    }
+                    break 'walk End::Cut(behind / (behind - ahead));
+                }
+                let seg_area = self.pts[k - 1].length * perp;
+                area += seg_area;
+                if area >= target {
+                    let f = (area - target) / seg_area;
+                    area -= seg_area;
+                    break 'walk End::Cut(f);
+                }
+                if k + 1 >= self.orig_len {
+                    break 'walk End::Start;
+                }
+                perp = perp_of(&p);
+                k += 1;
+                if far(self.pts[k].origin) {
+                    break 'walk End::GaveUp;
+                }
+            }
+        };
+        let gained = match end {
+            End::Cut(f) => {
+                let (p, q) = (self.pts[k], self.pts[k - 1]);
+                let moved = q.length * f;
+                if moved < q.length {
+                    self.curr_length = q.length - moved;
+                    self.curr = [
+                        q.dir[0] * moved + p.origin[0],
+                        q.dir[1] * moved + p.origin[1],
+                        (1.0 - f) * p.origin[2] + q.origin[2] * f,
+                    ];
+                    self.flags |= BACKTRACKED;
+                    self.len = k + 1;
+                    self.curr_length * perp + area
+                } else {
+                    if k - 1 <= self.negotiation_start {
+                        return;
+                    }
+                    self.curr = q.origin;
+                    self.curr_length = self.pts[k - 2].length;
+                    self.flags |= BACKTRACKED;
+                    self.len = k;
+                    area
+                }
+            }
+            End::Start => {
+                self.curr_length = self.pts[k - 1].length;
+                self.curr = self.pts[k].origin;
+                self.flags |= BACKTRACKED;
+                self.len = self.orig_len;
+                area
+            }
+            End::GaveUp | End::Behind => {
+                let len = if matches!(end, End::GaveUp) {
+                    self.flags |= BACKTRACK_GAVE_UP;
+                    k + 1
+                } else {
+                    k
+                };
+                let q = self.pts[k - 1];
+                self.curr = q.origin;
+                self.curr_length = if len > self.negotiation_start + 1 {
+                    self.pts[len - 2].length
+                } else {
+                    0.0
+                };
+                self.len = len;
+                if self.flags & NO_BACKTRACK_AREA != 0 {
+                    return;
+                }
+                let mut gained = q.length * perp + area;
+                if gained > 0.0 && self.flags & BACKTRACK_GAVE_UP != 0 {
+                    gained *= BACKTRACK_CUT;
+                }
+                gained
+            }
+        };
+        diag::debug!(
+            Sim,
+            "path backtrack: {} points left, amount {:.0} + {:.0}",
+            self.len,
+            self.look.amount,
+            gained.max(0.0)
+        );
+        if gained <= 0.0 {
+            return;
+        }
+        let gained = if self.flags & SETTLED == 0 {
+            gained * BACKTRACK_CUT
+        } else {
+            gained
+        };
+        self.look.amount = (self.look.amount + gained).min(MAX_AMOUNT);
     }
 
     /// `Path_InitialLookahead`: on a new path, the lookahead the actor
@@ -469,7 +631,7 @@ impl Follow {
             let crosses = (ly * p.dir[0] - p.dir[1] * lx) * perp > 0.0;
             let q = w[1] * lx - w[0] * ly;
             if crosses && q * side < 0.0 {
-                self.update(pos, (false, true, false), probe);
+                self.update(pos, (false, true, true, false), probe);
                 return;
             }
             area += perp.abs() * seg;
@@ -516,6 +678,6 @@ impl Follow {
         self.aim(self.curr, pos);
         self.to_next = 0.0;
         self.next = self.len - 1;
-        self.update(pos, (false, adjust, false), probe);
+        self.update(pos, (false, adjust, true, false), probe);
     }
 }
