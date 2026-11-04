@@ -84,6 +84,7 @@ impl Runner<'_, '_> {
             self.hide_popups();
         }
         if popup.item.eq_ignore_ascii_case("RankPopUp") {
+            self.menus.rank_line_start = Some(self.world.ms);
             self.menus.rank_icon = Some(super::state::RankIconSwing {
                 start_ms: self.world.ms,
                 angle: super::state::RANK_ICON_TILT,
@@ -104,11 +105,16 @@ impl Runner<'_, '_> {
         if text.literal {
             return text.key.clone();
         }
-        let template = self
+        let found = self
             .world
             .localize
-            .and_then(|table| table.text(text.key.trim_start_matches('@')))
-            .map_or_else(|| text.key.clone(), str::to_owned);
+            .and_then(|table| table.text(text.key.trim_start_matches('@')));
+        if found.is_none()
+            && let Some(other) = &text.otherwise
+        {
+            return self.popup_text(other);
+        }
+        let template = found.map_or_else(|| text.key.clone(), str::to_owned);
         if text.args.is_empty() {
             return template;
         }

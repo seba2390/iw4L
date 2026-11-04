@@ -367,6 +367,332 @@ pub(super) fn obituary_cards(
     }
 }
 
+/// The milestone tables a challenge's row may be in.
+const MILESTONE_TABLES: [&str; 4] = [
+    "mp/statsmilestones1.csv",
+    "mp/statsmilestones2.csv",
+    "mp/statsmilestones3.csv",
+    "mp/statsmilestones4.csv",
+];
+/// Names whose strings carry the `CH_` prefix.
+const CHALLENGE_PREFIXES: [&str; 6] = ["gm_", "kills_", "basic_", "medal_", "lifetime_", "final_"];
+/// `mp/attachmentTable.csv`.
+const ATTACHMENT_TABLE: &str = "mp/attachmenttable.csv";
+/// Below this an attachment's challenge item is an attachment's number.
+const ATTACHMENT_ITEMS: i32 = 24;
+
+/// A cell of a challenge's row, by the first milestone table that has it.
+fn milestone_cell(world: &World, index: &str, column: usize) -> Option<String> {
+    let runtime = world.resource::<crate::script::RoundScript>();
+    MILESTONE_TABLES.iter().find_map(|name| {
+        let table = table(&runtime.tables, name)?;
+        let row = table_search(table, 0, index)?;
+        table
+            .cell(row, column)
+            .filter(|cell| !cell.is_empty())
+            .map(str::to_owned)
+    })
+}
+
+/// Whether a milestone table has a row of this challenge at this tier.
+fn milestone_has_tier(world: &World, name: &str, tier: &str) -> bool {
+    let runtime = world.resource::<crate::script::RoundScript>();
+    MILESTONE_TABLES.iter().any(|file| {
+        table(&runtime.tables, file).is_some_and(|table| {
+            (0..table.rows)
+                .any(|row| table.cell(row, 4) == Some(name) && table.cell(row, 1) == Some(tier))
+        })
+    })
+}
+
+/// A challenge's type (column 3): what its strings are made of.
+fn challenge_kind(column: &str) -> i32 {
+    match column {
+        "global" => 0,
+        "killstreak" => 6,
+        "group" => 4,
+        "attachment" => 5,
+        "gamemode" => 3,
+        "weapon_grenade" => 7,
+        _ => 1,
+    }
+}
+
+/// A tier's numeral, as the popup prints it.
+fn tier_numeral(tier: i32) -> &'static str {
+    match tier {
+        0 => "I",
+        1 => "II",
+        2 => "III",
+        3 => "IV",
+        4 => "V",
+        _ => "",
+    }
+}
+
+/// `STATS_STATSMILESTONES`: the item, what was done with it, and the tier.
+fn item_milestone(item: PopUpText, stat: &str, tier: i32) -> PopUpText {
+    PopUpText::with(
+        "STATS_STATSMILESTONES",
+        vec![
+            item,
+            PopUpText::plain(stat),
+            PopUpText::name(tier_numeral(tier)),
+        ],
+    )
+}
+
+/// What a challenge's strings read.
+struct Challenge {
+    kind: i32,
+    name: String,
+    item: i32,
+    /// The item's string key.
+    item_name: PopUpText,
+    /// The group's name (`MPUI_`) or the item's, as the type wants.
+    text: PopUpText,
+    tier: i32,
+    has_tier_one: bool,
+    target: i32,
+}
+
+/// The popup's first line (the client's challenge name cases).
+fn challenge_title(challenge: &Challenge) -> PopUpText {
+    let Challenge {
+        kind,
+        name,
+        item_name,
+        text,
+        tier,
+        has_tier_one,
+        ..
+    } = challenge;
+    let numbered = |line: PopUpText| {
+        if *has_tier_one {
+            PopUpText::with("&&1 &&2", vec![line, PopUpText::name(tier_numeral(*tier))])
+        } else {
+            line
+        }
+    };
+    let stat = |pairs: &[(&str, &'static str)]| {
+        pairs
+            .iter()
+            .find(|(key, _)| key == name)
+            .map_or("", |(_, value)| value)
+    };
+    match kind {
+        0 => numbered(PopUpText::plain(
+            if CHALLENGE_PREFIXES
+                .iter()
+                .any(|prefix| name.starts_with(prefix))
+            {
+                format!("CH_{name}")
+            } else {
+                name.clone()
+            },
+        )),
+        1 => {
+            let stat = if item_name.key == "WEAPON_KNIFE" {
+                "STATS_MILESTONE_STATNAME_KNIFE"
+            } else {
+                stat(&[
+                    ("kills", "STATS_MILESTONE_STATNAME_MARKSMAN"),
+                    ("headshots", "STATS_MILESTONE_STATNAME_EXPERT"),
+                ])
+            };
+            item_milestone(item_name.clone(), stat, *tier)
+        }
+        3 => numbered(PopUpText::plain(format!("CH_GM_{name}"))),
+        4 => PopUpText::with(
+            "STATS_STATSGROUPMILESTONES",
+            vec![
+                text.clone(),
+                PopUpText::plain(format!("STATS_MILESTONE_STATNAME_{name}")),
+                PopUpText::name(tier_numeral(*tier)),
+            ],
+        ),
+        5 => item_milestone(
+            item_name.clone(),
+            stat(&[("kills", "STATS_MILESTONE_STATNAME_MARKSMAN")]),
+            *tier,
+        ),
+        6 => item_milestone(
+            item_name.clone(),
+            stat(&[
+                ("kills", "STATS_MILESTONE_STATNAME_KILLS"),
+                ("used", "STATS_MILESTONE_STATNAME_USED"),
+                ("destroyed", "STATS_MILESTONE_STATNAME_DESTROYED"),
+            ]),
+            *tier,
+        ),
+        _ => item_milestone(
+            item_name.clone(),
+            stat(&[("kills", "STATS_MILESTONE_STATNAME_KILLS")]),
+            *tier,
+        ),
+    }
+}
+
+/// The popup's second line (the client's challenge description cases).
+fn challenge_description(challenge: &Challenge) -> PopUpText {
+    let Challenge {
+        kind,
+        name,
+        item,
+        item_name,
+        text,
+        target,
+        ..
+    } = challenge;
+    let count = PopUpText::plain(target.to_string());
+    let key = item_name.key.as_str();
+    match kind {
+        0 => {
+            let prefixed = CHALLENGE_PREFIXES
+                .iter()
+                .any(|prefix| name.starts_with(prefix));
+            let shown = if name == "lifetime_time_played_total" {
+                target / 3600
+            } else {
+                *target
+            };
+            let key = if prefixed {
+                format!("CH_{name}_DESC")
+            } else {
+                format!("{name}_DESC")
+            };
+            PopUpText::with(key, vec![PopUpText::plain(shown.to_string())])
+        }
+        1 | 4 => PopUpText::with(
+            if *kind == 1 {
+                "STATS_WEAPONITEM_DESC"
+            } else {
+                "STATS_WEAPONGROUP_DESC"
+            },
+            vec![
+                count,
+                PopUpText::plain(format!("STATS_MILESTONE_STATNAME_{name}_SMALL")),
+                text.clone(),
+            ],
+        ),
+        3 => PopUpText::with(format!("CH_GM_{name}_DESC"), vec![count, text.clone()]),
+        5 => PopUpText::with(
+            if matches!(item, 1..=6 | 21) {
+                "WEAPON_ATTACHMENT_SIGHT_KILLS_CHALLENGE_DESC"
+            } else {
+                "WEAPON_ATTACHMENT_KILLS_CHALLENGE_DESC"
+            },
+            vec![count],
+        ),
+        6 => match name.as_str() {
+            "kills" => PopUpText::with(format!("{key}_KILLS_CHALLENGE_DESC"), vec![count.clone()])
+                .or(PopUpText::with(
+                    "KILLSTREAK_KILLS_CHALLENGE_DESC",
+                    vec![count, item_name.clone()],
+                )),
+            "used" => PopUpText::with(
+                "KILLSTREAK_EARNED_CHALLENGE_DESC",
+                vec![item_name.clone(), count],
+            ),
+            _ => PopUpText::with(
+                format!("{key}_DESTROYED_CHALLENGE_DESC"),
+                vec![count.clone()],
+            )
+            .or(PopUpText::with(
+                "KILLSTREAK_DESTROYED_CHALLENGE_DESC",
+                vec![item_name.clone(), count],
+            )),
+        },
+        _ => PopUpText::with(
+            "WEAPON_GRENADE_KILLS_CHALLENGE_DESC",
+            vec![count, item_name.clone()],
+        ),
+    }
+}
+
+/// `displayChallengeComplete(tier, index, xpScale, itemIndex, sound, type)`:
+/// the milestone's row names the challenge and what it pays; a row that does
+/// not read shows nothing.
+fn display_challenge_complete(
+    world: &mut World,
+    receiver: &Value,
+    args: &[Value],
+) -> Result<Value, String> {
+    let mut tier = int(args, 0)?;
+    let index = int(args, 1)?.to_string();
+    let scale = float(args, 2)?;
+    let item = int(args, 3)?;
+    let sound = optional_text(args, 4);
+    let group = optional_text(args, 5);
+    let (Some(name), Some(target), Some(column), Some(xp)) = (
+        milestone_cell(world, &index, 4),
+        milestone_cell(world, &index, 2),
+        milestone_cell(world, &index, 3),
+        milestone_cell(world, &index, 6),
+    ) else {
+        return Ok(Value::Undefined);
+    };
+    let kind = challenge_kind(&column);
+    if !milestone_has_tier(world, &name, &tier.to_string()) {
+        tier -= 1;
+    }
+    let item_name = if kind == 5 && item < ATTACHMENT_ITEMS {
+        cell(world, ATTACHMENT_TABLE, &item.to_string(), 3)
+    } else {
+        cell(world, STATS_TABLE, &item.to_string(), 3)
+    }
+    .unwrap_or_default();
+    let item_name = PopUpText::plain(item_name);
+    let text = match kind {
+        4 => PopUpText::plain(format!("MPUI_{group}")),
+        1 => item_name.clone(),
+        _ => PopUpText::default(),
+    };
+    let challenge = Challenge {
+        has_tier_one: milestone_has_tier(world, &name, "1"),
+        target: target.parse().unwrap_or(0),
+        kind,
+        name: name.clone(),
+        item,
+        item_name,
+        text,
+        tier,
+    };
+    let points = (xp.parse().unwrap_or(0) as f32 * scale) as i32;
+    let (material, burst) = if name.starts_with("perks_") {
+        let number = item.to_string();
+        (
+            cell(world, STATS_TABLE, &number, 6),
+            match cell(world, STATS_TABLE, &number, 13).as_deref() {
+                Some("specialty2") => "hud_medal_burst_orange",
+                Some("specialty3") => "hud_medal_burst_green",
+                _ => "hud_medal_burst",
+            },
+        )
+    } else {
+        (None, "hud_medal_burst")
+    };
+    let mut locals = center_lines(
+        challenge_title(&challenge),
+        challenge_description(&challenge),
+        (points > 0)
+            .then(|| PopUpText::with("RANK_POPUP_XP", vec![PopUpText::plain(points.to_string())])),
+    );
+    locals.push((
+        "popUpCenterMaterial".to_owned(),
+        PopUpText::name(material.unwrap_or_else(|| "menu_mp_lobby_aar_award_challenge".to_owned())),
+    ));
+    locals.push((
+        "popUpCenterMaterialBacking".to_owned(),
+        PopUpText::name(burst),
+    ));
+    send(
+        world,
+        receiver,
+        center_popup("ChallengePopUp", locals, sound),
+    )
+}
+
 /// `clearCenterPopups()`.
 fn clear_center_popups(
     world: &mut World,
@@ -388,15 +714,7 @@ pub(crate) fn register(registry: &mut NativeRegistry) {
     registry.register(
         Method,
         "displaychallengecomplete",
-        |world, receiver, args| {
-            not_shown(
-                world,
-                receiver,
-                "displaychallengecomplete",
-                "t5.mp.challenge_popup",
-                args,
-            )
-        },
+        display_challenge_complete,
     );
     registry.register(Method, "displaycontract", |world, receiver, args| {
         not_shown(

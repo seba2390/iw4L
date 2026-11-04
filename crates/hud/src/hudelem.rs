@@ -78,3 +78,22 @@ pub(crate) fn hudelem_text_fx(elem: &HudElem, cg_time: i32) -> Option<TextRunFx>
         },
     })
 }
+
+/// Letters typing in from `birth_time`, then decaying.
+pub(crate) fn pulse_text_fx(
+    scene_time: i32,
+    birth_time: i32,
+    letter_time: i32,
+    decay_start_time: i32,
+    decay_duration: i32,
+) -> TextRunFx {
+    TextRunFx {
+        scene_time,
+        fx: TextPulseFx {
+            birth_time,
+            letter_time,
+            decay_start_time,
+            decay_duration,
+        },
+    }
+}
