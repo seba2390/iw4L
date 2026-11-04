@@ -224,11 +224,12 @@ fn run_menu(
             asset_transport::LoadProgress::default(),
         );
     }
-    app.run();
+    let exit = app.run();
     let trace = flush_perf();
     if bench::enabled() {
         bench::finish(&config.artifacts, trace);
     }
+    exit_with(exit);
 }
 
 #[derive(Resource, Default)]
@@ -524,10 +525,24 @@ fn run_map(
             progress.clone(),
         );
     }
-    app.run();
+    let exit = app.run();
     let trace = flush_perf();
     if bench {
         bench::finish(&config.artifacts, trace);
+    }
+    exit_with(exit);
+}
+
+/// Exits with the code of the `AppExit` that stopped the runner. Bevy's runner
+/// stops after the frame an `AppExit` was written in, so one written after that
+/// frame's `Last` — the renderer writes `AppExit::error()` from extract when the
+/// device is lost — never reaches the console's exit system, and `main` used to
+/// return 0 for it.
+fn exit_with(exit: AppExit) {
+    if let AppExit::Error(code) = exit {
+        diag::error!(Launch, "exiting with code {code}");
+        diag::flush();
+        diag::exit::exit_now(i32::from(code.get()));
     }
 }
 
