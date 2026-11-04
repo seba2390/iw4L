@@ -545,6 +545,7 @@ const ZOMBIE_MODE: ModeRules = ModeRules {
     // (`ui3d_size`).
     ui3d: Some(game_api::Ui3dRules { size: [1024, 512] }),
     level_menu: None,
+    level_return: None,
 };
 
 /// A multiplayer match: Black Ops' multiplayer scripts run it from the
@@ -1176,6 +1177,11 @@ impl game_api::GameModes for T5 {
                     size: ui3d_size(map),
                 }),
                 level_menu: (map == MP_UI_LEVEL).then_some(MP_UI_MAIN_MENU),
+                level_return: multiplayer(gametype).then_some(game_api::LevelReturn {
+                    zone: "t5:ui_viewer_mp",
+                    dvar: "xblive_privatematch",
+                    menu: "menu_xboxlive_privatelobby",
+                }),
                 ..mode
             }),
             unknown => unknown,

@@ -90,6 +90,7 @@ const MODE: ModeRules = ModeRules {
     runtime_class_slots: true,
     ui3d: None,
     level_menu: None,
+    level_return: None,
 };
 
 impl game_api::GameVision for Iw4 {

@@ -470,8 +470,21 @@ fn run_session_swap(
 fn run_exit_level(
     mut called: MessageReader<frame::ExitLevelCalled>,
     mut transition: ResMut<SessionSwapRequest>,
+    mode: Option<Res<game_api::ModeRules>>,
 ) {
     if called.read().next().is_none() {
+        return;
+    }
+    // A game whose match goes back to its own lobby loads the lobby's level.
+    if let Some(back) = mode.as_ref().and_then(|mode| mode.level_return) {
+        match transition.request_zone(back.zone.to_owned()) {
+            Ok(id) => diag::info!(
+                Sim,
+                "session: exitLevel( false ) → {} (swap #{id})",
+                back.zone
+            ),
+            Err(err) => diag::info!(Sim, "session: exitLevel refused — {err}"),
+        }
         return;
     }
     match transition.request_menu() {
