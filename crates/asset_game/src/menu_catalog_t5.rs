@@ -200,15 +200,20 @@ impl T5MenuSink {
             style: i32::from(window.style),
             owner_draw: window.owner_draw,
             rect: rect(window.rect),
-            // An item with animation states shows its current state's
-            // colours until a client script animates it.
+            // An item with animation states starts as its `Default` state, or
+            // the current one when it has none, until a client script animates
+            // it.
             fore_color: read
-                .anim_state
-                .as_ref()
+                .anim_states
+                .iter()
+                .find(|state| state.name.as_deref() == Some("Default"))
+                .or(read.anim_state.as_ref())
                 .map_or(window.fore_color, |state| state.fore_color),
             back_color: read
-                .anim_state
-                .as_ref()
+                .anim_states
+                .iter()
+                .find(|state| state.name.as_deref() == Some("Default"))
+                .or(read.anim_state.as_ref())
                 .map_or(window.back_color, |state| state.back_color),
             rotation: window.rotation,
             frame: Self::window_frame(&window),

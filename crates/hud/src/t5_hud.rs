@@ -567,6 +567,8 @@ struct T5HudHost<'a, 'b> {
     localize: Option<&'a LocalizeCatalog>,
     locals: Option<&'a crate::playercard::UiLocalVars>,
     menus: Option<&'a crate::menus::ScriptMenus>,
+    catalog: &'a MenuCatalog,
+    virtual_to_real: f32,
 }
 
 impl ExprHost for T5HudHost<'_, '_> {
@@ -644,6 +646,38 @@ impl ExprHost for T5HudHost<'_, '_> {
             team => team,
         };
         team_field(self.state, other, field)
+    }
+    fn text_width(&self, text: &str, font: i32, scale: f32) -> Result<i32, ExprError> {
+        let assets = ChromeAssets {
+            catalog: Some(self.catalog),
+            localize: self.localize,
+        };
+        let name = assets
+            .font_name(font, self.virtual_to_real, scale)
+            .ok_or(ExprError::Host("text width font"))?;
+        let font = self
+            .catalog
+            .font(name)
+            .ok_or(ExprError::Host("text width font"))?;
+        let layout = assets
+            .layout()
+            .ok_or(ExprError::Host("text width layout"))?;
+        Ok(crate::chrome::layout_text_width(layout, font, text, scale) as i32)
+    }
+    fn table_lookup(
+        &self,
+        table: &str,
+        search_col: i32,
+        value: &str,
+        result_col: i32,
+    ) -> Result<Operand, ExprError> {
+        let Some(table) = self.catalog.string_table(table) else {
+            return Ok(Operand::Str(String::new()));
+        };
+        let row = (0..table.rows as i32).find(|row| table.cell(*row, search_col) == value);
+        Ok(Operand::Str(row.map_or_else(String::new, |row| {
+            table.cell(row, result_col).to_owned()
+        })))
     }
     fn local_var_string(&self, name: &str) -> Result<Operand, ExprError> {
         match self.locals {
@@ -2559,6 +2593,8 @@ pub(crate) fn paint(
         localize,
         locals,
         menus,
+        catalog,
+        virtual_to_real: surface.scale_virtual_to_real()[1],
     };
     let mut list = Draw2dList::default();
     let mut errors = Vec::new();
