@@ -344,7 +344,7 @@ fn run_map(
     let namespace_trees = NamespaceTrees::discover(&games);
     let have = content_flags(&namespace_trees);
     let map_key = game.map_or_else(|| zone.clone(), |game| format!("{}:{zone}", game.prefix()));
-    let requires = net::content_required_by_map(&map_key)
+    net::content_required_by_map(&map_key)
         .unwrap_or_else(|error| fatal(&format!("master content: {error}")));
     let families = if role == Role::Replay || std::env::var_os("IW4L_MASTER_JOIN").is_some() {
         frame::AssetFamilies(have.0)
@@ -358,6 +358,10 @@ fn run_map(
             .require_map(&map_key)
             .unwrap_or_else(|error| fatal(&error));
     }
+
+    // A room needs every family the host has loaded: its weapon table, which
+    // a member must match, holds them all (the lobby's own rooms say the same).
+    let requires = master_protocol::ContentFlags(families.0);
 
     let master_intent = if role == Role::Replay {
         net::MasterLaunchIntent::disabled()
