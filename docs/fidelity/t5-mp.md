@@ -662,13 +662,14 @@ Each open section names the issue that works it.
 
 - [ ] **V** `t5.mp.challenge_popup`: `displaychallengecomplete` does not
       reach the HUD: the milestone's name and description (seven cases by the
-      table's type column) are not read (#860).
-- [ ] **V** `t5.mp.team_message_popup`: `displayteammessage` does not reach
-      the HUD: the sender's rank, name, emblem and gamercard (#860).
+      table's type column) are not read (#860). Only a ranked match reaches it.
 - [ ] **V** `t5.mp.rank_popup_type_on`: the rank popup's first line shows at
       once; Black Ops types it out letter by letter (#860).
 - [ ] **V** `t5.mp.contract_popup`: `displaycontract` does not reach the HUD.
       Contracts come from the online service: a private match has none.
+
+- [ ] **V** `t5.hud.decode_fx`: `setCOD7DecodeFX` types its text in and fades it
+      as a pulse does, not with Black Ops' scrambled letters (#651).
 
 ## Bots (#652, #709)
 
@@ -1312,3 +1313,6 @@ Each open section names the issue that works it.
 
 - [x] **G** A script's `switchToWeapon` reaches the client's selection, and a
       deleted vehicle's driver hears `exit_vehicle` (#865).
+
+- [x] **V** `t5.mp.team_message_popup` (#860): `displayTeamMessage` slides out
+      the player's name, rank and the line; no emblem (`t5.hud.player_card_emblem`).
