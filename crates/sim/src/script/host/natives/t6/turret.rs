@@ -360,7 +360,7 @@ pub(super) fn register(registry: &mut NativeRegistry) {
             .get_resource_mut::<Turrets>()
             .and_then(|turrets| turrets.into_inner().0.get_mut(&id))
         else {
-            return Err("setturrettype: t6.turret.type_on_entity: the engine writes a turret's type through an entity without one".into());
+            return Err("setturrettype: the entity is not a turret (Black Ops 2 writes its type through the turret it does not have and crashes)".into());
         };
         turret.flags &= !(TYPE_WALLMOUNT | TYPE_TOW | TYPE_SENTRY);
         turret.ent_flags &= !(ENT_SENTRY | ENT_TOW);
@@ -597,7 +597,42 @@ pub(super) fn register(registry: &mut NativeRegistry) {
         ))
     });
     registry.on_tick(forget_deleted);
+    registry.on_tick(list_turret_weapons);
     registry.on_tick(super::sentry::think);
+}
+
+/// Once the zones are in, a debug line for each turret weapon they carry
+/// with what decides how its turret fires: the weapon type (0 bullets),
+/// class, impact explosion, bounce and penetration type.
+fn list_turret_weapons(world: &mut World) {
+    #[derive(Resource)]
+    struct Listed;
+    if world.contains_resource::<Listed>() {
+        return;
+    }
+    let Some(plan) = world.resource::<RoundScript>().restart.as_ref() else {
+        return;
+    };
+    let mut weapons: Vec<_> = plan
+        .weapons
+        .values()
+        .filter(|w| w.weap_class == WEAPCLASS_TURRET)
+        .map(|w| {
+            format!(
+                "{} type {} class {} explode {} bounce {} penetrate {} barrels {}",
+                w.name,
+                w.weap_type,
+                w.weap_class,
+                w.bullet_impact_explode,
+                w.bullet_bounce,
+                w.penetrate_type,
+                w.fire_barrels
+            )
+        })
+        .collect();
+    weapons.sort();
+    diag::debug!(Sim, "turret weapons in the zones: {weapons:?}");
+    world.insert_resource(Listed);
 }
 
 /// A deleted turret's state goes with it.

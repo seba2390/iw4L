@@ -636,6 +636,31 @@ fn world_event(
     );
 }
 
+/// A weapon's fire on an entity that is not a player (a turret's shot), for
+/// every client: the entity's number, the shooter's number as the event's
+/// parameter, the weapon and the muzzle.
+pub(crate) fn weapon_fire_event(
+    world: &mut World,
+    number: i32,
+    shooter: i32,
+    weapon: u32,
+    muzzle: [f32; 3],
+) {
+    let tick = world.resource::<crate::step::StepRequest>().tick;
+    crate::frame::FrameWorld::from_world(world).push_entity_event(
+        tick,
+        crate::EventAudience::All,
+        EntityEventKind::FIRE_WEAPON,
+        crate::EntityEventPayload {
+            number,
+            event_parm: shooter,
+            weapon,
+            origin: muzzle,
+            ..Default::default()
+        },
+    );
+}
+
 pub(crate) fn sound_to(
     world: &mut World,
     audience: crate::EventAudience,
