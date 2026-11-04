@@ -183,6 +183,7 @@ fn publish(
     let mut effects = Vec::new();
     let mut stopped = Vec::new();
     let mut debris = Vec::new();
+    let mut spawned = Vec::new();
     for event in breaks {
         let piece = &definition.pieces[event.piece];
         let st = &piece.stages[event.stage];
@@ -256,14 +257,16 @@ fn publish(
             });
             debris.push((part, offset, half, velocity));
         }
-        if st.spawn_models.iter().any(Option::is_some) {
-            diag::warn!(
-                Sim,
-                "destructible spawn-model debris unavailable: {} piece={} stage={}",
-                definition.name,
-                event.piece,
-                event.stage
-            );
+        // The stage's own debris models fly from the piece's tag along its
+        // launch (the client's stage change, `t5.mp.destructible_debris_rule`).
+        for model in st.spawn_models.iter().flatten() {
+            let velocity = piece.launch.map_or([0.0, 0.0, 100.0], |(angles, power)| {
+                let (forward, _, _) = math_iw4::angle_vectors(angles);
+                dobj.world_from_model
+                    .transform_vector3(glam::Vec3::from_array(forward) * power)
+                    .to_array()
+            });
+            spawned.push((model.clone(), matrix, velocity));
         }
         if let Some(notify) = &st.break_notify {
             callbacks.push(notify.clone());
@@ -295,6 +298,29 @@ fn publish(
         crate::script::stop_destructible_effect(world.ecs(), id);
     }
     for (part, offset, half, velocity) in debris {
+        crate::script::destructible_debris(world.ecs(), part, offset, half, velocity);
+    }
+    for (model, matrix, velocity) in spawned {
+        let capability = world.model_capability(&model).flatten();
+        // A spawn model with no physics preset does not spawn.
+        if capability
+            .as_ref()
+            .is_none_or(|capability| capability.phys_preset.is_none())
+        {
+            continue;
+        }
+        let (mid, local_half) = capability
+            .as_ref()
+            .and_then(|capability| capability.bounds)
+            .unwrap_or(([0.0; 3], [4.0; 3]));
+        let origin = matrix.w_axis.truncate();
+        let offset = (matrix.transform_point3(glam::Vec3::from_array(mid)) - origin).to_array();
+        let half = (matrix.x_axis.truncate().abs() * local_half[0]
+            + matrix.y_axis.truncate().abs() * local_half[1]
+            + matrix.z_axis.truncate().abs() * local_half[2])
+            .to_array();
+        let mut part = AuthorityDObjState::at_pose(&model, capability, origin.to_array(), [0.0; 3]);
+        part.world_from_model = matrix;
         crate::script::destructible_debris(world.ecs(), part, offset, half, velocity);
     }
     crate::script::set_destructible_model(
