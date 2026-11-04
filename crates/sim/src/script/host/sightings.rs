@@ -519,6 +519,12 @@ pub(crate) fn object_field_text(world: &World, id: u64, name: &str) -> String {
             _ => "-".to_owned(),
         };
     }
+    if let Some((head, rest)) = name.split_once('.') {
+        return match object(field(runtime, id, head)) {
+            Some(child) => object_field_text(world, child, rest),
+            None => "-".to_owned(),
+        };
+    }
     match field(runtime, id, name) {
         None | Some(Value::Undefined) => "-".to_owned(),
         Some(Value::Int(n)) => n.to_string(),
