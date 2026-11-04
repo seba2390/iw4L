@@ -187,13 +187,6 @@ Each open section names the issue that works it.
       bit 20) are not tested, its pickup's `Touch` tests for those states
       neither, and no `pickup` event is sent to the player. The cursor
       hint's own text is not drawn, the grenade indicator's icon is.
-- [ ] **G** `t5.mp.hacker_turret_model`: Black Ops' client draws an
-      enemy turret (not one being carried) with its weapon's second world
-      model for a player with Hacker (`specialty_showenemyequipment`):
-      `t5_weapon_minigun_turret_detect`, `t5_weapon_sam_turret_detect`. The
-      client here knows nothing of turrets, so it draws the normal model.
-      The detect models of claymores, C4, sensors and camera spikes are the
-      scripts' own (`attachReconModel` in `_weaponobjects.gsc`).
 - [ ] **G** `t5.mp.perk_effects`: the perks Black Ops' multiplayer
       code tests that have no effect here yet (setting one logs the gap).
       No perk row
@@ -713,6 +706,12 @@ Each open section names the issue that works it.
       compensation of Black Ops' movement and weapons are unmeasured.
 
 ## Closed
+
+- [x] **G** `t5.mp.hacker_turret_model` (#843): a player with Hacker sees an
+      enemy turret nobody carries in its weapon's second world model. The detect
+      materials (`mc_sw4_3d_detectable_transparent`) draw: their vertex stage
+      reads `INVERSE_TRANSPOSE_VIEW_MATRIX`, which no code wrote, so each draw was
+      refused.
 
 - [x] **V** Crosshair names and colour (#853): a line of 8192 units along the
       view, stopped by the world, finds the player under the crosshair; an

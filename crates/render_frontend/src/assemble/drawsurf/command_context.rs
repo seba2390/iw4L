@@ -70,6 +70,10 @@ pub const CODE_MESH_ARG_0: u16 = 0x4a;
 
 pub const CODE_MESH_ARG_1: u16 = 0x4b;
 
+/// The view's normal transform, as a game's `INVERSE_TRANSPOSE_VIEW_MATRIX`
+/// reads it (Black Ops' detect materials light their rim by it).
+pub const CODE_INVERSE_TRANSPOSE_VIEW: u16 = FIRST_CODE_MATRIX + 3;
+
 pub const CODE_TRANSPOSE_VIEW_PROJECTION: u16 = 0x56;
 
 pub const CODE_TRANSPOSE_WORLD0: u16 = 0x62;
@@ -411,6 +415,10 @@ pub fn produce_top_pair_command_context(
         &code_transpose_matrix_row4(clip_from_world),
     );
     produce_world_view_family(sources, view_from_world);
+    sources.set_constant_rows(
+        CODE_INVERSE_TRANSPOSE_VIEW,
+        &code_transpose_matrix_row4(view_from_world.inverse()),
+    );
     produce_material_color_cmdbuf_init(sources);
     produce_depth_from_clip(sources, false);
     let (frame_fog, fog_enabled) = match fog {
