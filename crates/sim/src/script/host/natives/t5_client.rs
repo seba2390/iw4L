@@ -11,7 +11,7 @@ use crate::script::client::{
     LoopSource, SnapshotSpeeds,
 };
 use crate::script::{Namespace, NativeRegistry, RoundScript, Value};
-use bevy_ecs::prelude::World;
+use bevy_ecs::prelude::{Resource, World};
 
 pub(crate) fn register(registry: &mut NativeRegistry) {
     use Namespace::{Function, Method};
@@ -407,6 +407,7 @@ pub(crate) fn register(registry: &mut NativeRegistry) {
     register_effects(registry);
     register_player_view(registry);
     register_models(registry);
+    register_vehicles(registry);
     register_lights(registry);
     // `ent delete()`: a client-only entity notifies `death` and
     // `entityshutdown`, then is freed.
@@ -869,6 +870,9 @@ fn register_player_view(registry: &mut NativeRegistry) {
                 (v[2] * v[2] + v[1] * v[1] + v[0] * v[0]).sqrt(),
             ));
         }
+        if let Some(vehicle) = client_vehicle(world, id) {
+            return Ok(Value::Float(vehicle.speed));
+        }
         Ok(Value::Float(
             world
                 .get_resource::<SnapshotSpeeds>()
@@ -876,6 +880,80 @@ fn register_player_view(registry: &mut NativeRegistry) {
                 .unwrap_or(0.0),
         ))
     });
+}
+
+/// Each mirrored vehicle's snapshot fields, by its client object.
+#[derive(Resource, Default)]
+pub(crate) struct ClientVehicles(
+    pub(crate) std::collections::BTreeMap<u64, super::t5_mp_ground::ClientVehicle>,
+);
+
+fn client_vehicle(world: &World, id: u64) -> Option<&super::t5_mp_ground::ClientVehicle> {
+    world.get_resource::<ClientVehicles>()?.0.get(&id)
+}
+
+/// A local client's number on the server: its player's entity number.
+fn local_number(world: &World, local: i32) -> Option<u32> {
+    let object = *locals(world).get(usize::try_from(local).ok()?)?;
+    let number = world
+        .resource::<RoundScript>()
+        .entities
+        .get(&object)?
+        .number;
+    u32::try_from(number).ok()
+}
+
+/// The client's vehicle queries (`rc_car_medium`'s scripts). A wheel's own
+/// state is its vehicle's: nothing here tracks a wheel apart.
+fn register_vehicles(registry: &mut NativeRegistry) {
+    use Namespace::Method;
+    fn field(
+        world: &World,
+        receiver: &Value,
+        read: impl Fn(&super::t5_mp_ground::ClientVehicle) -> Value,
+    ) -> Result<Value, String> {
+        let id = super::engine::entity_id(world, receiver)?;
+        Ok(client_vehicle(world, id).map_or(Value::Undefined, read))
+    }
+    registry.register(Method, "getmaxspeed", |world, receiver, _| {
+        field(world, receiver, |v| Value::Float(v.max_speed))
+    });
+    registry.register(Method, "getmaxreversespeed", |world, receiver, _| {
+        field(world, receiver, |v| Value::Float(v.max_reverse_speed))
+    });
+    registry.register(Method, "getthrottle", |world, receiver, _| {
+        field(world, receiver, |v| Value::Float(v.throttle))
+    });
+    registry.register(Method, "ispeelingout", |world, receiver, _| {
+        field(world, receiver, |v| Value::Int(v.peeling.into()))
+    });
+    registry.register(Method, "iswheelsliding", |world, receiver, _| {
+        field(world, receiver, |v| Value::Int(v.sliding.into()))
+    });
+    registry.register(Method, "iswheelcolliding", |world, receiver, _| {
+        field(world, receiver, |v| Value::Int(v.surface.is_some().into()))
+    });
+    registry.register(Method, "getwheelsurface", |world, receiver, _| {
+        field(world, receiver, |v| {
+            Value::string(v.surface.unwrap_or("none"))
+        })
+    });
+    registry.register(Method, "islocalclientdriver", |world, receiver, args| {
+        let local = int(args, 0)?;
+        let number = local_number(world, local);
+        field(world, receiver, |v| {
+            Value::Int((v.driver.is_some() && v.driver == number).into())
+        })
+    });
+    registry.register(Method, "getlocalclientdriver", |world, receiver, _| {
+        let id = super::engine::entity_id(world, receiver)?;
+        let driver = client_vehicle(world, id).and_then(|v| v.driver);
+        Ok((0..locals(world).len() as i32)
+            .find(|local| driver.is_some() && local_number(world, *local) == driver)
+            .map_or(Value::Undefined, Value::Int))
+    });
+    // Its only reader is the client's own physics, which does not run here.
+    registry.register(Method, "setstunned", |_, _, _| Ok(Value::Undefined));
 }
 
 fn register_models(registry: &mut NativeRegistry) {

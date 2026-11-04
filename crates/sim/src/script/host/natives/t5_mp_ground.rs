@@ -28,9 +28,92 @@ const BODY_HEIGHT: f32 = 10.0;
 /// A stick at full throw.
 const FULL_STICK: f32 = 127.0;
 
-/// Each driven ground vehicle's speed along its heading.
+/// Black Ops' vehicle classes, by a vehicle file's `type`.
+const VEHICLE_CLASSES: [&str; 7] = [
+    "4 wheel",
+    "motorcycle",
+    "tank",
+    "plane",
+    "boat",
+    "artillery",
+    "helicopter",
+];
+/// Under this share of its top speed a full throttle spins the wheels.
+const PEEL_OUT_FRACTION: f32 = 0.25;
+/// Over this share of its top speed a full lock slides the back wheels.
+const SLIDE_FRACTION: f32 = 0.5;
+
+/// A driven ground vehicle's frame.
+#[derive(Clone, Copy, Debug, Default)]
+struct GroundDrive {
+    /// Along its heading, backwards below zero.
+    speed: f32,
+    throttle: f32,
+    /// What the wheels are on, when they are on anything.
+    surface: Option<&'static str>,
+    sliding: bool,
+    peeling: bool,
+}
+
+/// Each driven ground vehicle.
 #[derive(Resource, Default)]
-struct GroundDrives(BTreeMap<u64, f32>);
+struct GroundDrives(BTreeMap<u64, GroundDrive>);
+
+/// What a client knows of a vehicle in its snapshot.
+#[derive(Clone, Debug, Default, PartialEq)]
+pub(crate) struct ClientVehicle {
+    pub(crate) vehicle_type: String,
+    pub(crate) class: &'static str,
+    pub(crate) max_speed: f32,
+    pub(crate) max_reverse_speed: f32,
+    pub(crate) speed: f32,
+    pub(crate) throttle: f32,
+    pub(crate) surface: Option<&'static str>,
+    pub(crate) sliding: bool,
+    pub(crate) peeling: bool,
+    /// The driver's client number.
+    pub(crate) driver: Option<u32>,
+}
+
+/// The vehicle fields a client's snapshot carries.
+pub(crate) fn client_vehicle(world: &mut World, id: u64) -> Option<ClientVehicle> {
+    let Value::String(kind) = world
+        .resource_mut::<RoundScript>()
+        .object_field(id, "vehicletype")
+    else {
+        return None;
+    };
+    let motion = FrameWorld::from_world(world).vehicle_motion(&kind);
+    let drive = world
+        .get_resource::<GroundDrives>()
+        .and_then(|drives| drives.0.get(&id).copied())
+        // A car nobody has driven yet stands still on nothing.
+        .unwrap_or(GroundDrive {
+            speed: 0.0,
+            throttle: 0.0,
+            surface: None,
+            sliding: false,
+            peeling: false,
+        });
+    let driver = super::t5_mp_heli::driver_of(world, id);
+    let (max_speed, reverse_scale, class) =
+        motion.map_or((0.0, 0.0, 0), |m| (m.max_speed, m.reverse_scale, m.class));
+    Some(ClientVehicle {
+        vehicle_type: kind.to_string(),
+        class: VEHICLE_CLASSES
+            .get(usize::from(class))
+            .copied()
+            .unwrap_or(VEHICLE_CLASSES[0]),
+        max_speed,
+        max_reverse_speed: max_speed * reverse_scale,
+        speed: drive.speed,
+        throttle: drive.throttle,
+        surface: drive.surface,
+        sliding: drive.sliding,
+        peeling: drive.peeling,
+        driver,
+    })
+}
 
 fn vec_field(world: &mut World, id: u64, name: &str) -> [f32; 3] {
     match world.resource_mut::<RoundScript>().object_field(id, name) {
@@ -75,9 +158,13 @@ fn drive(world: &mut World) {
             .get_resource_or_insert_with(GroundDrives::default)
             .0
             .get(&id)
-            .copied()
-            .unwrap_or(0.0);
-        let wanted = f32::from(forward) / FULL_STICK * motion.max_speed;
+            .map_or(0.0, |drive| drive.speed);
+        let top_speed = if forward < 0 {
+            motion.max_speed * motion.reverse_scale
+        } else {
+            motion.max_speed
+        };
+        let wanted = f32::from(forward) / FULL_STICK * top_speed;
         let step = motion.accel.max(1.0) * TICK;
         speed += (wanted - speed).clamp(-step, step);
         let steer = f32::from(right) / FULL_STICK
@@ -117,10 +204,15 @@ fn drive(world: &mut World) {
         }
         let top = [next[0], next[1], next[2] + GROUND_UP];
         let bottom = [next[0], next[1], next[2] - GROUND_DOWN];
+        let mut surface = None;
         match entity_trace(world, top, bottom, MASK_PLAYER_SOLID, ignore) {
             TraceOutcome::Hit {
-                fraction, normal, ..
+                fraction,
+                normal,
+                collider,
+                ..
             } => {
+                surface = Some(super::engine::surface_name(collider));
                 next[2] = top[2] + (bottom[2] - top[2]) * fraction;
                 let along = normal[0] * cos + normal[1] * sin;
                 let across = normal[1] * cos - normal[0] * sin;
@@ -133,7 +225,18 @@ fn drive(world: &mut World) {
         world
             .get_resource_or_insert_with(GroundDrives::default)
             .0
-            .insert(id, speed);
+            .insert(
+                id,
+                GroundDrive {
+                    speed,
+                    throttle: f32::from(forward) / FULL_STICK,
+                    surface,
+                    sliding: speed.abs() > motion.max_speed * SLIDE_FRACTION
+                        && f32::from(right).abs() >= FULL_STICK,
+                    peeling: f32::from(forward).abs() >= FULL_STICK
+                        && speed.abs() < motion.max_speed * PEEL_OUT_FRACTION,
+                },
+            );
         let mut runtime = world.resource_mut::<RoundScript>();
         runtime.set_object_field(id, "origin", Value::Vector(next));
         runtime.set_object_field(id, "angles", Value::Vector(angles));
