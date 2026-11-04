@@ -74,7 +74,7 @@ fn center_popup(item: &str, locals: Vec<(String, PopUpText)>, sound: String) -> 
     }
 }
 
-/// `MEDAL_XP_POPUP` when the medal pays anything (the client's `4fabe0`), or
+/// `MEDAL_XP_POPUP` when the medal pays anything, or
 /// nothing.
 fn xp_line(points: i32) -> PopUpText {
     if points > 0 {
