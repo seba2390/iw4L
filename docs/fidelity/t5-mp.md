@@ -520,15 +520,13 @@ Each open section names the issue that works it.
 
 ## HUD and menus (#651, #664)
 
-- [ ] **V** `t5.hud.code_hud` (multiplayer): the crosshair's target, whose
-      name alone shows, is the runtime's aim test (the nearest visible
-      player along the view) rather than Black Ops' 8192-unit trace with
-      its body mask: an enemy past the weapon's `enemyCrosshairRange`
-      still shows, and a vehicle's driver or a dog never does. The name
-      keeps the runtime's size, colour and rank icon rather than Black
-      Ops' name dvars and `team_indicator`; the crosshair does not take
-      `cg_crosshairEnemyColor` on an enemy. The players-in-view scan, chat
-      lines and the night vision overlay are not drawn.
+- [ ] **V** `t5.hud.code_hud` (multiplayer): the crosshair's scan
+      finds a player's box rather than Black Ops' trace of every entity: a
+      vehicle's driver or a dog never shows or colours the crosshair, and the
+      eye does not move for a vehicle seat. The name keeps the runtime's
+      size, colour and rank icon rather than Black Ops' name dvars and
+      `team_indicator`. The players-in-view scan, chat lines and the night
+      vision overlay are not drawn.
 
 - [ ] **V** The multiplayer HUD lists load as `CG_LoadHudMenus` does
       (`ui_mp/hud_hardcore`, `hud_spectator`, `hud`, `hud_<g_gametype>`,
@@ -706,6 +704,13 @@ Each open section names the issue that works it.
       compensation of Black Ops' movement and weapons are unmeasured.
 
 ## Closed
+
+- [x] **V** Crosshair names and colour (#853): a line of 8192 units along the
+      view, stopped by the world, finds the player under the crosshair; an
+      enemy past the weapon's `enemyCrosshairRange` (600 carrying a turret)
+      or with `specialty_noname` is not marked. His name fades by
+      `cg_enemyNameFadeIn` and `Out` or `cg_friendlyNameFadeOut`; the crosshair
+      takes the team colours (`cg_crosshairEnemyColor`).
 
 - [x] **V** `t5.hud.spectator_label` (#854): `hud_spectator`'s `SPECTATING` and
       the followed player's name show: the HUD answers `tablelookup` and

@@ -442,6 +442,7 @@ impl WeaponCatalog {
                 keep_crosshair_when_ads: false,
                 // Only Black Ops' crosshair reads it.
                 crosshair_color_change: false,
+                enemy_crosshair_range: 0.0,
                 clip_only: geometry.clip_only,
                 has_detonator: geometry.has_detonator,
                 detonate_delay_ms: geometry.detonate_delay_ms,
