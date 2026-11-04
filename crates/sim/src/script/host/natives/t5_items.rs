@@ -60,12 +60,6 @@ const INVENTORY_PRIMARY: i32 = 0;
 const INVENTORY_ALT: i32 = 3;
 const OFFHAND_FRAG: i32 = 1;
 
-static SHARED_AMMO_CAP: game_api::Unknown = game_api::Unknown {
-    id: "t5.mp.shared_ammo_cap",
-    what: "a weapon with a shared ammo cap on the ground: its cap is not applied",
-    needs: "BlackOpsMP.exe's shared ammo cap table",
-};
-
 /// One of an item's two ammo slots: its weapon and its alternate, or its
 /// left hand's weapon.
 #[derive(Clone, Copy, Debug, Default, PartialEq)]
@@ -172,25 +166,39 @@ fn weapon_max_ammo(world: &FrameWorld, weapon: u32) -> i32 {
     }
 }
 
-/// The most a player holds of a weapon's ammo: a clip-only weapon's clip, else
-/// the sum for every held weapon on that ammo but `except`.
+/// The most a player holds of a weapon's ammo, as BlackOpsMP.exe counts it:
+/// a weapon with a shared ammo cap holds its cap; a clip-only weapon its
+/// clip; else the sum for every held weapon on that ammo but `except`,
+/// unless one of them has a shared cap, which is then the most. Black Ops
+/// takes a cap's value from the first weapon registered under the cap's
+/// name; the name is not captured, so each weapon's own `sharedAmmoCap` is
+/// read (`t5.mp.shared_ammo_cap`).
 fn player_max_ammo(world: &mut FrameWorld, id: ClientId, weapon: u32, except: u32) -> i32 {
-    if def_i32(world, weapon, DEF_SHARED_AMMO_CAP) > 0 {
-        world.report_game_gap(&SHARED_AMMO_CAP);
+    let cap = def_i32(world, weapon, DEF_SHARED_AMMO_CAP);
+    if cap > 0 {
+        return cap;
     }
     if def_flag(world, weapon, DEF_CLIP_ONLY) {
         return clip_size(world, weapon);
     }
     let ammo = ammo_index(world, weapon);
-    held(world, id)
-        .into_iter()
-        .filter(|&other| other != except && ammo_index(world, other) == ammo)
-        .filter(|&other| {
-            def_i32(world, other, DEF_INVENTORY_TYPE) != INVENTORY_ALT
-                || alt_of(world, other) != other
-        })
-        .map(|other| weapon_max_ammo(world, other))
-        .sum()
+    let mut sum = 0;
+    for other in held(world, id) {
+        if other == except || ammo_index(world, other) != ammo {
+            continue;
+        }
+        if def_i32(world, other, DEF_INVENTORY_TYPE) == INVENTORY_ALT
+            && alt_of(world, other) == other
+        {
+            continue;
+        }
+        let cap = def_i32(world, other, DEF_SHARED_AMMO_CAP);
+        if cap > 0 {
+            return cap;
+        }
+        sum += weapon_max_ammo(world, other);
+    }
+    sum
 }
 
 /// What a player can still take of a weapon's ammo.
