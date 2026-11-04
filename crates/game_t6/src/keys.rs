@@ -19,6 +19,40 @@ pub(crate) const ENTITY_FIELDS: [(&str, KeyType); 15] = [
     ("lerp_to_darker", KeyType::Float),
 ];
 
+/// The keys the engine's vehicle node spawn reads, with their types: its own
+/// table, which also names the nodes' script fields.
+const VEHICLE_NODE_FIELDS: [(&str, KeyType); 12] = [
+    ("targetname", KeyType::String),
+    ("target", KeyType::String),
+    ("target2", KeyType::String),
+    ("script_linkname", KeyType::String),
+    ("script_noteworthy", KeyType::String),
+    ("origin", KeyType::Vector),
+    ("angles", KeyType::Vector),
+    ("speed", KeyType::Float),
+    ("radius", KeyType::Float),
+    ("lookahead", KeyType::Float),
+    ("tension", KeyType::Float),
+    ("spawnflags", KeyType::Int),
+];
+
+/// The classes spawned as vehicle nodes.
+const VEHICLE_NODE_CLASSES: [&str; 2] = ["info_vehicle_node", "info_vehicle_node_rotate"];
+
+/// The entity fields, then each vehicle node class's own keys qualified by
+/// the class (`info_vehicle_node.lookahead`).
+pub(crate) fn entity_fields() -> Vec<(String, KeyType)> {
+    ENTITY_FIELDS
+        .iter()
+        .map(|&(name, ty)| (name.to_owned(), ty))
+        .chain(VEHICLE_NODE_CLASSES.iter().flat_map(|class| {
+            VEHICLE_NODE_FIELDS
+                .iter()
+                .map(move |&(name, ty)| (format!("{class}.{name}"), ty))
+        }))
+        .collect()
+}
+
 /// `radiant/keys.txt`: `<type> <key>` per entry after `//` comments are
 /// dropped; a `client` entry is the client's alone. The first entry of a key
 /// is the one the engine finds.
