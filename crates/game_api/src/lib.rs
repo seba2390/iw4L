@@ -510,6 +510,10 @@ pub struct ModeRules {
     /// The menu the game's UI opens itself when this level has loaded, with
     /// no script to open it (a front end's own level); `None` opens none.
     pub level_menu: Option<&'static str>,
+    /// The menu that opens over `level_menu` while this dvar is set, and the
+    /// level the match's end goes to: the game's private lobby, whose matches
+    /// come back to it.
+    pub level_return: Option<LevelReturn>,
 }
 
 /// The windows of a game's 3D UI texture.
@@ -915,6 +919,17 @@ pub struct MenuDvar {
     pub name: &'static str,
     pub default: &'static str,
     pub setting: Option<MenuSetting>,
+}
+
+/// Where a private match goes back to when it ends.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct LevelReturn {
+    /// The zone of the level that runs the lobby.
+    pub zone: &'static str,
+    /// The dvar that says the match came from the lobby.
+    pub dvar: &'static str,
+    /// The lobby's menu.
+    pub menu: &'static str,
 }
 
 /// What the in-game menu key opens.

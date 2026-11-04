@@ -543,7 +543,23 @@ pub(crate) fn update_script_menus(
         && let Some(name) = level_menu
     {
         runner.menus.level_menu_opened = true;
+        // Back from a match its menus left marked: its lobby, over the level's
+        // own menu, which clears that mark as it opens.
+        let back = input
+            .mode
+            .as_ref()
+            .and_then(|mode| mode.level_return)
+            .filter(|back| {
+                runner
+                    .dvars
+                    .get(back.dvar)
+                    .is_some_and(|v| !v.is_empty() && v != "0")
+            });
         runner.open(name);
+        if let Some(back) = back {
+            runner.set_dvar(back.dvar, "1");
+            runner.open(back.menu);
+        }
     }
 
     let console_open = input.hud_input.as_ref().is_some_and(|h| h.console_open);
