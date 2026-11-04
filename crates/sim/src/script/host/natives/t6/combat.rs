@@ -291,6 +291,12 @@ fn melee(world: &mut World, receiver: &Value, args: &[Value]) -> Result<Value, S
     let hit_location = Some(usize::from(strike.hitloc))
         .filter(|&part| part < damage::HIT_LOCATIONS.len())
         .unwrap_or(0);
+    diag::debug!(
+        Sim,
+        "actor {id}: melee strikes {:?} at {}",
+        strike.entity,
+        damage::HIT_LOCATIONS[hit_location]
+    );
     damage::damage(
         world,
         &strike.entity,

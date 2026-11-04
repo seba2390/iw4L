@@ -2090,6 +2090,7 @@ impl SimState {
                     && pose.maxs == maxs
                     && pose.viewangles == ps.viewangles
                     && pose.shield == meta.shield
+                    && meta.hit_attachments.is_empty()
             }) {
                 poses.push(pose.clone());
                 continue;
@@ -2097,6 +2098,7 @@ impl SimState {
             let (bones, shield_normal) = match self.player_hitvol_bones(*id, &ps) {
                 Ok(bones) => bones,
                 Err(error) => {
+                    diag::debug!(Sim, "player {} collision bones: {error}", id.0);
                     on_err(&error);
                     (Vec::new(), None)
                 }
@@ -2258,6 +2260,34 @@ impl SimState {
             ],
             (Some(_), None) | (None, _) => vec![(cap.as_ref(), None)],
         };
+        let attached: Vec<_> = self
+            .client_meta(id)
+            .map(|meta| meta.hit_attachments.clone())
+            .unwrap_or_else(Vec::new)
+            .into_iter()
+            .filter_map(|(model, tag)| Some((self.model_capability(&model).flatten()?, tag)))
+            .collect();
+        if !attached.is_empty() {
+            for (capability, tag) in &attached {
+                models.push((
+                    capability.as_ref(),
+                    Some(xmodel_runtime::Attach {
+                        parent_model: 0,
+                        tag: tag.as_str().into(),
+                    }),
+                ));
+            }
+            let specs: Vec<_> = models
+                .iter()
+                .map(|(model, attach)| (&model.pose, attach.clone()))
+                .collect();
+            let dobj = xmodel_runtime::DObj::build(&specs).map_err(|e| format!("{e:?}"))?;
+            return xmodel_runtime::collision_dobj_with_controller(
+                &dobj, &models, &request, world, controller,
+            )
+            .map(|bones| (bones, None))
+            .map_err(|e| format!("{e:?}"));
+        }
         if let Some(shield) = self.client_meta(id).and_then(|meta| meta.shield) {
             let capability = self
                 .content

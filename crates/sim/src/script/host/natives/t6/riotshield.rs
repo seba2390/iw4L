@@ -225,9 +225,18 @@ pub(super) fn register(registry: &mut NativeRegistry) {
 
     // gscm_attachshieldmodel: attach(model, tag) on a player, then the
     // client's shield flag and tag.
+    // The shield's own hit boxes join the player's, so a shot or blow
+    // meets it where it hangs (its bones' part class is the shield's).
     registry.register(Method, "attachshieldmodel", |world, receiver, args| {
         let (id, client) = shield_player(world, receiver)?;
         let tag = super::attach::attach(world, id, args)?;
+        let model = string(args, 0)?;
+        if !tag.is_empty() {
+            FrameWorld::from_world(world)
+                .client_meta_mut(crate::ClientId(client))
+                .hit_attachments
+                .push((model, tag.to_string()));
+        }
         shield(world, client).tag = Some(tag);
         Ok(Value::Undefined)
     });
@@ -235,6 +244,18 @@ pub(super) fn register(registry: &mut NativeRegistry) {
     registry.register(Method, "detachshieldmodel", |world, receiver, args| {
         let (id, client) = shield_player(world, receiver)?;
         shield(world, client).tag = None;
+        let model = string(args, 0)?;
+        let tag = string(args, 1).ok();
+        let mut frame = FrameWorld::from_world(world);
+        let attached = &mut frame
+            .client_meta_mut(crate::ClientId(client))
+            .hit_attachments;
+        if let Some(index) = attached.iter().position(|(m, t)| {
+            m.eq_ignore_ascii_case(&model)
+                && tag.as_deref().is_none_or(|tag| t.eq_ignore_ascii_case(tag))
+        }) {
+            attached.remove(index);
+        }
         super::attach::detach(world, id, args)
     });
     // gscm_setheldweaponmodel: his current weapon's view model variant, or

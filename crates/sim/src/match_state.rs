@@ -88,6 +88,10 @@ impl InputReceipt {
 #[derive(Clone, Debug, Default, PartialEq)]
 pub struct ClientMatchState {
     pub shield: Option<crate::ShieldAttachment>,
+    /// Models attached to the player whose own hit boxes join his for shots
+    /// and blows (a game's riot shield), each with the tag it hangs from;
+    /// their bones keep their models' own part classes.
+    pub hit_attachments: Vec<(String, String)>,
     pub weapon_lock: crate::WeaponLock,
     pub lifecycle: ClientLifecycle,
     pub god_mode: bool,
