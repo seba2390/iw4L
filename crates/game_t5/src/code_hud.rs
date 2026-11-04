@@ -6,8 +6,8 @@
 
 use game_api::hud::{
     CodeScoreboard, CommandHint, Crosshair, CrosshairPicture, CrosshairView, CrosshairWeapon,
-    DamageFlash, DamageIcons, GameCodeHud, NameRules, OverlayPicture, OwnerHint, OwnerHintView,
-    ScoreAlign, ScoreColumn, ScoreValue, SightOverlay, VisibilityView,
+    DamageFlash, DamageIcons, GameCodeHud, NameRules, NameScan, OverlayPicture, OwnerHint,
+    OwnerHintView, ScoreAlign, ScoreColumn, ScoreValue, SightOverlay, VisibilityView,
 };
 use game_api::movement::MovePlayer;
 use game_api::{Unknown, unknown};
@@ -25,7 +25,7 @@ pub(crate) static MP_CODE_HUD: GameCodeHud = GameCodeHud {
     undrawn: &[
         unknown!(
             "t5.hud.code_hud",
-            "Black Ops' other code-drawn HUD pieces are not drawn as Black Ops draws them: the crosshair's target is found by the runtime's aim test rather than Black Ops' trace (no enemy crosshair range, no vehicle drivers or dogs), the name keeps the runtime's size, colour and team indicator rather than Black Ops' dvars, the crosshair does not turn red on an enemy, and the players-in-view scan, chat lines and the night vision overlay are not drawn",
+            "Black Ops' other code-drawn HUD pieces are not drawn as Black Ops draws them: the crosshair's scan stops at a player's box (no vehicle drivers or dogs), the name keeps the runtime's size, colour and team indicator rather than Black Ops' dvars, and the players-in-view scan, chat lines and the night vision overlay are not drawn",
             "those pieces of its 2D draw (executable)"
         ),
         unknown!(
@@ -34,9 +34,9 @@ pub(crate) static MP_CODE_HUD: GameCodeHud = GameCodeHud {
             "the subtitle channel's prints and the window's line store (executable)"
         ),
         unknown!(
-            "t5.hud.obituary_popups",
-            "an obituary of the local player does not open Black Ops' killed / killed-by player card (`playercardpopup`, `rankpopup`, `killstringpopup`) nor print the Second Chance revive line (`CGAME_YOUREVIVED`)",
-            "the client's player card popup menus and centre print"
+            "t5.hud.player_card_emblem",
+            "the kill player card has no gamercard background or emblem, and a Second Chance revive does not centre-print CGAME_YOUREVIVED / CGAME_YOUWEREREVIVED",
+            "a player's emblem and gamercard from the online service; the revive's print (executable)"
         ),
     ],
     crosshair: mp_crosshair,
@@ -74,6 +74,21 @@ fn has_perk(player: &MovePlayer, perk: u32) -> bool {
 static NAMES: NameRules = NameRules {
     crosshair_target_only: true,
     enemy_hidden: |player| has_perk(player, PERK_NONAME),
+    scan: Some(NameScan {
+        range: 8192.0,
+        hidden_e_flags: 0x4_0000,
+        enemy_range: |player, weapon| {
+            let mut player = *player;
+            if crate::movement::unpack(&mut player).0.weap_flags
+                & movement_t5::state::weap_flags::CARRYING_TURRET
+                != 0
+            {
+                600.0
+            } else {
+                weapon
+            }
+        },
+    }),
 };
 
 /// `specialty_noname`'s index in Black Ops' perk table.
@@ -418,7 +433,20 @@ fn crosshair_rgb(
     }
     let dvar = |name: &str, default: f32| (view.dvar)(name).unwrap_or(default);
     let alt = dvar("team_indicator", 0.0) == 3.0;
-    let flags = ps.weap_flags;
+    // A multiplayer client marks these itself, each frame.
+    let flags = match view.scan_target {
+        Some(target) => {
+            let mut flags = ps.weap_flags & !(CANCEL_GRENADE | ENEMY_IN_CROSSHAIR);
+            if target.friendly {
+                flags |= CANCEL_GRENADE;
+            }
+            if target.enemy {
+                flags |= ENEMY_IN_CROSSHAIR;
+            }
+            flags
+        }
+        None => ps.weap_flags,
+    };
     if flags & CANCEL_GRENADE != 0 {
         // `g_TeamColor_MyTeam` / `_MyTeamAlt`.
         return if alt {

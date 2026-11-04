@@ -602,7 +602,11 @@ impl HostController {
             } else {
                 None
             };
-            scores[4] = objective_utility(obs, obj, route_length);
+            scores[4] = if obj.scripted {
+                SCRIPTED_GOAL_UTILITY
+            } else {
+                objective_utility(obs, obj, route_length)
+            };
         }
         let kinds = [
             TaskKind::Hunt,
@@ -1365,6 +1369,9 @@ enum SeekKind {
     Objective(Option<ModeObjective>),
     BackOff,
 }
+
+/// A goal the scripts set outranks every task of the bot's own.
+const SCRIPTED_GOAL_UTILITY: f32 = 200.0;
 
 fn objective_utility(obs: &BotObservation, obj: ModeObjective, route_length: Option<f32>) -> f32 {
     let travel_ms = route_length.unwrap_or_else(|| dist2(obs.self_state.origin, obj.origin).sqrt())

@@ -1,6 +1,7 @@
 use crate::draw2d::{Draw2dCmd, Draw2dList, Draw2dOp, Draw2dProvenance, tessellate_fonts};
 use crate::gpu_list::{HudTessPass, TessJob};
 use asset_game::MenuCatalog;
+use assets::PreparedWeapons;
 use bevy::prelude::*;
 use frame::ScopeApp;
 use hud_iw4::*;
@@ -99,7 +100,12 @@ impl TargetBoxSettings {
     }
 }
 
+/// What the client's crosshair scan found this frame.
+#[derive(Resource, Default)]
+pub(crate) struct ScanTarget(pub(crate) game_api::hud::CrosshairTarget);
+
 pub(crate) fn register(app: &mut App) {
+    app.init_resource::<ScanTarget>();
     app.scoped::<OverheadPosedModelFrame>(frame::MatchScope::Live)
         .scoped::<OverheadPosedPlayerFrame>(frame::MatchScope::Live)
         .add_systems(
@@ -177,14 +183,20 @@ fn update_overhead_names(
     catalog: Option<Res<MenuCatalog>>,
     cameras: Query<(&Camera, &GlobalTransform), With<Camera3d>>,
     prediction: Option<Res<net::ClientPredictionState>>,
-    (view, mode): (Res<frame::ViewSubject>, Option<Res<game_api::ModeRules>>),
-    effects: Res<frame::ScreenEffectsView>,
+    (view, mode, weapons, effects): (
+        Res<frame::ViewSubject>,
+        Option<Res<game_api::ModeRules>>,
+        Option<Res<PreparedWeapons>>,
+        Res<frame::ScreenEffectsView>,
+    ),
     mut pass: ResMut<HudTessPass>,
     mut memory: Local<NameMemory>,
     mut target_settings: Local<TargetBoxSettings>,
     mut gaps: ResMut<HudPresentationGaps>,
+    mut scan_target: ResMut<ScanTarget>,
 ) {
     pass.overhead_names = TessJob::Hide;
+    scan_target.0 = game_api::hud::CrosshairTarget::default();
     gaps.clear(HudGap::OverheadNames);
     let now = cg_clock.time();
     if memory.last_time.is_some_and(|last| now < last) {
@@ -279,6 +291,22 @@ fn update_overhead_names(
     let eye = transform.translation();
     let forward = *transform.forward();
     let rules = crate::game_code_hud::game_hud(mode.as_deref()).and_then(|hud| hud.names);
+    let scan = rules.and_then(|rules| rules.scan.as_ref());
+    let dvars = snapshot.meta.script_dvars(local.0);
+    let dvar_ms = |name: &str, default: i32| dvars.int(name).unwrap_or(default);
+    let enemy_range = scan.map(|scan| {
+        let held = weapons.as_deref().and_then(|weapons| {
+            weapons
+                .snapshot_weapon(presented.weapon_epoch(), ps.weapon)
+                .ok()?
+                .hud_facts()
+                .map(|facts| facts.enemy_crosshair_range)
+        });
+        (scan.enemy_range)(
+            &ps.move_player(local.0.0 as i32, false),
+            held.unwrap_or(0.0),
+        )
+    });
     let mut candidates = Vec::new();
     for (identity, runtime) in &players {
         if !runtime.in_next_snap()
@@ -330,30 +358,57 @@ fn update_overhead_names(
                 continue;
             }
         };
-        if eye.distance_squared(head) > OVERHEAD_MAX_DISTANCE_DEFAULT.powi(2) {
+        if scan.is_none() && eye.distance_squared(head) > OVERHEAD_MAX_DISTANCE_DEFAULT.powi(2) {
             continue;
         }
         let anchor = head + Vec3::Z * OVERHEAD_HEAD_LIFT;
-        let Ok(pixel) = camera.world_to_viewport(transform, anchor) else {
-            continue;
-        };
-        if !pixel.is_finite()
-            || pixel.x < 0.0
-            || pixel.y < 0.0
-            || pixel.x > surface.width()
-            || pixel.y > surface.height()
-        {
+        // A name off the screen does not draw, but the player is still under
+        // the crosshair.
+        let pixel = camera
+            .world_to_viewport(transform, anchor)
+            .ok()
+            .filter(|pixel| {
+                pixel.is_finite()
+                    && pixel.x >= 0.0
+                    && pixel.y >= 0.0
+                    && pixel.x <= surface.width()
+                    && pixel.y <= surface.height()
+            });
+        if scan.is_none() && pixel.is_none() {
             continue;
         }
-        let hit = world.trace_world(
-            eye.to_array(),
-            head.to_array(),
-            [0.0; 3],
-            [0.0; 3],
-            OVERHEAD_TRACE_MASK,
-        );
-        let visible = hit.fraction >= 1.0 && hit.startsolid == 0;
-        let aim = aimed_distance(eye, forward, origin, head).filter(|_| visible);
+        let (visible, aim) = if let Some(scan) = scan {
+            // The line along the view reaches his box before the world does.
+            let aim = aimed_distance(eye, forward, origin, head)
+                .filter(|distance| *distance <= scan.range)
+                .filter(|_| !enemy || runtime.next_state.e_flags & scan.hidden_e_flags == 0)
+                .filter(|distance| !enemy || enemy_range.is_some_and(|range| *distance <= range))
+                .filter(|distance| {
+                    let end = eye + forward * *distance;
+                    let hit = world.trace_world(
+                        eye.to_array(),
+                        end.to_array(),
+                        [0.0; 3],
+                        [0.0; 3],
+                        OVERHEAD_TRACE_MASK,
+                    );
+                    hit.fraction >= 1.0 && hit.startsolid == 0
+                });
+            (aim.is_some(), aim)
+        } else {
+            let hit = world.trace_world(
+                eye.to_array(),
+                head.to_array(),
+                [0.0; 3],
+                [0.0; 3],
+                OVERHEAD_TRACE_MASK,
+            );
+            let visible = hit.fraction >= 1.0 && hit.startsolid == 0;
+            (
+                visible,
+                aimed_distance(eye, forward, origin, head).filter(|_| visible),
+            )
+        };
         candidates.push((
             identity.number(),
             meta.client_state_team,
@@ -373,6 +428,24 @@ fn update_overhead_names(
     memory
         .seen
         .retain(|ent, _| candidates.iter().any(|c| c.0 == *ent));
+    if scan.is_some()
+        && let Some(target) = aimed
+    {
+        // One name: a new target ends the last one's.
+        memory.seen.retain(|ent, _| *ent == target);
+        if let Some(found) = candidates.iter().find(|c| c.0 == target) {
+            let friendly =
+                local_meta.client_state_team != 0 && local_meta.client_state_team == found.1;
+            scan_target.0 = game_api::hud::CrosshairTarget {
+                friendly,
+                enemy: !friendly,
+            };
+        }
+    }
+    if scan.is_some() && dvars.int("cg_drawCrosshairNames") == Some(0) {
+        memory.seen.clear();
+        return;
+    }
     let mut list = Draw2dList::default();
     for (ent, team, name, anchor, pixel, visible, _, (rank, prestige, client)) in candidates {
         let friendly = local_meta.client_state_team != 0 && local_meta.client_state_team == team;
@@ -392,25 +465,34 @@ fn update_overhead_names(
             memory.seen.remove(&ent);
             continue;
         }
-        let fade = if friendly {
-            FRIENDLY_NAME_FADE_OUT_DEFAULT_MS
+        let (fade_in, fade) = if scan.is_none() {
+            if friendly {
+                (0, FRIENDLY_NAME_FADE_OUT_DEFAULT_MS)
+            } else {
+                (ENEMY_NAME_FADE_MS, ENEMY_NAME_FADE_MS)
+            }
+        } else if friendly {
+            (
+                dvar_ms("cg_friendlyNameFadeIn", 0),
+                dvar_ms("cg_friendlyNameFadeOut", FRIENDLY_NAME_FADE_OUT_DEFAULT_MS),
+            )
         } else {
-            ENEMY_NAME_FADE_MS
+            (
+                dvar_ms("cg_enemyNameFadeIn", ENEMY_NAME_FADE_MS),
+                dvar_ms("cg_enemyNameFadeOut", ENEMY_NAME_FADE_MS),
+            )
         };
         if now.wrapping_sub(last) >= fade {
             memory.seen.remove(&ent);
             continue;
         }
-        let alpha = overhead_fade_alpha(
-            now,
-            start,
-            last,
-            if friendly { 0 } else { ENEMY_NAME_FADE_MS },
-            fade,
-        );
+        let alpha = overhead_fade_alpha(now, start, last, fade_in, fade);
         if alpha <= 0.0 {
             continue;
         }
+        let Some(pixel) = pixel else {
+            continue;
+        };
         let distance = overhead_distance_scale(
             eye.to_array(),
             anchor.to_array(),

@@ -44,6 +44,8 @@ const T5_FN_DVARSTRING: i32 = 33;
 const T5_FN_UI_ACTIVE: i32 = 34;
 const T5_FN_FLASHBANGED: i32 = 35;
 const T5_FN_INKILLCAM: i32 = 38;
+const T5_FN_EMBLEMPLAYERBACKGROUNDMATERIAL: i32 = 401;
+const T5_FN_ISDEMOPLAYING: i32 = 228;
 const T5_FN_ISDUALWIELD: i32 = 39;
 const T5_FN_ISFUELWEAPON: i32 = 40;
 const T5_FN_PLAYER: i32 = 41;
@@ -660,6 +662,14 @@ fn call(op: i32, stack: &mut Vec<Value>, host: &dyn GameQueries) -> Result<Opera
         T5_FN_GETSELFGAMERTAG => Operand::Str(host.dvar_string("name")?),
         T5_FN_GETXUID => Operand::Str("0".to_owned()),
         T5_FN_GETCLANNAME => Operand::Str(String::new()),
+        // No demo plays back in a match.
+        T5_FN_ISDEMOPLAYING => Operand::Int(0),
+        // A player's gamercard background (`t5.hud.player_card_emblem`): no
+        // player has one, so the item draws its own.
+        T5_FN_EMBLEMPLAYERBACKGROUNDMATERIAL => {
+            args()?;
+            Operand::Str(String::new())
+        }
         // `getFloatAsFormattedString(value, places)`.
         T5_FN_GETFLOATASFORMATTEDSTRING => {
             let args = args()?;
