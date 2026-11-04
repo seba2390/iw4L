@@ -2348,7 +2348,7 @@ fn spectator_game_move(
         .move_trace()
     };
     let solid_models = if content.clip_hulls().is_some() {
-        crate::world::solid_pieces::solid_models(&world)
+        crate::world::solid_pieces::solid_models(world)
     } else {
         Vec::new()
     };
@@ -2423,7 +2423,7 @@ impl ActorClip {
                     .mode
                     .is_some_and(|mode| mode.actor_physics.is_some())
             {
-                crate::world::solid_pieces::solid_models(&world)
+                crate::world::solid_pieces::solid_models(world)
             } else {
                 Vec::new()
             },
