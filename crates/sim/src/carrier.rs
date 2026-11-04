@@ -820,6 +820,7 @@ impl SimWorld {
         );
         crate::script::client::present::present_in_snapshot(&self.ecs, &mut snapshot);
         crate::script::host::natives::t5::publish_bot_orders(&self.ecs, &mut snapshot);
+        crate::script::host::natives::t5_turret::publish_models(&self.ecs, &mut snapshot);
         snapshot
     }
 

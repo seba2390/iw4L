@@ -19,6 +19,7 @@ pub(crate) static CODE_HUD: GameCodeHud = ZOMBIES_CODE_HUD;
 /// Black Ops multiplayer's: zombies' pieces and its kill feed.
 pub(crate) static MP_CODE_HUD: GameCodeHud = GameCodeHud {
     retrievable_model: Some(retrievable_model),
+    turret_detect_model: Some(turret_detect_model),
     killfeed: Some(&crate::killfeed::KILLFEED),
     compass: Some(&crate::compass::COMPASS),
     names: Some(&NAMES),
@@ -93,6 +94,8 @@ static NAMES: NameRules = NameRules {
 
 /// `specialty_noname`'s index in Black Ops' perk table.
 const PERK_NONAME: u32 = 34;
+/// `specialty_showenemyequipment`'s index in Black Ops' perk table.
+const PERK_SHOWENEMYEQUIPMENT: u32 = 43;
 
 const ZOMBIES_DAMAGE_FLASH: DamageFlash = DamageFlash {
     kick_scale: 0.2,
@@ -125,6 +128,7 @@ const ZOMBIES_CODE_HUD: GameCodeHud = GameCodeHud {
     command_hint: Some(command_hint),
     grenade_indicators: Some(crate::grenade_indicator::draw),
     retrievable_model: None,
+    turret_detect_model: None,
     visibility_bit: Some(visibility_bit),
     killfeed: None,
     compass: None,
@@ -641,6 +645,15 @@ fn crosshair_of(view: &CrosshairView<'_>, zombies: bool) -> Crosshair {
         });
     }
     out
+}
+
+/// A turret nobody carries, on another team or (in a free-for-all) someone
+/// else's, shows a player with Hacker its detect model.
+fn turret_detect_model(view: &game_api::hud::TurretModelView<'_>) -> bool {
+    has_perk(view.player, PERK_SHOWENEMYEQUIPMENT)
+        && !view.carried
+        && (view.turret_team != view.team
+            || (view.turret_team == 0 && view.turret_owner_client != view.client))
 }
 
 /// A resting retrievable missile draws with its weapon's third world model

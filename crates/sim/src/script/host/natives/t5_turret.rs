@@ -60,6 +60,32 @@ pub(crate) struct Turrets(BTreeMap<u64, Turret>);
 #[derive(Resource, Clone, Default)]
 pub(crate) struct Sentients(Vec<Option<u64>>);
 
+/// The scripted turrets as the clients' draws read them.
+pub(crate) fn publish_models(world: &World, snapshot: &mut crate::Snapshot) {
+    let (Some(turrets), Some(runtime)) = (
+        world.get_resource::<Turrets>(),
+        world.get_resource::<RoundScript>(),
+    ) else {
+        return;
+    };
+    snapshot.meta.turret_models.clear();
+    snapshot
+        .meta
+        .turret_models
+        .extend(turrets.0.values().map(|turret| {
+            crate::TurretModelRow {
+                entity: turret.game.entity,
+                weapon: turret.game.weapon,
+                team: turret.game.spawn.team as u8,
+                owner_client: turret
+                    .owner
+                    .and_then(|owner| runtime.player_client(owner))
+                    .map_or(-1, |client| client as i32),
+                carried: turret.game.state.entity_flags & super::t5_mp_turret::EF_CARRIED != 0,
+            }
+        }));
+}
+
 pub(crate) fn rules(world: &mut World) -> Option<TurretRules> {
     FrameWorld::from_world(world)
         .bootstrap_ref()
