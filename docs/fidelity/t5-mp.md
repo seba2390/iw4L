@@ -667,6 +667,9 @@ Each open section names the issue that works it.
 - [ ] **V** `t5.mp.contract_popup`: `displaycontract` does not reach the HUD.
       Contracts come from the online service: a private match has none.
 
+- [ ] **V** `t5.hud.decode_fx`: `setCOD7DecodeFX` types its text in and fades it
+      as a pulse does, not with Black Ops' scrambled letters (#651).
+
 ## Bots (#652, #709)
 
 - [ ] **G** `t5.bots.host_ai`: test clients join through Black Ops' own
