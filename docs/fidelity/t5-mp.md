@@ -657,9 +657,7 @@ Each open section names the issue that works it.
 
 - [ ] **V** `t5.mp.challenge_popup`: `displaychallengecomplete` does not
       reach the HUD: the milestone's name and description (seven cases by the
-      table's type column) are not read (#860).
-- [ ] **V** `t5.mp.team_message_popup`: `displayteammessage` does not reach
-      the HUD: the sender's rank, name, emblem and gamercard (#860).
+      table's type column) are not read (#860). Only a ranked match reaches it.
 - [ ] **V** `t5.mp.rank_popup_type_on`: the rank popup's first line shows at
       once; Black Ops types it out letter by letter (#860).
 - [ ] **V** `t5.mp.contract_popup`: `displaycontract` does not reach the HUD.
@@ -1304,3 +1302,6 @@ Each open section names the issue that works it.
       victim's player card (`playerCard`, `playerKilled`): `CGAME_KILLED`,
       `CGAME_KILLEDBY`, the team-kill lines, the name and rank. `isDemoPlaying`
       answers 0.
+
+- [x] **V** `t5.mp.team_message_popup` (#860): `displayTeamMessage` slides out
+      the player's name, rank and the line; no emblem (`t5.hud.player_card_emblem`).

@@ -242,6 +242,54 @@ fn not_shown(
     super::player::present(world, receiver, key, args)
 }
 
+/// A rank's icon, by its prestige, and its short rank.
+fn rank_row(world: &World, rank: i32, prestige: i32) -> Option<(String, String)> {
+    let row = rank.to_string();
+    Some((
+        cell(world, RANK_ICON_TABLE, &row, prestige as usize + 1)?,
+        cell(world, RANK_TABLE, &row, RANK_SHORT_COLUMN)?,
+    ))
+}
+
+/// `displayTeamMessage(message, player[, sound])`: the slide-out naming the
+/// player, with their rank. A player past the top of the table shows none.
+fn display_team_message(
+    world: &mut World,
+    receiver: &Value,
+    args: &[Value],
+) -> Result<Value, String> {
+    let about = super::player::player(world, super::super::args::arg(args, 1)?)?;
+    let (name, rank, prestige) = {
+        let frame = FrameWorld::from_world(world);
+        let Some(meta) = frame.client_meta(ClientId(about)) else {
+            return Ok(Value::Undefined);
+        };
+        let end = meta.name.iter().position(|byte| *byte == 0);
+        let name = String::from_utf8_lossy(&meta.name[..end.unwrap_or(meta.name.len())]);
+        (name.into_owned(), meta.rank, meta.prestige)
+    };
+    let mut locals = vec![
+        (
+            "teamMessage".to_owned(),
+            PopUpText::plain(optional_text(args, 0)),
+        ),
+        ("teamMessageName".to_owned(), PopUpText::name(name)),
+        ("teamClanTagPopUp".to_owned(), PopUpText::name("")),
+    ];
+    if let Some((icon, short)) = rank_row(world, rank, prestige) {
+        locals.push(("teamMessageRankIcon".to_owned(), PopUpText::name(icon)));
+        locals.push(("teamMessageRank".to_owned(), PopUpText::plain(short)));
+    }
+    let popup = MenuPopUp {
+        menu: "teamMessageSlideOut".to_owned(),
+        item: "SlideOut".to_owned(),
+        locals,
+        hide_others: false,
+        sound: optional_text(args, 2),
+    };
+    send(world, receiver, popup)
+}
+
 /// The player card an obituary puts up for the one who killed and the one who
 /// died (the client's obituary): the other player's name and rank, under the
 /// kill's line. A revive and a suicide put up none.
@@ -274,7 +322,6 @@ pub(super) fn obituary_cards(
                 meta.prestige,
             )
         };
-        let row = rank.to_string();
         let mut locals = vec![
             (
                 "killStringPopUp".to_owned(),
@@ -283,10 +330,7 @@ pub(super) fn obituary_cards(
             ("namePopUp".to_owned(), PopUpText::name(name)),
             ("clanTagPopUp".to_owned(), PopUpText::name("")),
         ];
-        if let (Some(icon), Some(short)) = (
-            cell(&*world, RANK_ICON_TABLE, &row, prestige as usize + 1),
-            cell(&*world, RANK_TABLE, &row, RANK_SHORT_COLUMN),
-        ) {
+        if let Some((icon, short)) = rank_row(world, rank, prestige) {
             locals.push(("rankIconPopUp".to_owned(), PopUpText::name(icon)));
             locals.push(("rankPopUp".to_owned(), PopUpText::plain(short)));
         }
@@ -363,13 +407,5 @@ pub(crate) fn register(registry: &mut NativeRegistry) {
             args,
         )
     });
-    registry.register(Method, "displayteammessage", |world, receiver, args| {
-        not_shown(
-            world,
-            receiver,
-            "displayteammessage",
-            "t5.mp.team_message_popup",
-            args,
-        )
-    });
+    registry.register(Method, "displayteammessage", display_team_message);
 }
