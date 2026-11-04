@@ -12,6 +12,17 @@ use super::state::ItemAnim;
 /// `ui_animSpeedScale`'s registered value.
 const DEFAULT_SPEED_SCALE: f32 = 1.0;
 
+/// The menu of the client's centre popups, and its items (`CG_HidePopUps`).
+const POPUP_MENU: &str = "InGamePopUps";
+const CENTRE_POPUPS: [&str; 6] = [
+    "KillstreakPopUp",
+    "RankPopUp",
+    "ChallengePopUp",
+    "MedalPopUp",
+    "ContractPopUp",
+    "WagerPopUp",
+];
+
 impl Runner<'_, '_> {
     /// `ui_animate menu item state ms`: every item of the open menu `menu`
     /// named `item` (`*`: all of them) that has a state named `state` starts
@@ -29,6 +40,109 @@ impl Runner<'_, '_> {
             diag::warn!(Ui, "ui_animate - menu \"{menu}\" is not loaded");
             return;
         };
+        let (mut named, mut moved) = (false, false);
+        for (index, definition) in def.items.iter().enumerate() {
+            if item != "*" && !definition.name.eq_ignore_ascii_case(item) {
+                continue;
+            }
+            named = true;
+            let Some(to) = definition
+                .anim_states
+                .iter()
+                .position(|candidate| candidate.name.eq_ignore_ascii_case(state))
+            else {
+                continue;
+            };
+            moved = true;
+            self.start_move(menu, def, index, to, ms);
+        }
+        if !named {
+            diag::warn!(
+                Ui,
+                "ui_animate - menu \"{menu}\" does not contain an item named \"{item}\""
+            );
+        } else if !moved {
+            diag::warn!(
+                Ui,
+                "ui_animate - item \"{item}\" in menu \"{menu}\" does not contain a state named \"{state}\""
+            );
+        }
+        self.step_animations();
+    }
+
+    /// `CG_PopUp`: the popup's local variables and sound, the others'
+    /// `Hide`, and its item's move to `Start`.
+    pub(crate) fn popup(&mut self, popup: &sim::MenuPopUp) {
+        for (name, text) in &popup.locals {
+            let value = self.popup_text(text);
+            self.locals.set_string(name, value);
+        }
+        if !popup.sound.is_empty() {
+            self.menus.sounds.push(popup.sound.clone());
+        }
+        if popup.hide_others {
+            self.hide_popups();
+        }
+        if popup.item.eq_ignore_ascii_case("RankPopUp") {
+            self.menus.rank_icon = Some(super::state::RankIconSwing {
+                start_ms: self.world.ms,
+                angle: super::state::RANK_ICON_TILT,
+                velocity: 0.0,
+            });
+        }
+        self.animate(&popup.menu, &popup.item, "Start", 0);
+    }
+
+    /// `CG_HidePopUps`: each centre popup's `Hide`, at once.
+    pub(crate) fn hide_popups(&mut self) {
+        for item in CENTRE_POPUPS {
+            self.animate(POPUP_MENU, item, "Hide", 0);
+        }
+    }
+
+    fn popup_text(&self, text: &sim::PopUpText) -> String {
+        if text.literal {
+            return text.key.clone();
+        }
+        let template = self
+            .world
+            .localize
+            .and_then(|table| table.text(text.key.trim_start_matches('@')))
+            .map_or_else(|| text.key.clone(), str::to_owned);
+        if text.args.is_empty() {
+            return template;
+        }
+        let values: Vec<String> = text.args.iter().map(|arg| self.popup_text(arg)).collect();
+        super::host::expand_locstring(&template, &values)
+    }
+
+    /// `changeState state ms`: the item running the script moves to its own
+    /// state of that name; a state it does not have ends the chain.
+    pub(crate) fn change_state(&mut self, menu: &str, index: usize, state: &str, ms: i32) {
+        let catalog = self.catalog;
+        let Some(def) = catalog.get(menu) else {
+            return;
+        };
+        let Some(to) = def.items.get(index).and_then(|item| {
+            item.anim_states
+                .iter()
+                .position(|candidate| candidate.name.eq_ignore_ascii_case(state))
+        }) else {
+            return;
+        };
+        self.start_move(menu, def, index, to, ms);
+        self.step_animations();
+    }
+
+    /// One item starts from where it stands towards its state `to`.
+    fn start_move(
+        &mut self,
+        menu: &str,
+        def: &asset_game::MenuDef,
+        index: usize,
+        to: usize,
+        ms: i32,
+    ) {
         let speed = self
             .dvar("ui_animSpeedScale")
             .and_then(|value| value.trim().parse::<f32>().ok())
@@ -45,69 +159,20 @@ impl Runner<'_, '_> {
                 .entry(key)
                 .or_insert_with(|| super::state::ItemState::for_menu(def)),
         };
-        let (mut named, mut moved) = (false, false);
-        for (index, definition) in def.items.iter().enumerate() {
-            if item != "*" && !definition.name.eq_ignore_ascii_case(item) {
-                continue;
-            }
-            named = true;
-            let Some(to) = definition
-                .anim_states
-                .iter()
-                .position(|candidate| candidate.name.eq_ignore_ascii_case(state))
-            else {
-                continue;
-            };
-            moved = true;
-            if open.len() <= index {
-                open.resize_with(index + 1, Default::default);
-            }
-            let current = &mut open[index];
-            current.anim = Some(ItemAnim {
-                from_rect: current.rect.unwrap_or(definition.rect),
-                from_fore: current.fore.unwrap_or(definition.fore_color),
-                from_back: current.back.unwrap_or(definition.back_color),
-                to,
-                start_ms: now,
-                duration_ms,
-            });
+        if open.len() <= index {
+            open.resize_with(index + 1, Default::default);
         }
-        if !named {
-            diag::warn!(
-                Ui,
-                "ui_animate - menu \"{menu}\" does not contain an item named \"{item}\""
-            );
-        } else if !moved {
-            diag::warn!(
-                Ui,
-                "ui_animate - item \"{item}\" in menu \"{menu}\" does not contain a state named \"{state}\""
-            );
-        }
-        self.step_animations();
-    }
-
-    /// A centre popup: its lines in the HUD's local variables, its sound, and
-    /// its item's move to `Start`.
-    pub(crate) fn popup(&mut self, item: &str, lines: &[String; 3], sound: &str) {
-        for (name, line) in [
-            "popUpCenterStringA",
-            "popUpCenterStringB",
-            "popUpCenterStringC",
-        ]
-        .into_iter()
-        .zip(lines)
-        {
-            let text = self
-                .world
-                .localize
-                .and_then(|table| table.text(line))
-                .map_or_else(|| line.clone(), str::to_owned);
-            self.locals.set_string(name, text);
-        }
-        if !sound.is_empty() {
-            self.menus.sounds.push(sound.to_owned());
-        }
-        self.animate("InGamePopUps", item, "Start", 0);
+        let definition = &def.items[index];
+        let current = &mut open[index];
+        current.anim = Some(ItemAnim {
+            from_rect: current.rect.unwrap_or(definition.rect),
+            from_fore: current.fore.unwrap_or(definition.fore_color),
+            from_back: current.back.unwrap_or(definition.back_color),
+            from_text_scale: current.text_scale.unwrap_or(definition.text_scale),
+            to,
+            start_ms: now,
+            duration_ms,
+        });
     }
 
     /// Moves every animating item of the open menus along; an item that has
@@ -115,6 +180,11 @@ impl Runner<'_, '_> {
     pub(crate) fn step_animations(&mut self) {
         let catalog = self.catalog;
         let now = self.world.ms;
+        if let Some(swing) = &mut self.menus.rank_icon
+            && swing.step(now).is_none()
+        {
+            self.menus.rank_icon = None;
+        }
         let mut arrived = Vec::new();
         let menus = &mut *self.menus;
         let stack = menus
@@ -166,6 +236,7 @@ impl Runner<'_, '_> {
                 };
                 current.fore = Some(colour(anim.from_fore, target.fore_color));
                 current.back = Some(colour(anim.from_back, target.back_color));
+                current.text_scale = Some(lerp(anim.from_text_scale, target.text_scale));
                 if elapsed >= anim.duration_ms {
                     current.anim = None;
                     arrived.push((name.to_owned(), index, target.on_enter.clone()));

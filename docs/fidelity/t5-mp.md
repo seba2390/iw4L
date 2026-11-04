@@ -125,12 +125,8 @@ Each open section names the issue that works it.
 - [ ] **G** Free-for-all (`dm`) and Team Deathmatch (`tdm`).
 - [ ] **G** Demolition's second target, overtime and the side switch are
       not verified (#654).
-- [ ] **V** `t5.mp.wager_popup`: `displaywagerpopup` (the wager
-      promotions, demotions, bankruptcies and `queueWagerPopup`'s other
-      messages) does not reach the client, which plays them through a
-      server command and the HUD's popup menu (#651). The wager matches'
-      CoD Points, side bets and after action report need
-      `xblive_wagermatch`, which only the wager lobby sets: a private
+- [ ] **V** The wager matches' CoD Points, side bets and after action report
+      need `xblive_wagermatch`, which only the wager lobby sets: a private
       match plays without them, as the scripts' `level.wagerMatch` says.
 - [ ] **I** `twar` and `sur` ship in `common_mp` but are not offered by
       Black Ops' private match; they stay refused.
@@ -510,16 +506,6 @@ Each open section names the issue that works it.
       tables (`mp_client_catalog.rs`, 48 builtins from `BlackOpsMP.exe`)
       and run on `mp_nuked`. Not implemented yet, each faulting the thread
       that calls it: the vehicle queries (#660).
-- [ ] **V** `t5.csc.animate_ui`: `AnimateUI(localClientNum, menu, item,
-      state, ms)` checks its parameters as `BlackOpsMP.exe` does, but does
-      not move anything: Black Ops starts each named item (`*` for all)
-      from where it stands towards the named animation state over the
-      time (scaled by its UI animation speed), and its menu draw blends
-      the item's rect and colours between them. The menus run that move
-      for `ui_animate` (`t5.hud.mp_front_end`), but the client script
-      builtin does not reach them yet. `_explode.csc`'s screen dirt and
-      `_cameraspike.csc`'s HUD moves call it; each menu, item and state
-      asked for logs the id once (#651).
 - [ ] **V** `t5.csc.extra_camera`: the camera spike's extra camera draws its
       view while the client scripts have it on, and `IsCameraSpikeToggled`
       reads the server's `SetCameraSpikeActive`. Open: its field of view stays
@@ -688,6 +674,16 @@ Each open section names the issue that works it.
       `getCACItemIndex` reads the custom game mode's class table, which is
       not read (the dvar is registered 0).
 
+- [ ] **V** `t5.mp.challenge_popup`: `displaychallengecomplete` does not
+      reach the HUD: the milestone's name and description (seven cases by the
+      table's type column) are not read (#860).
+- [ ] **V** `t5.mp.team_message_popup`: `displayteammessage` does not reach
+      the HUD: the sender's rank, name, emblem and gamercard (#860).
+- [ ] **V** `t5.mp.rank_popup_type_on`: the rank popup's first line shows at
+      once; Black Ops types it out letter by letter (#860).
+- [ ] **V** `t5.mp.contract_popup`: `displaycontract` does not reach the HUD.
+      Contracts come from the online service: a private match has none.
+
 ## Bots (#652, #709)
 
 - [ ] **G** `t5.bots.host_ai`: test clients join through Black Ops' own
@@ -725,6 +721,11 @@ Each open section names the issue that works it.
       compensation of Black Ops' movement and weapons are unmeasured.
 
 ## Closed
+
+- [x] **V** `t5.csc.animate_ui`, `t5.mp.wager_popup` (#852): the client
+      script's `AnimateUI` and the medal, rank up, wager, killstreak and game
+      mode popups move the HUD's items through their states (`changeState`,
+      text size, rect and colours); seen on `mp_nuked`.
 
 - [x] **G** `sendranks` and `setplayerteamrank` (#782): their shared handler
       returns at once in `BlackOpsMP.exe`, so a disconnect's callback goes on.

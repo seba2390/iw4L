@@ -3,10 +3,10 @@
 
 use super::super::args::string;
 use crate::frame::FrameWorld;
-use crate::script::Namespace::{Function, Method};
+use crate::script::Namespace::Function;
 use crate::script::{NativeRegistry, RoundScript, Value};
 use crate::world::ClientId;
-use bevy_ecs::prelude::{Resource, World};
+use bevy_ecs::prelude::World;
 
 /// Black Ops' means of death, in its order.
 const MEANS: [&str; 21] = [
@@ -52,62 +52,7 @@ fn client(world: &World, value: &Value) -> Result<Option<ClientId>, String> {
         .map(ClientId))
 }
 
-/// `t5.mp.wager_popup` has been logged.
-#[derive(Resource, Default)]
-struct WagerPopupLogged;
-
-const MEDAL_TABLE: &str = "mp/medaltable.csv";
-
-/// `displayMedal(index, teambased, xpscale, sound)`: the client finds the
-/// medal's name and description by index and puts up its popup, with the
-/// points it is worth (column 4 in a team game, 5 otherwise, scaled).
-fn display_medal(world: &mut World, receiver: &Value, args: &[Value]) -> Result<Value, String> {
-    let client = super::player::player(world, receiver)?;
-    let index = super::super::args::int(args, 0)?;
-    let team_based = super::super::args::int(args, 1)? != 0;
-    let scale = super::super::args::float(args, 2)?;
-    let sound = match args.get(3) {
-        Some(Value::String(sound)) => sound.to_string(),
-        _ => String::new(),
-    };
-    let lines = {
-        let runtime = world.resource::<crate::script::RoundScript>();
-        let table = crate::script::host::tables::table(&runtime.tables, MEDAL_TABLE)
-            .ok_or_else(|| format!("{MEDAL_TABLE} is not loaded"))?;
-        let Some(row) = crate::script::host::tables::table_search(table, 0, &index.to_string())
-        else {
-            return Ok(Value::Undefined);
-        };
-        let cell = |column: usize| table.cell(row, column).unwrap_or("").to_owned();
-        let points = super::iw4::atoi(&cell(if team_based { 4 } else { 5 })) as f32 * scale;
-        [cell(2), cell(3), format!("+{}", points as i32)]
-    };
-    super::player::send_menu_command(
-        world,
-        client,
-        crate::MenuCommandKind::PopUp {
-            item: "MedalPopUp".to_owned(),
-            lines,
-            sound,
-        },
-    );
-    Ok(Value::Undefined)
-}
-
 pub(crate) fn register(registry: &mut NativeRegistry) {
-    registry.register(Method, "displaymedal", display_medal);
-    // The client plays a wager popup from a server command, through the
-    // HUD's popup menu; neither is ported.
-    registry.register(Method, "displaywagerpopup", |world, receiver, args| {
-        if !world.contains_resource::<WagerPopupLogged>() {
-            world.insert_resource(WagerPopupLogged);
-            diag::warn!(
-                Sim,
-                "t5.mp.wager_popup: a wager popup does not reach the client"
-            );
-        }
-        super::player::present(world, receiver, "displaywagerpopup", args)
-    });
     registry.register(Function, "obituary", |world, _, args| {
         let victim = client(world, args.first().unwrap_or(&Value::Undefined))?;
         let attacker = args

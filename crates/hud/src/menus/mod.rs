@@ -128,6 +128,7 @@ pub(crate) fn hud_item_overrides(
                 fore: state.fore,
                 back: state.back,
                 rect: state.rect,
+                text_scale: state.text_scale,
                 ..Default::default()
             })
             .collect(),
@@ -558,9 +559,8 @@ pub(crate) fn update_script_menus(
                 state,
                 ms,
             } => runner.animate(menu, item, state, *ms),
-            sim::MenuCommandKind::PopUp { item, lines, sound } => {
-                runner.popup(item, lines, sound);
-            }
+            sim::MenuCommandKind::PopUp(popup) => runner.popup(popup),
+            sim::MenuCommandKind::HidePopUps => runner.hide_popups(),
         }
     }
 

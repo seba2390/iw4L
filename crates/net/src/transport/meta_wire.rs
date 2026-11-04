@@ -1338,14 +1338,19 @@ fn encode_client_meta(out: &mut WireWriter, meta: &ClientSnapshotMeta) {
                 put_text(out, state);
                 out.put_u32(*ms as u32);
             }
-            sim::MenuCommandKind::PopUp { item, lines, sound } => {
+            sim::MenuCommandKind::PopUp(popup) => {
                 out.put_u8(4);
-                put_text(out, item);
-                for line in lines {
-                    put_text(out, line);
+                put_text(out, &popup.menu);
+                put_text(out, &popup.item);
+                out.put_u8(popup.locals.len() as u8);
+                for (name, text) in &popup.locals {
+                    put_text(out, name);
+                    put_popup_text(out, text);
                 }
-                put_text(out, sound);
+                out.put_u8(u8::from(popup.hide_others));
+                put_text(out, &popup.sound);
             }
+            sim::MenuCommandKind::HidePopUps => out.put_u8(5),
         }
     }
     match &meta.location_selection {
@@ -1671,11 +1676,23 @@ fn decode_client_meta(input: &mut WireReader<'_>) -> Result<ClientSnapshotMeta, 
                 state: get_text(input)?,
                 ms: input.get_u32()? as i32,
             },
-            4 => sim::MenuCommandKind::PopUp {
-                item: get_text(input)?,
-                lines: [get_text(input)?, get_text(input)?, get_text(input)?],
-                sound: get_text(input)?,
-            },
+            4 => {
+                let menu = get_text(input)?;
+                let item = get_text(input)?;
+                let mut locals = Vec::new();
+                for _ in 0..input.get_u8()? {
+                    let name = get_text(input)?;
+                    locals.push((name, get_popup_text(input, 0)?));
+                }
+                sim::MenuCommandKind::PopUp(sim::MenuPopUp {
+                    menu,
+                    item,
+                    locals,
+                    hide_others: input.get_u8()? != 0,
+                    sound: get_text(input)?,
+                })
+            }
+            5 => sim::MenuCommandKind::HidePopUps,
             _ => return Err(WireError::Malformed("bad menu command tag")),
         };
         menu_commands.push(sim::MenuCommand { serial, kind });
@@ -3648,6 +3665,31 @@ fn get_optional_part_bits(
         }
         _ => Err(WireError::Malformed("unknown optional part-bits tag")),
     }
+}
+
+/// Popup text nests no deeper than this: a line, its arguments, theirs.
+const POPUP_TEXT_DEPTH: u8 = 3;
+
+fn put_popup_text(out: &mut WireWriter, text: &sim::PopUpText) {
+    put_text(out, &text.key);
+    out.put_u8(u8::from(text.literal));
+    out.put_u8(text.args.len() as u8);
+    for arg in &text.args {
+        put_popup_text(out, arg);
+    }
+}
+
+fn get_popup_text(input: &mut WireReader<'_>, depth: u8) -> Result<sim::PopUpText, WireError> {
+    if depth > POPUP_TEXT_DEPTH {
+        return Err(WireError::Malformed("popup text too deep"));
+    }
+    let key = get_text(input)?;
+    let literal = input.get_u8()? != 0;
+    let mut args = Vec::new();
+    for _ in 0..input.get_u8()? {
+        args.push(get_popup_text(input, depth + 1)?);
+    }
+    Ok(sim::PopUpText { key, args, literal })
 }
 
 fn put_text(out: &mut WireWriter, text: &str) {
