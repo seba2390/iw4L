@@ -711,7 +711,7 @@ Each open section names the issue that works it.
 
 - [ ] **G** Private match: the host's front end starts a match from
       the lobby, and its end loads `ui_viewer_mp` and opens the lobby again
-      (the game's own path is its party code, not read: `map_rotate` 8757c0
+      (the game's own path is its party code, not read: `map_rotate`
       goes on to the map rotation, which a private match leaves to the
       lobby; IW4L returns there directly). Open: a second client's join,
       classes reaching the host from it, and the host's game settings
