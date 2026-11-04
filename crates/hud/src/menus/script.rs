@@ -4,6 +4,11 @@ pub(crate) enum Command {
     Close(String),
     Escape(String),
     SetFocus(String),
+    /// Black Ops' `changeState state ms`: the running item's move to a state.
+    ChangeState {
+        state: String,
+        ms: i32,
+    },
     FocusFirst,
     SetItemColor {
         item: String,
@@ -272,6 +277,13 @@ pub(crate) fn parse(script: &str, exec_takes_statement: bool) -> Vec<Command> {
             "close" | "ingameclose" | "closeimmediate" => (Command::Close(arg(i + 1)), 2),
             "escape" => (Command::Escape(arg(i + 1)), 2),
             "setfocus" => (Command::SetFocus(arg(i + 1)), 2),
+            "changestate" => (
+                Command::ChangeState {
+                    state: arg(i + 1),
+                    ms: atoi_word(&arg(i + 2)),
+                },
+                3,
+            ),
             "focusfirst" => (Command::FocusFirst, 1),
             "setitemcolor" => (
                 Command::SetItemColor {

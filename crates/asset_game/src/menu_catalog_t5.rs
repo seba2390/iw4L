@@ -266,6 +266,7 @@ impl T5MenuSink {
                 rect: rect(state.rect),
                 fore_color: state.fore_color,
                 back_color: state.back_color,
+                text_scale: state.text_scale,
                 on_enter: event_handlers(state.handlers)
                     .into_iter()
                     .find(|(name, _)| name == "onenter")

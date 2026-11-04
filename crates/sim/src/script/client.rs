@@ -565,6 +565,11 @@ pub(crate) struct ClientOutput {
     /// The extra camera (`isExtraCam`): its entity and field of view, while
     /// one is on.
     pub(crate) extra_camera: Option<(u64, f32)>,
+    /// The `AnimateUI` moves to send to the HUD: menu, item, state, msec.
+    pub(crate) ui_animations: Vec<(String, String, String, i32)>,
+    /// Where the HUD's items were last sent: a move there again is dropped, so
+    /// a script's per-frame resets do not crowd out other menu commands.
+    pub(crate) ui_animated: std::collections::BTreeMap<(String, String), String>,
     /// Black Ops multiplayer's extra camera, as its client scripts place it:
     /// on, where it is and how it looks (the camera spike's view).
     pub(crate) spike_camera: (bool, [f32; 3], [f32; 3]),
@@ -1064,6 +1069,32 @@ pub(crate) fn advance_client_scripts(server: &mut World) {
             super::host::natives::t5_client::deliver_earthquakes(&mut client.world, server);
             client.world.resource_mut::<ClientOutput>().spike_toggled =
                 super::host::natives::t5_equipment::camera_spike_toggled(server, 0);
+            let animations = {
+                let mut output = client.world.resource_mut::<ClientOutput>();
+                let moves = std::mem::take(&mut output.ui_animations);
+                moves
+                    .into_iter()
+                    .filter(|(menu, item, state, _)| {
+                        output
+                            .ui_animated
+                            .insert((menu.clone(), item.clone()), state.clone())
+                            .as_ref()
+                            != Some(state)
+                    })
+                    .collect::<Vec<_>>()
+            };
+            for (menu, item, state, ms) in animations {
+                super::host::natives::player::send_menu_command(
+                    server,
+                    0,
+                    crate::MenuCommandKind::Animate {
+                        menu,
+                        item,
+                        state,
+                        ms,
+                    },
+                );
+            }
             let extra_camera = super::host::natives::t5_client::extra_camera(&mut client.world);
             let ui3d_windows = client.world.resource::<ClientOutput>().ui3d_windows;
             let alternate_aim = client.world.resource::<ClientOutput>().alternate_aim;

@@ -48,11 +48,64 @@ pub struct MenuCommand {
     pub kind: MenuCommandKind,
 }
 
+/// A popup's text: a localized string's key, or the text itself where no key
+/// has that name, with what fills its `&&1`..
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub struct PopUpText {
+    pub key: String,
+    pub args: Vec<PopUpText>,
+    /// A name, such as a material's: never looked up as a key.
+    pub literal: bool,
+}
+
+impl PopUpText {
+    pub fn plain(key: impl Into<String>) -> Self {
+        Self::with(key, Vec::new())
+    }
+
+    pub fn name(name: impl Into<String>) -> Self {
+        Self {
+            literal: true,
+            ..Self::plain(name)
+        }
+    }
+
+    pub fn with(key: impl Into<String>, args: Vec<PopUpText>) -> Self {
+        Self {
+            key: key.into(),
+            args,
+            literal: false,
+        }
+    }
+}
+
+/// What a popup command carries (Black Ops' client `CG_PopUp` commands).
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub struct MenuPopUp {
+    pub menu: String,
+    pub item: String,
+    pub locals: Vec<(String, PopUpText)>,
+    pub hide_others: bool,
+    pub sound: String,
+}
+
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum MenuCommandKind {
     Open(String),
     ClosePopup,
     CloseInGame,
+    /// A HUD menu item moves to an animation state (Black Ops' `AnimateUI`).
+    Animate {
+        menu: String,
+        item: String,
+        state: String,
+        ms: i32,
+    },
+    /// A popup: its local variables, a move to its item's `Start`, and what
+    /// plays. `hide_others` takes the HUD's other centre popups away first.
+    PopUp(MenuPopUp),
+    /// Every centre popup is taken away (Black Ops' `clearCenterPopups`).
+    HidePopUps,
 }
 
 #[derive(Clone, Debug, PartialEq)]
