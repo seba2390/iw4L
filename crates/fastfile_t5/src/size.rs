@@ -952,3 +952,4 @@ pub const PATH_LINK_NEGOTIATION_OFF: usize = 7;
 
 /// `crosshairColorChange`.
 pub const WEAPON_DEF_CROSSHAIR_COLOR_CHANGE_OFF: usize = 0x4a4;
+pub const WEAPON_DEF_ENEMY_CROSSHAIR_RANGE_OFF: usize = 0x4a0;

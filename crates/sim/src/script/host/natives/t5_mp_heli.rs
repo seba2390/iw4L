@@ -120,6 +120,57 @@ fn spawn_helicopter(world: &mut World, _: &Value, args: &[Value]) -> Result<Valu
     Ok(spawned)
 }
 
+/// `boundswouldtelefrag(mins, maxs)`: a living player or a vehicle stands in the
+/// box.
+fn bounds_would_telefrag(world: &mut World, _: &Value, args: &[Value]) -> Result<Value, String> {
+    /// A player's box about his origin.
+    const PLAYER_MINS: [f32; 3] = [-15.0, -15.0, 0.0];
+    const PLAYER_MAXS: [f32; 3] = [15.0, 15.0, 70.0];
+    let (mins, maxs) = (vector(args, 0)?, vector(args, 1)?);
+    let frame = FrameWorld::from_world(world);
+    let player = frame.client_ids_sorted().into_iter().any(|id| {
+        frame.player(id).is_some_and(|ps| {
+            frame
+                .client_meta(id)
+                .is_some_and(|meta| meta.lifecycle == crate::ClientLifecycle::Alive)
+                && (0..3).all(|i| {
+                    mins[i] <= ps.origin[i] + PLAYER_MAXS[i]
+                        && maxs[i] >= ps.origin[i] + PLAYER_MINS[i]
+                })
+        })
+    });
+    let mut runtime = world.resource_mut::<RoundScript>();
+    let vehicles: Vec<u64> = runtime
+        .entities
+        .iter()
+        .filter(|(_, entity)| entity.kind == crate::script::host::entities::EntityKind::Vehicle)
+        .map(|(id, _)| *id)
+        .collect();
+    let vehicle = vehicles.into_iter().any(|id| {
+        let Value::Vector(at) = runtime.object_field(id, "origin") else {
+            return false;
+        };
+        (0..3).all(|i| mins[i] <= at[i] && at[i] <= maxs[i])
+    });
+    Ok(Value::Int(i32::from(player || vehicle)))
+}
+
+/// `spawnvehicle(model, targetname, vehicletype, origin, angles [, destructible])`:
+/// a vehicle no flight drives, standing where it is put (#865).
+fn spawn_ground_vehicle(world: &mut World, _: &Value, args: &[Value]) -> Result<Value, String> {
+    let model = string(args, 0)?;
+    let targetname = string(args, 1)?;
+    let vehicle_type = string(args, 2)?;
+    let (origin, angles) = (vector(args, 3)?, vector(args, 4)?);
+    let spawned = spawn_vehicle(world, "script_vehicle", origin, angles, &model, None)?;
+    if let Value::Object(id) = spawned {
+        let mut runtime = world.resource_mut::<RoundScript>();
+        runtime.set_object_field(id, "targetname", Value::string(&targetname));
+        runtime.set_object_field(id, "vehicletype", Value::string(&vehicle_type));
+    }
+    Ok(spawned)
+}
+
 /// `setspeed(speed [, accel [, decel]])`, in miles an hour.
 fn set_speed(world: &mut World, receiver: &Value, args: &[Value]) -> Result<Value, String> {
     let speed = float(args, 0)? * MPH;
@@ -642,7 +693,22 @@ fn use_vehicle(world: &mut World, receiver: &Value, args: &[Value]) -> Result<Va
     {
         row[old_seat] = None;
     }
-    let motion = flight(world, receiver)?.piloted.motion;
+    let motion = match flight(world, receiver) {
+        Ok(heli) => heli.piloted.motion,
+        // A ground vehicle: its file's view and control rules.
+        Err(_) => {
+            let kind = match world
+                .resource_mut::<RoundScript>()
+                .object_field(vehicle, "vehicletype")
+            {
+                Value::String(kind) => kind,
+                _ => return Err("usevehicle: entity is not a vehicle".into()),
+            };
+            FrameWorld::from_world(world)
+                .vehicle_motion(&kind)
+                .ok_or_else(|| format!("vehicle '{kind}' not precached"))?
+        }
+    };
     seats(world).seats.entry(vehicle).or_default()[seat] = Some(client);
     if motion.remote_control {
         let mut frame = FrameWorld::from_world(world);
@@ -1188,6 +1254,19 @@ fn register_seats(registry: &mut NativeRegistry) {
         Ok(Value::Undefined)
     });
     registry.register(Method, "makevehicleusable", |_, _, _| Ok(Value::Undefined));
+    registry.register(Function, "spawnvehicle", spawn_ground_vehicle);
+    registry.register(Function, "physicstrace", super::t6::entity::physics_trace);
+    registry.register(Function, "boundswouldtelefrag", bounds_would_telefrag);
+    registry.register(Method, "setvehicleteam", |world, receiver, args| {
+        let id = super::engine::entity_id(world, receiver)?;
+        let team = string(args, 0)?;
+        world.resource_mut::<RoundScript>().set_object_field(
+            id,
+            "vehicleteam",
+            Value::string(&team),
+        );
+        Ok(Value::Undefined)
+    });
     registry.register(Method, "setjitterparams", |world, receiver, args| {
         let amplitude = vector(args, 0)?;
         let min = optional(args, 1, float)?.unwrap_or(0.5);

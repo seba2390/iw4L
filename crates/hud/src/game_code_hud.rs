@@ -61,7 +61,10 @@ pub(crate) fn update_crosshair(
     settings: Res<frame::GameSettings>,
     pause: Option<Res<frame::MatchPause>>,
     mode: Option<Res<game_api::ModeRules>>,
-    aim: Res<net::ViewweaponAim>,
+    (aim, scan_target): (
+        Res<net::ViewweaponAim>,
+        Res<crate::overhead_names::ScanTarget>,
+    ),
     mut pass: ResMut<HudTessPass>,
     mut ads: Local<AdsDirection>,
     mut reported: Local<HashSet<&'static str>>,
@@ -128,6 +131,7 @@ pub(crate) fn update_crosshair(
             ads_overlay_height: facts.ads_overlay_height,
             ads_overlay_alpha_scale: facts.ads_overlay_alpha_scale,
             color_change: facts.crosshair_color_change,
+            enemy_range: facts.enemy_crosshair_range,
             human_gun: weapons.registry().name_of(index).starts_with("humangun_"),
         })
     };
@@ -151,6 +155,10 @@ pub(crate) fn update_crosshair(
         },
         paused: pause.is_some_and(|pause| pause.0),
         dvar: &dvar,
+        scan_target: hud
+            .names
+            .and_then(|names| names.scan.as_ref())
+            .map(|_| scan_target.0),
     });
     for gap in crosshair.unrun {
         if reported.insert(gap.id) {

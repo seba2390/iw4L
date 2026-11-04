@@ -60,6 +60,28 @@ pub struct NameRules {
     pub crosshair_target_only: bool,
     /// An enemy whose perks keep its name hidden.
     pub enemy_hidden: fn(&MovePlayer) -> bool,
+    /// The client's own crosshair scan, for a game with one.
+    pub scan: Option<NameScan>,
+}
+
+/// A client's crosshair scan: a line along the view finds the player under the
+/// crosshair, and his name and the crosshair's colour follow.
+#[derive(Debug)]
+pub struct NameScan {
+    /// How far the line looks.
+    pub range: f32,
+    /// An enemy with one of these entity flags is not marked.
+    pub hidden_e_flags: u32,
+    /// How far an enemy is marked, from the local player and the range his
+    /// weapon gives.
+    pub enemy_range: fn(&MovePlayer, f32) -> f32,
+}
+
+/// What the client's crosshair scan found this frame.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub struct CrosshairTarget {
+    pub friendly: bool,
+    pub enemy: bool,
 }
 
 /// A game's kill feed: the obituary lines its client prints to a game
@@ -578,6 +600,8 @@ pub struct CrosshairView<'a> {
     pub paused: bool,
     /// A client dvar's value, when the client keeps it.
     pub dvar: &'a dyn Fn(&str) -> Option<f32>,
+    /// What the client's own scan found, for a game with one.
+    pub scan_target: Option<CrosshairTarget>,
 }
 
 /// A weapon definition's crosshair fields.
@@ -610,6 +634,8 @@ pub struct CrosshairWeapon {
     pub ads_overlay_alpha_scale: f32,
     /// The crosshair takes the colour of what it is on.
     pub color_change: bool,
+    /// How far the crosshair marks an enemy.
+    pub enemy_range: f32,
     /// The weapon is Black Ops' human gun (its name starts `humangun_`).
     pub human_gun: bool,
 }

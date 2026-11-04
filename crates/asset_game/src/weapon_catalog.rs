@@ -304,6 +304,8 @@ pub(crate) struct WeaponBodyFacts {
     /// The crosshair takes the colour of what it is on
     /// (`crosshairColorChange`).
     pub crosshair_color_change: bool,
+    /// How far the crosshair marks an enemy.
+    pub enemy_crosshair_range: f32,
 
     pub clip_only: bool,
 
