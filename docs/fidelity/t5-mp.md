@@ -660,11 +660,6 @@ Each open section names the issue that works it.
       `getCACItemIndex` reads the custom game mode's class table, which is
       not read (the dvar is registered 0).
 
-- [ ] **V** `t5.mp.challenge_popup`: `displaychallengecomplete` does not
-      reach the HUD: the milestone's name and description (seven cases by the
-      table's type column) are not read (#860). Only a ranked match reaches it.
-- [ ] **V** `t5.mp.rank_popup_type_on`: the rank popup's first line shows at
-      once; Black Ops types it out letter by letter (#860).
 - [ ] **V** `t5.mp.contract_popup`: `displaycontract` does not reach the HUD.
       Contracts come from the online service: a private match has none.
 
@@ -709,6 +704,12 @@ Each open section names the issue that works it.
 
 ## Closed
 
+- [x] **V** `t5.mp.challenge_popup`, `t5.mp.rank_popup_type_on` (#860): a
+      milestone's popup reads its row (`mp/statsmilestones1..4.csv`) and draws
+      the seven types' names and descriptions, the XP, its medal and burst. The
+      rank's name types itself out (`popInLetterFXTime` 40 ms, decaying at 4 s).
+      A game mode's description names no game type (the client's string is
+      not read). Only a ranked match reaches this by script.
 - [x] **V** Multiplayer visibility bits (#854), `t5.hud.killcam_visibility`: the
       demo bits (17, 18), flash (23), a UI menu holding the keys (24), the sight
       overlay (26), the guided missile (28, 50), a fuel tank weapon (29), a
