@@ -560,12 +560,9 @@ Each open section names the issue that works it.
       guided missile cameras, the demo player's own states, …) are taken as
       clear for a menu's masks; the menu window's static flags that hide it
       while the screen flashes or a UI menu is open are not applied.
-      Hit markers, score popups, medals and the end-of-match scoreboard
-      are not drawn as Black Ops draws them; `gametypename`, `isintermission`,
-      `spectatingclient` and `isinguidedmissile` are not
-      answered, so the items they gate do not draw. `player()` answers
-      `score`, `kills`, `deaths` and `place`; its other fields are not
-      answered.
+      `isinguidedmissile` is not answered, so the items it gates do not
+      draw. `player()` answers `score`, `kills`, `deaths` and `place`; its
+      other fields are not answered.
 - [ ] **V** The compass (`compass_old`) draws its map, the player's
       arrow, the enemies the radar shows (170), the teammates (158), the
       spy plane's sweep line (332) and the counter-spy plane's static
@@ -600,6 +597,14 @@ Each open section names the issue that works it.
       renderer command. With `compassRotation` 0 the arrow would turn,
       which the runtime does not draw (a gap). The server's `setminimap`
       is the shared one, which re-frames the corners it is given.
+- [ ] **V** `t5.hud.mp_scoreboard` (#898): TAB and the end of a match show
+      the zombies scoreboard (Points, Kills, Headshots, the `BlackOpsZombie`
+      footer). Black Ops' multiplayer board is its own code draw: a banner
+      per team (icon, name, score, player count, and how many are alive in
+      round modes), rows with rank, name, score, the gametype's four
+      `setscoreboardcolumns` columns and ping, sorted and scrolled by the
+      `cg_scoreboard*` dvars. The columns and each client's values travel in
+      the player state and the score message; neither is sent.
 - [ ] **V** `t5.hud.compass_mounted`: a player mounted on a vehicle is not
       drawn on the compass.
 - [ ] **V** `t5.hud.game_messages`: of Black Ops' three game message
