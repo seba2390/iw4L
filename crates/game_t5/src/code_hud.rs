@@ -35,8 +35,8 @@ pub(crate) static MP_CODE_HUD: GameCodeHud = GameCodeHud {
         ),
         unknown!(
             "t5.hud.player_card_emblem",
-            "the kill player card has no gamercard background or emblem, and a Second Chance revive does not centre-print CGAME_YOUREVIVED / CGAME_YOUWEREREVIVED",
-            "a player's emblem and gamercard from the online service; the revive's print (executable)"
+            "the kill player card's gamercard background (menu function 401) is left to the item's own: no player has one without the online service",
+            "the handler of emblemPlayerBackgroundMaterial (executable)"
         ),
     ],
     crosshair: mp_crosshair,
@@ -308,9 +308,8 @@ fn owner_hint(owner_draw: i32, view: &OwnerHintView<'_>) -> OwnerHint {
             let alpha = ((view.now - hint.time) % interval) as f32 / interval as f32;
             OwnerHint::Faded { key, alpha }
         }
-        // Black Ops' single player sets the centre obituary only from the
-        // `obituary` builtin, which no zombies script calls, and never sets
-        // the cheat message; both stay empty.
+        // The centre print is the menus' own (`t5_hud`): only an obituary's
+        // revive lines set it. Black Ops never sets the cheat message.
         CG_CENTER_OBITUARY | CG_SUCCESSFUL_CMD_HINT => OwnerHint::Nothing,
         // No client talks: the runtime carries no voice chat.
         CG_TALKER_1..=CG_TALKER_3 => OwnerHint::Nothing,
@@ -800,6 +799,11 @@ fn visibility_bit(bit: i32, view: &VisibilityView<'_>) -> Result<bool, &'static 
     })
 }
 
+/// `missileGuidance` of a weapon flown from its own view.
+const MISSILE_GUIDANCE_TV: i32 = 6;
+/// `eFlags2`: aiming is held by a guided weapon's view.
+const GUIDED_AIM: u32 = movement_t5::state::e_flags2::ADS_RESET;
+
 /// The multiplayer visibility bits not answered yet.
 const MP_OTHER_BITS: &game_api::Unknown = unknown!(
     "t5.hud.mp_visibility_bits",
@@ -825,16 +829,36 @@ fn mp_visibility_bit(
         // … `disableIngameMenu`).
         0..=16 => flag(bit),
         // A demo plays back; bit 37 is never set.
-        19 | 20 | 31 | 32 | 37 => false,
+        17..=20 | 31 | 32 | 37 => false,
         21 => view.in_killcam,
         // The location selector is open (with a selector material).
         22 | 30 => view.selecting_location,
+        23 => view.flashbanged,
+        24 => view.ui_open,
         25 => view.following || other_flags() & POPUP_HIDING_FLAGS != 0,
+        // The sight overlay is up, on anything but a guided weapon.
+        26 => view.weapon.overlay_shown && view.weapon.missile_guidance != MISSILE_GUIDANCE_TV,
         27 => {
             let mut player = *view.player;
             crate::movement::unpack(&mut player).0.e_flags & e_flags::VEHICLE_VIEW != 0
         }
         28 if other_flags() & 0x18 != 0 => true,
+        // Raised onto a guided weapon, or its aiming holds the view.
+        28 => {
+            let mut player = *view.player;
+            let (state, _) = crate::movement::unpack(&mut player);
+            (state.e_flags2 & GUIDED_AIM != 0
+                || view.weapon.missile_guidance == MISSILE_GUIDANCE_TV
+                    && state.weapon_pos_frac >= 0.5)
+                && state.weapon_pos_frac >= 0.95
+        }
+        29 => view.weapon.fuel_tank,
+        // Fully down a sight of the first interface.
+        33 => {
+            let mut player = *view.player;
+            view.weapon.overlay_interface == 1
+                && crate::movement::unpack(&mut player).0.weapon_pos_frac == 1.0
+        }
         // The camera spike's view; the player's other crosshair hides it.
         34 => {
             let [on, is_static] = view.extra_camera;
@@ -861,11 +885,22 @@ fn mp_visibility_bit(
         }
         43 => dvar("ui_hud_showobjicons"),
         44 => view.scoreboard,
-        45 if view.in_killcam => return Err(KILLCAM_BITS),
-        45 => other_flags() & POPUP_HIDING_FLAGS == 0 && !view.scoreboard,
+        // Popups show, except in a state that hides them (not in a killcam),
+        // over the scoreboard or the location selector.
+        45 => {
+            (other_flags() & POPUP_HIDING_FLAGS == 0 || view.in_killcam)
+                && !view.scoreboard
+                && !view.selecting_location
+        }
         46 => dvar("ui_hud_obituaries"),
         47 => other_flags() & 0x10 != 0,
         48 => other_flags() & 2 != 0,
+        49 => dvar("xblive_wagermatch"),
+        50 => {
+            let mut player = *view.player;
+            let e_flags2 = crate::movement::unpack(&mut player).0.e_flags2;
+            e_flags2 & GUIDED_AIM != 0 && view.weapon.clip_empty
+        }
         _ => return Err(MP_OTHER_BITS),
     })
 }

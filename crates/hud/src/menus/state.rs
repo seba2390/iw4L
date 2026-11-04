@@ -146,6 +146,8 @@ pub struct ScriptMenus {
     pub(crate) hud_items: std::collections::HashMap<String, Vec<ItemState>>,
     /// The rank popup's icon as it swings.
     pub(crate) rank_icon: Option<RankIconSwing>,
+    /// The centre print's start time and line.
+    pub(crate) center_print: Option<(i32, String)>,
 }
 
 impl ScriptMenus {

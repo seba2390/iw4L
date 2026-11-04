@@ -290,9 +290,36 @@ fn display_team_message(
     send(world, receiver, popup)
 }
 
+/// The client's name of a player.
+fn client_name(world: &mut World, client: ClientId) -> Option<String> {
+    let frame = FrameWorld::from_world(world);
+    let name = frame.client_meta(client)?.name;
+    let end = name.iter().position(|byte| *byte == 0);
+    Some(String::from_utf8_lossy(&name[..end.unwrap_or(name.len())]).into_owned())
+}
+
+/// A revive's centre prints (the client's obituary, for `syrette_mp`): the one
+/// who revived reads the other's name, and the other reads the reviver's.
+fn revive_prints(world: &mut World, reviver: ClientId, revived: ClientId) {
+    for (viewer, about, line) in [
+        (reviver, revived, "CGAME_YOUREVIVED"),
+        (revived, reviver, "CGAME_YOUWEREREVIVED"),
+    ] {
+        let Some(name) = client_name(world, about) else {
+            continue;
+        };
+        super::player::send_menu_command(
+            world,
+            viewer.0,
+            MenuCommandKind::CenterPrint(PopUpText::with(line, vec![PopUpText::name(name)])),
+        );
+    }
+}
+
 /// The player card an obituary puts up for the one who killed and the one who
 /// died (the client's obituary): the other player's name and rank, under the
-/// kill's line. A revive and a suicide put up none.
+/// kill's line. A revive prints in the centre instead, and a suicide puts up
+/// nothing.
 pub(super) fn obituary_cards(
     world: &mut World,
     victim: Option<ClientId>,
@@ -302,7 +329,11 @@ pub(super) fn obituary_cards(
     let (Some(victim), Some(attacker)) = (victim, attacker) else {
         return;
     };
-    if victim == attacker || weapon == "syrette_mp" {
+    if victim == attacker {
+        return;
+    }
+    if weapon == "syrette_mp" {
+        revive_prints(world, attacker, victim);
         return;
     }
     let card = |world: &mut World, about: ClientId, line: &str, team_line: &str| {
