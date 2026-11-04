@@ -145,8 +145,11 @@ Each open section names the issue that works it.
       cannot take a weapon, and the pickup's sound comes from the runtime's
       pickup events, whose client side is not compared with BlackOpsMP.exe's
       events 0xb and 0xc.
-- [ ] **G** `t5.mp.shared_ammo_cap`: a weapon with a `sharedAmmoCap` on the
-      ground logs this gap and the player's ammo room ignores the cap.
+- [ ] **V** `t5.mp.shared_ammo_cap`: a player's ammo room for a weapon with
+      a shared ammo cap, or beside a held weapon on the same ammo that has
+      one, is the cap, as BlackOpsMP.exe counts it. Black Ops reads the cap
+      from the first weapon registered under the cap's name; the name is not
+      captured, so each weapon's own `sharedAmmoCap` is read.
 - [ ] **V** The use hint of a weapon on the ground (`weapon + 7` in the cursor
       hint) was not seen on screen in a run; the pick up itself was.
 - [ ] **V** `t5.csc.total_ammo`: the client's `gettotalammo` answers the
@@ -314,11 +317,6 @@ Each open section names the issue that works it.
       nothing that aims at a target or draws one is ported;
       `Target_IsInCircle` (the lock-on's screen test), `Target_SetShader`
       and the reticle lock-on builtins are refused or missing.
-- [ ] **V** `t5.hud.compass_fire_pings`: an enemy's unsuppressed shots are
-      not pinged on the compass (`compassping_enemyfiring`,
-      `compassSoundPingFadeTime`); Black Ops pings them from the client's
-      weapon-fire events for teammates, and for enemies while a spy plane
-      or satellite is up or a client flag is clear (not identified).
 - [ ] **V** The motion sensor's ring pings the enemies it passes, but an
       enemy firing inside the ring is not pinged by it as Black Ops'
       client fire ping does, and the dogs and other actors on Black Ops'
@@ -336,7 +334,6 @@ Each open section names the issue that works it.
       plane's static (`compass_static`) is drawn as the runtime draws a HUD
       material, laid like the map; its look in Black Ops (an animated noise)
       is not compared.
-- [ ] **G** `spawntimedfx` is refused (the artillery script's).
 - [ ] **V** `t5.mp.strike_visuals`: the client's Rolling Thunder bombs
       (`_airstrike.csc`'s `callStrike_bomb`) stop at the client's
       `bulletTrace`, which the client scripts cannot run (no collision world
@@ -617,11 +614,6 @@ Each open section names the issue that works it.
       keeps beyond those it shows is not read. A print's wrap measures the
       window's font at its text scale, in virtual pixels; the unit Black
       Ops' wrap measures in is not compared.
-- [ ] **V** `t5.hud.player_card_emblem`: the kill player card's gamercard
-      background (menu function 401, `emblemPlayerBackgroundMaterial`) is left
-      to the item's own; its handler is not read. Owner draw 389 is settled:
-      Black Ops draws the image it fetched for the player's xuid from the online
-      service, and without one nothing, as here.
 - [ ] **V** `t5.hud.mp_visibility_bits` (`GameCodeHud::visibility_bit`):
       Black Ops' client rebuilds 64 HUD visibility bits a frame, and every bit a
       HUD menu asks for is answered (Closed). What differs: bit 23 reads the
@@ -752,6 +744,17 @@ Each open section names the issue that works it.
 
 ## Closed
 
+- [x] **V** `t5.hud.player_card_emblem`: the kill player card's gamercard
+      background (menu function 401, `emblemPlayerBackgroundMaterial`) answers
+      as BlackOpsMP.exe's handler does with no online profile entry for the
+      player: its default background material `emblem_bg_nocod` (an empty
+      name with fewer than two operands). Owner draw 389 draws the image the
+      online service fetched for the player's xuid, and without one nothing,
+      as here.
+- [x] **V** `t5.hud.compass_fire_pings`: an enemy's unsuppressed shot pings
+      the compass (`compassping_enemyfiring`, faded over
+      `compassSoundPingFadeTime`); the compass entry keeps what is still
+      open. `spawntimedfx` is served (`t5.mp.timed_fx`), no longer refused.
 - [x] **V** The RC-XD's client scripts (#866): a vehicle's `vehicleclass` (the
       file's `type`) and `vehicletype` reach the client, and `getmaxspeed`,
       `getmaxreversespeed` (`nitrous_reverse_scale`), `getthrottle`, `getspeed`,

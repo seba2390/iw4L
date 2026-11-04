@@ -39,11 +39,6 @@ pub(crate) static MP_CODE_HUD: GameCodeHud = GameCodeHud {
             "Black Ops multiplayer's TAB scoreboard (team banners, rank, the gametype's setscoreboardcolumns columns, ping) is not drawn: the zombies board stands in",
             "its scoreboard draw and the score message's column values (executable)"
         ),
-        unknown!(
-            "t5.hud.player_card_emblem",
-            "the kill player card's gamercard background (menu function 401) is left to the item's own: no player has one without the online service",
-            "the handler of emblemPlayerBackgroundMaterial (executable)"
-        ),
     ],
     crosshair: mp_crosshair,
     visibility_bit: Some(mp_visibility_bit),

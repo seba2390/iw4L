@@ -664,11 +664,17 @@ fn call(op: i32, stack: &mut Vec<Value>, host: &dyn GameQueries) -> Result<Opera
         T5_FN_GETCLANNAME => Operand::Str(String::new()),
         // No demo plays back in a match.
         T5_FN_ISDEMOPLAYING => Operand::Int(0),
-        // A player's gamercard background (`t5.hud.player_card_emblem`): no
-        // player has one, so the item draws its own.
+        // `emblemPlayerBackgroundMaterial(xuid, …)`: BlackOpsMP.exe looks the
+        // player's background up in its online profile cache, and with no
+        // entry there (no online service here) answers its default
+        // background material, `emblem_bg_nocod`; with fewer than two
+        // operands, an empty name.
         T5_FN_EMBLEMPLAYERBACKGROUNDMATERIAL => {
-            args()?;
-            Operand::Str(String::new())
+            if args()?.len() > 1 {
+                Operand::Str("emblem_bg_nocod".to_owned())
+            } else {
+                Operand::Str(String::new())
+            }
         }
         // `getFloatAsFormattedString(value, places)`.
         T5_FN_GETFLOATASFORMATTEDSTRING => {
