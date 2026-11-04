@@ -179,7 +179,7 @@ pub(crate) fn entity_trace(
     )
 }
 
-fn surface_name(collider: crate::bullet_collision::ColliderId) -> &'static str {
+pub(super) fn surface_name(collider: crate::bullet_collision::ColliderId) -> &'static str {
     use crate::bullet_collision::ColliderId;
     let flags = match collider {
         ColliderId::World { surface_flags, .. }

@@ -283,12 +283,12 @@ Each open section names the issue that works it.
       top speed and acceleration, stopped by what it hits; Black Ops' car
       (`isNitrous`) is a rigid body with wheels. It does not drift, jump or
       flip, and the client does not predict it (#865).
-- [ ] **V** `t5.mp.rcxd_client`: the RC-XD's client scripts fault: a vehicle has
-      no `vehicleclass` or `vehicletype` on the client, and `ispeelingout`,
-      `iswheelsliding`, `iswheelcolliding`, `getwheelsurface`, `getmaxspeed`,
-      `getmaxreversespeed`, `getthrottle`, `islocalclientdriver` are not
-      answered, so its tread effects and screen dust do not run (#866).
-
+- [ ] **V** `t5.mp.rcxd_client`: the client reads the car's whole state from the
+      server's stand-in: a wheel is its vehicle's, `ispeelingout` is a full
+      throttle under a quarter of top speed, `iswheelsliding` a full lock over
+      half of it, `setstunned` does nothing (its reader is the client's own
+      physics, `t5.mp.rcxd_physics`), and `veh_collision` and
+      `veh_engine_stutter` are not sent.
 - [ ] **G** The action slot button builtins
       (`actionSlotOneButtonPressed` … `Four`) read a slot as pressed for the
       server tick its press arrives in and the next: the client sends a
@@ -697,12 +697,17 @@ Each open section names the issue that works it.
 
 ## Closed
 
+- [x] **V** The RC-XD's client scripts (#866): a vehicle's `vehicleclass` (the
+      file's `type`) and `vehicletype` reach the client, and `getmaxspeed`,
+      `getmaxreversespeed` (`nitrous_reverse_scale`), `getthrottle`, `getspeed`,
+      `iswheelcolliding`, `getwheelsurface`, `islocalclientdriver` and
+      `getlocalclientdriver` answer, so `_rcbomb.csc` runs its lights and tread
+      effects by the surface under the car.
 - [x] **G** Rotating objects (#669): `_rotating_object.csc` turns the map's objects
       on the client (seen on Radiation: a wall fan's blades, half a second apart).
       No base map has an `elevator_trigger`, so `_elevator.gsc` returns at once.
       No base map has a `shutter_*`, `wire`, `explodable_barrel` or
       `flammable_crate` entity by targetname.
-
 - [x] **G** `t5.mp.hacker_turret_model` (#843): a player with Hacker sees an
       enemy turret nobody carries in its weapon's second world model. The detect
       materials (`mc_sw4_3d_detectable_transparent`) draw: their vertex stage
