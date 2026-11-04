@@ -509,6 +509,7 @@ pub(crate) fn register(registry: &mut NativeRegistry) {
         if let Some(s) = frame.hud_elem_slots_mut().get_mut(slot) {
             crate::hudelem::set_pulse_fx(&mut s.elem, now, letter, start, decay, &mut ids);
         }
+        frame.set_hud_elem_sound_ids(ids);
         Ok(Value::Undefined)
     });
     registry.register(Method, "destroy", |world, receiver, _| {
