@@ -2491,7 +2491,7 @@ fn drain_weapon_fire_fx(
         // model's `tag_flash`.
         let own_flash = || {
             let poses = poses.as_deref()?;
-            let dobj = u32::try_from(identities.get(fire.entity).ok()?.number()).ok()?;
+            let dobj = u32::from(identities.get(fire.entity).ok()?.number());
             let bone = poses.bone_named(dobj, "tag_flash")?;
             let resolved = poses.resolve_live_bolt(dobj, bone)?;
             Some(FxBoltTarget {
