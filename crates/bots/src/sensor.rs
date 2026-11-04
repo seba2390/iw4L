@@ -124,7 +124,23 @@ pub fn observe_focused(
             }
         }
     }
-    let objectives = public_objectives(snapshot, bot, team);
+    let mut objectives = public_objectives(snapshot, bot, team);
+    // Where the scripts send it comes before the mode's own objectives.
+    let script_goal = snapshot
+        .meta
+        .bot_orders
+        .iter()
+        .find(|order| order.client == bot.0)
+        .and_then(|order| order.goal)
+        .map(|(origin, radius)| ModeObjective {
+            radius,
+            touching: dist2(ps.origin, origin) <= radius * radius,
+            scripted: true,
+            ..ModeObjective::at(origin)
+        });
+    if let Some(goal) = script_goal {
+        objectives = vec![goal];
+    }
     Some(BotObservation {
         tick: snapshot.tick.0,
         time_ms: snapshot.tick.0 as i32 * 50,
@@ -133,10 +149,12 @@ pub fn observe_focused(
         seen,
         unsensed,
         events: Vec::new(),
-        objective: objectives
-            .iter()
-            .copied()
-            .min_by(|a, b| dist2(ps.origin, a.origin).total_cmp(&dist2(ps.origin, b.origin))),
+        objective: script_goal.or_else(|| {
+            objectives
+                .iter()
+                .copied()
+                .min_by(|a, b| dist2(ps.origin, a.origin).total_cmp(&dist2(ps.origin, b.origin)))
+        }),
         objectives,
     })
 }

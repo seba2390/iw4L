@@ -230,6 +230,8 @@ pub struct ModeObjective {
     pub touching: bool,
     pub use_button: bool,
     pub radius: f32,
+    /// The scripts sent the bot here: it goes before anything else.
+    pub scripted: bool,
 }
 
 impl ModeObjective {
@@ -247,6 +249,7 @@ impl ModeObjective {
             touching: false,
             use_button: false,
             radius: DEFAULT_OBJECTIVE_RADIUS,
+            scripted: false,
         }
     }
 }
