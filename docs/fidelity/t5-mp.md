@@ -40,9 +40,16 @@ Each open section names the issue that works it.
       as in Black Ops is not checked.
 - [ ] **V** On Firing Range one jeep (`veh_jeep_destructible_mp` at 537.8, 1613.4,
       -43) stands with its wheels about 20 units off the ground, level. Black Ops'
-      spawn of a destructible script model does not move it, so it reads as the
-      map's own data, unless a static model it rests on is missing. Not compared
-      with Black Ops running (#669).
+      spawn of a destructible script model does not move it. No static model is
+      missing under it: the map's static models around it (ground clutter at
+      z -48 to -62) put the ground near -50, 7 units under the jeep's origin, so
+      the rest of the gap is in how the model draws over its origin (its pose or
+      a root offset), not in what it stands on. Not compared with Black Ops
+      running (#669).
+- [ ] **V** On Radiation the wall clock at (951.5, 347, 347), whose hands
+      `_rotating_object.csc` turns, shows only a mirror image of the room over
+      its face: its glass draws as an opaque reflection, hiding the dial and
+      the hands behind it. The glass material's blend was not identified.
 - [ ] **V** `t5.mp.destructible_debris_rule`: a stage's spawn models (the Nuketown
       mannequins' limbs) fly from the piece's tag along its launch, and need a
       physics preset, as Black Ops' client does. They are script models on the
