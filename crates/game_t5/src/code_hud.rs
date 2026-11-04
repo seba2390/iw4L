@@ -34,9 +34,9 @@ pub(crate) static MP_CODE_HUD: GameCodeHud = GameCodeHud {
             "the subtitle channel's prints and the window's line store (executable)"
         ),
         unknown!(
-            "t5.hud.obituary_popups",
-            "an obituary of the local player does not open Black Ops' killed / killed-by player card (`playercardpopup`, `rankpopup`, `killstringpopup`) nor print the Second Chance revive line (`CGAME_YOUREVIVED`)",
-            "the client's player card popup menus and centre print"
+            "t5.hud.player_card_emblem",
+            "the kill player card has no gamercard background or emblem, and a Second Chance revive does not centre-print CGAME_YOUREVIVED / CGAME_YOUWEREREVIVED",
+            "a player's emblem and gamercard from the online service; the revive's print (executable)"
         ),
     ],
     crosshair: mp_crosshair,
