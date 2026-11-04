@@ -601,6 +601,24 @@ pub(super) fn lerp(a: [f32; 3], b: [f32; 3], t: f32) -> [f32; 3] {
     std::array::from_fn(|i| a[i] + (b[i] - a[i]) * t)
 }
 
+/// The code move's backtrack: on for a hull of radius 15 or less, else as
+/// `dlc3_zm_ai_lookAheadAllowBackTrack` says.
+const BACKTRACK_RADIUS: f32 = 15.0;
+const ALLOW_BACKTRACK: &str = "dlc3_zm_ai_lookaheadallowbacktrack";
+
+fn backtracks(world: &World, id: u64) -> bool {
+    let radius = world
+        .get_resource::<super::actor::Actors>()
+        .and_then(|actors| actors.0.get(&id))
+        .map_or(BACKTRACK_RADIUS, |actor| actor.hull.0);
+    radius <= BACKTRACK_RADIUS
+        || world
+            .resource::<crate::script::MatchScript>()
+            .dvars
+            .get(ALLOW_BACKTRACK)
+            .is_some_and(|value| super::atof(value) != 0.0)
+}
+
 /// Walks the actor along its path as far as its clip's root moved this
 /// frame, then onto the floor.
 fn walk(world: &mut World, id: u64, from: [f32; 3]) {
@@ -619,7 +637,8 @@ fn walk(world: &mut World, id: u64, from: [f32; 3]) {
     };
     // The engine's code move: the lookahead first (planned again from here
     // when the link ahead was cut), then the step along it.
-    let kept = follow.update(from, (false, false, true), &mut probe(world, id));
+    let backtrack = backtracks(world, id);
+    let kept = follow.update(from, (false, false, backtrack, true), &mut probe(world, id));
     if !kept {
         let goal = movement(world, id).goal;
         match goal.and_then(|goal| plan(world, id, from, goal)) {
@@ -628,7 +647,11 @@ fn walk(world: &mut World, id: u64, from: [f32; 3]) {
                 movement(world, id).arrival = None;
             }
             None => {
-                follow.update(from, (false, false, false), &mut probe(world, id));
+                follow.update(
+                    from,
+                    (false, false, backtrack, false),
+                    &mut probe(world, id),
+                );
             }
         }
     }
@@ -680,7 +703,8 @@ fn look_only(world: &mut World, id: u64, at: [f32; 3]) {
     let Some(mut follow) = movement(world, id).follow.take() else {
         return;
     };
-    let kept = follow.update(at, (false, false, true), &mut probe(world, id));
+    let backtrack = backtracks(world, id);
+    let kept = follow.update(at, (false, false, backtrack, true), &mut probe(world, id));
     let state = movement(world, id);
     state.look = follow.look;
     state.follow = Some(follow);
