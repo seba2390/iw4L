@@ -222,10 +222,7 @@ fn own_multiplayer(
         built: Some(built.program),
         settings: multiplayer_gametype_settings(request.config, script),
         key_types: (request.config)("radiant/keys.txt").map_or_else(Vec::new, keys::parse),
-        entity_fields: keys::ENTITY_FIELDS
-            .iter()
-            .map(|&(name, ty)| (name.to_owned(), ty))
-            .collect(),
+        entity_fields: keys::entity_fields(),
         dvars: vec![
             ("g_gametype".to_owned(), script.to_owned()),
             ("ui_gametype".to_owned(), script.to_owned()),
@@ -326,10 +323,7 @@ fn own_zombies(
         built: Some(built.program),
         settings: gametype_settings(request.config, &start.gametype),
         key_types: (request.config)("radiant/keys.txt").map_or_else(Vec::new, keys::parse),
-        entity_fields: keys::ENTITY_FIELDS
-            .iter()
-            .map(|&(name, ty)| (name.to_owned(), ty))
-            .collect(),
+        entity_fields: keys::entity_fields(),
         dvars,
     })
 }
