@@ -297,7 +297,7 @@ fn update_overhead_names(
     let enemy_range = scan.map(|scan| {
         let held = weapons.as_deref().and_then(|weapons| {
             weapons
-                .snapshot_weapon(presented.weapon_epoch(), ps.weapon as u32)
+                .snapshot_weapon(presented.weapon_epoch(), ps.weapon)
                 .ok()?
                 .hud_facts()
                 .map(|facts| facts.enemy_crosshair_range)
