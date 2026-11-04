@@ -1088,6 +1088,10 @@ pub(crate) fn update_weaponbar(
             weapon_info,
             compass: t5_compass,
             ui_flags: meta.map_or(0, |m| m.ui_flags),
+            extra_camera: meta.map_or([false; 2], |m| {
+                let screen = &m.view_effects.client_screen;
+                [screen.extra_camera.is_some(), screen.extra_camera_static]
+            }),
             selector: meta
                 .and_then(|m| m.location_selection.as_ref())
                 .filter(|selection| selection.kind.is_some())

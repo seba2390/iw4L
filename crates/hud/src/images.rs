@@ -409,6 +409,9 @@ impl HudImages {
         sampler: Option<u8>,
         images: &mut Assets<Image>,
     ) -> Option<Handle<Image>> {
+        if name == frame::EXTRA_CAMERA_MATERIAL {
+            return Some(frame::EXTRA_CAMERA_IMAGE);
+        }
         if let Some(icon) = frame::ControllerIcon::ALL
             .into_iter()
             .find(|icon| icon.material() == name)

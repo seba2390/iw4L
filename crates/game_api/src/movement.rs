@@ -942,6 +942,11 @@ pub trait PlayerMovement: Sync {
     /// in the player's state.
     fn crosshair_scan(&self, _player: &mut MovePlayer, _scan: &CrosshairScan<'_>) {}
 
+    /// Whether an action slot's button switches to a weapon with no ammo left.
+    fn action_slot_takes_empty(&self, _weapon: &GameWeapon) -> bool {
+        true
+    }
+
     fn melee_target(&self, _aim: &MeleeAim<'_>) -> Option<MeleeTarget> {
         None
     }

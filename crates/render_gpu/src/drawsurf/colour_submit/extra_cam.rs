@@ -3,11 +3,13 @@
 //! own before the main view, whose materials sample it as a code texture
 //! ([`CODE_TEXTURE_EXTRA_CAM`]).
 
+use bevy::render::render_asset::RenderAssets;
 use bevy::render::render_resource::{
-    Extent3d, Texture, TextureDescriptor, TextureDimension, TextureUsages,
+    Extent3d, FilterMode, SamplerDescriptor, Texture, TextureDescriptor, TextureDimension,
+    TextureUsages,
 };
 use bevy::render::renderer::RenderAdapter;
-use bevy::render::texture::TextureCache;
+use bevy::render::texture::{GpuImage, TextureCache};
 
 use super::encode::{ColourPassInputs, RecordMesh, TargetLoad, record_colour_pass_into};
 use super::indirect::ExactIndirectDraws;
@@ -89,6 +91,36 @@ fn extra_cam_target(
     }
 }
 
+/// The target as a picture a menu can draw.
+fn target_image(device: &RenderDevice, target: &ExtraCamTarget) -> GpuImage {
+    GpuImage {
+        texture: target._texture.clone(),
+        texture_view: target.sampled.clone(),
+        sampler: device.create_sampler(&SamplerDescriptor {
+            label: Some("exact_extra_cam_image"),
+            mag_filter: FilterMode::Linear,
+            min_filter: FilterMode::Linear,
+            ..Default::default()
+        }),
+        texture_descriptor: TextureDescriptor {
+            label: None,
+            size: Extent3d {
+                width: target.size[0],
+                height: target.size[1],
+                depth_or_array_layers: 1,
+            },
+            mip_level_count: 1,
+            sample_count: 1,
+            dimension: TextureDimension::D2,
+            format: target.format,
+            usage: TextureUsages::RENDER_ATTACHMENT | TextureUsages::TEXTURE_BINDING,
+            view_formats: &[],
+        },
+        texture_view_descriptor: None,
+        had_data: true,
+    }
+}
+
 /// Prepares the extra camera's draws before the main camera's, and publishes
 /// its target for the main camera's materials. The target stays published
 /// once drawn: a screen shows the last view its camera saw.
@@ -106,6 +138,7 @@ pub(super) fn prepare_extra_cam_colour(
     mut smodel_cache_gpu: ResMut<SmodelCacheGpu>,
     mut cache: ResMut<TextureCache>,
     mut lane: ResMut<ExtraCamLane>,
+    mut images: ResMut<RenderAssets<GpuImage>>,
 ) {
     let lane = lane.as_mut();
     lane.cam = CameraPrepareState::default();
@@ -126,7 +159,9 @@ pub(super) fn prepare_extra_cam_colour(
         .as_ref()
         .is_none_or(|target| target.size != size || target.format != format)
     {
-        lane.target = Some(extra_cam_target(&device, size, format));
+        let target = extra_cam_target(&device, size, format);
+        images.insert(&frame::EXTRA_CAMERA_IMAGE, target_image(&device, &target));
+        lane.target = Some(target);
     }
     let target = lane.target.as_ref().expect("target made above");
     let depth = cache.get(

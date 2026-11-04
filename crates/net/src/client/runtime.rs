@@ -1227,6 +1227,16 @@ pub fn sample_client_input(
             if !owned {
                 continue;
             }
+            let world = prediction.0.world();
+            if let (Some(rules), Some(weapon), Some(facts)) = (
+                movement,
+                world.game_weapon(target),
+                world.weapon_combat_row(target),
+            ) && !has_ammo!(ps, target, facts)
+                && !rules.action_slot_takes_empty(weapon)
+            {
+                continue;
+            }
             select.index = target;
             select.mapped_index = parent;
             select.time = clock.time();

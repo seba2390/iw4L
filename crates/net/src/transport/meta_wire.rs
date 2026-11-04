@@ -1935,6 +1935,7 @@ fn encode_client_screen(out: &mut WireWriter, screen: &sim::ClientScreen) {
             }
         }
     }
+    out.put_u8(u8::from(screen.extra_camera_static));
     match screen.extra_camera {
         None => out.put_u8(0),
         Some(camera) => {
@@ -2122,6 +2123,7 @@ fn decode_client_screen(input: &mut WireReader<'_>) -> Result<sim::ClientScreen,
         }
         script_vectors.push(sim::EntityScriptVectors { number, rows });
     }
+    let extra_camera_static = input.get_u8()? != 0;
     let extra_camera = match input.get_u8()? {
         0 => None,
         1 => Some(game_api::ExtraCamera {
@@ -2167,6 +2169,7 @@ fn decode_client_screen(input: &mut WireReader<'_>) -> Result<sim::ClientScreen,
         script_vectors,
         undrawn_entities,
         extra_camera,
+        extra_camera_static,
         ui3d_windows,
         alternate_aim,
         enemy_scrambler,
