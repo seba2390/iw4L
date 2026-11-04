@@ -103,6 +103,9 @@ pub struct ScriptMenus {
     pub(crate) current_attachment: i32,
     pub(crate) current_option: i32,
     pub(crate) list_positions: std::collections::HashMap<(String, usize), ListPos>,
+    /// The HUD menus the game animates, which no stack holds: their items as
+    /// they stand, by the menu's lowercased name.
+    pub(crate) hud_items: std::collections::HashMap<String, Vec<ItemState>>,
 }
 
 impl ScriptMenus {

@@ -53,6 +53,20 @@ pub enum MenuCommandKind {
     Open(String),
     ClosePopup,
     CloseInGame,
+    /// A HUD menu item moves to an animation state (Black Ops' `AnimateUI`).
+    Animate {
+        menu: String,
+        item: String,
+        state: String,
+        ms: i32,
+    },
+    /// A centre popup: its three lines and what plays (Black Ops'
+    /// `displayMedal`).
+    PopUp {
+        item: String,
+        lines: [String; 3],
+        sound: String,
+    },
 }
 
 #[derive(Clone, Debug, PartialEq)]

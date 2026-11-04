@@ -18,6 +18,13 @@ impl Runner<'_, '_> {
     /// towards it, and is stepped once at once.
     pub(crate) fn animate(&mut self, menu: &str, item: &str, state: &str, ms: i32) {
         let catalog = self.catalog;
+        // A HUD menu's name carries its local client.
+        let local_menu = format!("{menu}0");
+        let menu = if catalog.get(menu).is_none() && catalog.get(&local_menu).is_some() {
+            local_menu.as_str()
+        } else {
+            menu
+        };
         let Some(def) = catalog.get(menu) else {
             diag::warn!(Ui, "ui_animate - menu \"{menu}\" is not loaded");
             return;
@@ -29,9 +36,14 @@ impl Runner<'_, '_> {
             .unwrap_or(DEFAULT_SPEED_SCALE);
         let duration_ms = (ms as f32 / speed) as i32;
         let now = self.world.ms;
-        let Some(open) = self.menus.get_mut(menu) else {
-            diag::debug!(Ui, "ui_animate - menu \"{menu}\" is not open");
-            return;
+        let key = menu.to_ascii_lowercase();
+        let open = match self.menus.position(menu) {
+            Some(at) => &mut self.menus.stack[at].items,
+            None => self
+                .menus
+                .hud_items
+                .entry(key)
+                .or_insert_with(|| super::state::ItemState::for_menu(def)),
         };
         let (mut named, mut moved) = (false, false);
         for (index, definition) in def.items.iter().enumerate() {
@@ -47,10 +59,10 @@ impl Runner<'_, '_> {
                 continue;
             };
             moved = true;
-            if open.items.len() <= index {
-                open.items.resize_with(index + 1, Default::default);
+            if open.len() <= index {
+                open.resize_with(index + 1, Default::default);
             }
-            let current = &mut open.items[index];
+            let current = &mut open[index];
             current.anim = Some(ItemAnim {
                 from_rect: current.rect.unwrap_or(definition.rect),
                 from_fore: current.fore.unwrap_or(definition.fore_color),
@@ -74,17 +86,50 @@ impl Runner<'_, '_> {
         self.step_animations();
     }
 
+    /// A centre popup: its lines in the HUD's local variables, its sound, and
+    /// its item's move to `Start`.
+    pub(crate) fn popup(&mut self, item: &str, lines: &[String; 3], sound: &str) {
+        for (name, line) in [
+            "popUpCenterStringA",
+            "popUpCenterStringB",
+            "popUpCenterStringC",
+        ]
+        .into_iter()
+        .zip(lines)
+        {
+            let text = self
+                .world
+                .localize
+                .and_then(|table| table.text(line))
+                .map_or_else(|| line.clone(), str::to_owned);
+            self.locals.set_string(name, text);
+        }
+        if !sound.is_empty() {
+            self.menus.sounds.push(sound.to_owned());
+        }
+        self.animate("InGamePopUps", item, "Start", 0);
+    }
+
     /// Moves every animating item of the open menus along; an item that has
     /// arrived runs its state's `onEnter`.
     pub(crate) fn step_animations(&mut self) {
         let catalog = self.catalog;
         let now = self.world.ms;
         let mut arrived = Vec::new();
-        for open in &mut self.menus.stack {
-            let Some(def) = catalog.get(&open.name) else {
+        let menus = &mut *self.menus;
+        let stack = menus
+            .stack
+            .iter_mut()
+            .map(|open| (open.name.as_str(), &mut open.items));
+        let hud = menus
+            .hud_items
+            .iter_mut()
+            .map(|(name, items)| (name.as_str(), items));
+        for (name, items) in stack.chain(hud) {
+            let Some(def) = catalog.get(name) else {
                 continue;
             };
-            for (index, current) in open.items.iter_mut().enumerate() {
+            for (index, current) in items.iter_mut().enumerate() {
                 let Some(anim) = current.anim.clone() else {
                     continue;
                 };
@@ -123,7 +168,7 @@ impl Runner<'_, '_> {
                 current.back = Some(colour(anim.from_back, target.back_color));
                 if elapsed >= anim.duration_ms {
                     current.anim = None;
-                    arrived.push((open.name.clone(), index, target.on_enter.clone()));
+                    arrived.push((name.to_owned(), index, target.on_enter.clone()));
                 }
             }
         }

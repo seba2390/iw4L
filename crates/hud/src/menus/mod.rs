@@ -114,6 +114,26 @@ fn text_field_takes(item_type: i32, ch: char) -> bool {
     }
 }
 
+/// What a HUD menu's animated items paint this frame.
+pub(crate) fn hud_item_overrides(
+    menus: &ScriptMenus,
+    menu: &str,
+) -> Option<Vec<ChromeItemOverride>> {
+    let items = menus.hud_items.get(&menu.to_ascii_lowercase())?;
+    Some(
+        items
+            .iter()
+            .map(|state| ChromeItemOverride {
+                hidden: state.hidden,
+                fore: state.fore,
+                back: state.back,
+                rect: state.rect,
+                ..Default::default()
+            })
+            .collect(),
+    )
+}
+
 fn item_overrides(def: &MenuDef, open: &OpenMenu) -> Vec<ChromeItemOverride> {
     def.items
         .iter()
@@ -532,6 +552,15 @@ pub(crate) fn update_script_menus(
                 }
             }
             sim::MenuCommandKind::CloseInGame => runner.close_all(),
+            sim::MenuCommandKind::Animate {
+                menu,
+                item,
+                state,
+                ms,
+            } => runner.animate(menu, item, state, *ms),
+            sim::MenuCommandKind::PopUp { item, lines, sound } => {
+                runner.popup(item, lines, sound);
+            }
         }
     }
 

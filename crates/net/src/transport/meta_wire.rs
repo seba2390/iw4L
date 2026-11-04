@@ -1326,6 +1326,26 @@ fn encode_client_meta(out: &mut WireWriter, meta: &ClientSnapshotMeta) {
             }
             sim::MenuCommandKind::ClosePopup => out.put_u8(1),
             sim::MenuCommandKind::CloseInGame => out.put_u8(2),
+            sim::MenuCommandKind::Animate {
+                menu,
+                item,
+                state,
+                ms,
+            } => {
+                out.put_u8(3);
+                put_text(out, menu);
+                put_text(out, item);
+                put_text(out, state);
+                out.put_u32(*ms as u32);
+            }
+            sim::MenuCommandKind::PopUp { item, lines, sound } => {
+                out.put_u8(4);
+                put_text(out, item);
+                for line in lines {
+                    put_text(out, line);
+                }
+                put_text(out, sound);
+            }
         }
     }
     match &meta.location_selection {
@@ -1645,6 +1665,17 @@ fn decode_client_meta(input: &mut WireReader<'_>) -> Result<ClientSnapshotMeta, 
             0 => sim::MenuCommandKind::Open(get_text(input)?),
             1 => sim::MenuCommandKind::ClosePopup,
             2 => sim::MenuCommandKind::CloseInGame,
+            3 => sim::MenuCommandKind::Animate {
+                menu: get_text(input)?,
+                item: get_text(input)?,
+                state: get_text(input)?,
+                ms: input.get_u32()? as i32,
+            },
+            4 => sim::MenuCommandKind::PopUp {
+                item: get_text(input)?,
+                lines: [get_text(input)?, get_text(input)?, get_text(input)?],
+                sound: get_text(input)?,
+            },
             _ => return Err(WireError::Malformed("bad menu command tag")),
         };
         menu_commands.push(sim::MenuCommand { serial, kind });

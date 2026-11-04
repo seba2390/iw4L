@@ -555,6 +555,7 @@ fn team_field(state: &T5HudState<'_>, team: i32, field: &str) -> Result<Operand,
 struct T5HudHost<'a, 'b> {
     state: &'a T5HudState<'b>,
     localize: Option<&'a LocalizeCatalog>,
+    locals: Option<&'a crate::playercard::UiLocalVars>,
 }
 
 impl ExprHost for T5HudHost<'_, '_> {
@@ -633,8 +634,11 @@ impl ExprHost for T5HudHost<'_, '_> {
         };
         team_field(self.state, other, field)
     }
-    fn local_var_string(&self, _name: &str) -> Result<Operand, ExprError> {
-        Err(ExprError::Host("local var"))
+    fn local_var_string(&self, name: &str) -> Result<Operand, ExprError> {
+        match self.locals {
+            Some(locals) => Ok(Operand::Str(locals.string(name))),
+            None => Err(ExprError::Host("local var")),
+        }
     }
     fn time_left(&self) -> Result<i32, ExprError> {
         Ok(self.state.time_left_ms)
@@ -2456,8 +2460,14 @@ pub(crate) fn paint(
     state: &T5HudState<'_>,
     surface: &crate::surface::Hud2dSurface,
     exprs: &mut crate::expr_cache::MenuExprCache,
+    menus: Option<&crate::menus::ScriptMenus>,
+    locals: Option<&crate::playercard::UiLocalVars>,
 ) -> (Draw2dList, Vec<String>) {
-    let host = T5HudHost { state, localize };
+    let host = T5HudHost {
+        state,
+        localize,
+        locals,
+    };
     let mut list = Draw2dList::default();
     let mut errors = Vec::new();
     let multiplayer = dvar_truthy(state, "ui_multiplayer");
@@ -2521,19 +2531,37 @@ pub(crate) fn paint(
         }
         let mut hook =
             |args: OwnerDrawArgs<'_>, frame: &mut ChromeFrame| paint_owner(state, args, frame);
-        let frame = execute_chrome_menu_ex(
-            menu,
-            &host,
-            surface,
-            ChromeAssets {
-                catalog: Some(catalog),
-                localize,
-            },
-            ChromeMenuAnim::IDENTITY,
-            exprs,
-            MenuVisOnError::HideAll,
-            Some(&mut hook),
-        );
+        let overrides = menus.and_then(|menus| crate::menus::hud_item_overrides(menus, &menu.name));
+        let assets = ChromeAssets {
+            catalog: Some(catalog),
+            localize,
+        };
+        let frame = match &overrides {
+            Some(items) => crate::chrome::execute_chrome_menu_overrides(
+                menu,
+                &host,
+                surface,
+                assets,
+                ChromeMenuAnim::IDENTITY,
+                exprs,
+                MenuVisOnError::HideAll,
+                Some(&mut hook),
+                crate::chrome::ChromeMenuOverrides {
+                    items,
+                    ..Default::default()
+                },
+            ),
+            None => execute_chrome_menu_ex(
+                menu,
+                &host,
+                surface,
+                assets,
+                ChromeMenuAnim::IDENTITY,
+                exprs,
+                MenuVisOnError::HideAll,
+                Some(&mut hook),
+            ),
+        };
         if let Some((item, error)) = frame.vis_errors.first() {
             errors.push(format!("{} item {item}: {error}", menu.name));
         } else if let Some((item, kind)) = frame.coverage.gap_ids.first() {
