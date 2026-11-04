@@ -65,6 +65,39 @@ pub(crate) fn register(registry: &mut NativeRegistry) {
     registry.register(Function, "setplayerteamrank", |_, _, _| {
         Ok(Value::Undefined)
     });
+    // `playBattleChatterToTeam(alias, enemyAlias, team[, skip])`: a temp sound
+    // on the speaker heard by that team's players.
+    registry.register(
+        Method,
+        "playbattlechattertoteam",
+        |world, receiver, args| {
+            let alias = string(args, 0)?;
+            let team = string(args, 2)?;
+            if team != "allies" && team != "axis" {
+                return Err(format!(
+                    "Illegal team string '{team}'. Must be allies, or axis."
+                ));
+            }
+            if let Some(skip) = args.get(3) {
+                super::player::player(world, skip)?;
+            }
+            let number = world.resource::<crate::script::RoundScript>().entities
+                [&super::engine::entity_id(world, receiver)?]
+                .number;
+            let origin = super::engine::origin_of(world, receiver)?;
+            let clients = super::engine::team_clients(world, &team, None);
+            if !clients.is_empty() {
+                super::engine::sound_to(
+                    world,
+                    crate::EventAudience::Clients(clients),
+                    &alias,
+                    number,
+                    origin,
+                );
+            }
+            Ok(Value::Undefined)
+        },
+    );
     // `setCameraSpikeActive(toggle)`: the player's camera spike view, unless
     // the weapon is a scoped one held at aim.
     registry.register(Method, "setcameraspikeactive", |world, receiver, args| {
