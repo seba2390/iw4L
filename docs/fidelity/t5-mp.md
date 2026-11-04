@@ -719,7 +719,21 @@ Each open section names the issue that works it.
       (`_globallogic_audio.gsc`, `_battlechatter_mp.gsc`, `_music.gsc`) run
       with no script fault, and `playBattleChatterToTeam` plays its first
       alias on the speaker to that team. Its second alias (the temp event
-      carries both) is not read. None has been checked by ear (#668).
+      carries both) is not read. On `mp_nuked` (tdm, two console bots, a
+      kill) the sound trace shows the announcer (`vox_rus_tdm_start`,
+      `vox_ops_tdm_start`, `vox_rus_lead_taken`, `vox_*_generic_boost`), the
+      chatter (`vox_rus_1_inform_kill_infantry`, `vox_ops_1_threat_infantry`)
+      and the music (`mus_spawn_rus`, `mus_underscore`, `mus_last_stand`)
+      asked for and their aliases found; none has been checked by ear
+      (#668).
+- [ ] **A** `t5.mp.announcer_switch`: `scr_allowannouncer` and
+      `scr_allowbattlechatter` are set by none of a private match's configs
+      (`default_xboxlive.cfg`, `dvar_defaults.cfg`, `default_private.cfg`)
+      and BlackOpsMP.exe's registration of them was not found (they are in
+      its custom game settings table, which only saves and resets them).
+      Black Ops' `default_systemlink.cfg` and `default_splitscreen.cfg` set
+      both to 1, which IW4L takes when no config sets them. Before, they read
+      as 0: no announcer and no chatter.
 
 ## Networking and private matches (#663, #665, #666)
 
