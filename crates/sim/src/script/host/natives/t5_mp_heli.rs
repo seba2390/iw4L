@@ -876,10 +876,10 @@ pub(super) fn driver_of(world: &mut World, vehicle: u64) -> Option<u32> {
     seats(world).seats.get(&vehicle)?[0]
 }
 
-/// A driver's forward and right sticks this frame.
-pub(super) fn driver_sticks(world: &mut World, client: u32) -> Option<(i8, i8)> {
+/// A driver's forward and side moves and view yaw this frame.
+pub(super) fn driver_command(world: &mut World, client: u32) -> Option<(i8, i8, f32)> {
     let pilot = pilot_controls(world, client)?;
-    Some((pilot.forward, pilot.right))
+    Some((pilot.forward, pilot.right, pilot.view[1]))
 }
 
 /// The pilot's controls this frame; their command's sticks and keys.

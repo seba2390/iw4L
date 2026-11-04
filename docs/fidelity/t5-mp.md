@@ -279,16 +279,30 @@ Each open section names the issue that works it.
 
 ## Killstreaks (#656–#662)
 
-- [ ] **G** `t5.mp.rcxd_physics`: the RC-XD rolls along the ground by its file's
-      top speed and acceleration, stopped by what it hits; Black Ops' car
-      (`isNitrous`) is a rigid body with wheels. It does not drift, jump or
-      flip, and the client does not predict it (#865).
+- [ ] **G** `t5.mp.rcxd_physics`: the RC-XD rolls along the ground, stopped
+      by what it hits; Black Ops' car (`isNitrous`) is a rigid body on wheels
+      that springs and tire friction move (#896). What its driver asks is
+      Black Ops' own (#895): in the file's `view` camera mode the side move
+      does nothing, and the car turns toward the driver's view. It backs up
+      when the view is more than 100° (130° above 90 units a second) plus 55°
+      per stick throw off its nose, flips its steer when moving the other way
+      faster than 25, steers in proportion inside `nitrous_steer_angle_max`
+      (twice that backing up), and brakes into a turn sharper than 30° above
+      `autoHandbrakeMinSpeed` unless already turning that way. IW4L's own,
+      until the body: the gas opens with the stick's throw, forward or back
+      by its sign (Black Ops turns the wanted yaw half round for a back stick
+      and flips its gas, which only the body reads); the front wheels swing
+      at `nitrous_steer_speed` locks a second; the car turns as a bicycle on a
+      wheelbase of the file's box length less two wheel radii, as far as
+      `nitrous_tire_fric_side` grips; it brakes at `nitrous_tire_fric_brake`
+      g. It does not jump or flip, and the client does not predict it. The
+      other camera modes' controls and the hand brake button are not ported.
 - [ ] **V** `t5.mp.rcxd_client`: the client reads the car's whole state from the
       server's stand-in: a wheel is its vehicle's, `ispeelingout` is a full
-      throttle under a quarter of top speed, `iswheelsliding` a full lock over
-      half of it, `setstunned` does nothing (its reader is the client's own
-      physics, `t5.mp.rcxd_physics`), and `veh_collision` and
-      `veh_engine_stutter` are not sent.
+      throttle under `nitrous_peel_out_max_speed`, `iswheelsliding` a turn the
+      side grip cannot hold, `setstunned` does nothing (Black Ops sets a flag
+      on the client's own car, whose engine then stutters: #896), and
+      `veh_collision` and `veh_engine_stutter` are not sent.
 - [ ] **G** The action slot button builtins
       (`actionSlotOneButtonPressed` … `Four`) read a slot as pressed for the
       server tick its press arrives in and the next: the client sends a

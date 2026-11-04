@@ -657,6 +657,15 @@ pub fn apply_prepared_match(
                     gunner_weapon: motion.gunner_weapon,
                     steer_graph: motion.steer_graph,
                     steer_points: motion.steer_points,
+                    camera_mode: motion.camera_mode,
+                    steer_angle_max: motion.steer_angle_max,
+                    steer_speed: motion.steer_speed,
+                    tire_fric_side: motion.tire_fric_side,
+                    tire_fric_brake: motion.tire_fric_brake,
+                    body_length: motion.body_length,
+                    wheel_radius: motion.wheel_radius,
+                    auto_handbrake_min_speed: motion.auto_handbrake_min_speed,
+                    peel_out_max_speed: motion.peel_out_max_speed,
                 },
             )
         }));
