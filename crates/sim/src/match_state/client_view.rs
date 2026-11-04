@@ -56,6 +56,8 @@ pub struct PopUpText {
     pub args: Vec<PopUpText>,
     /// A name, such as a material's: never looked up as a key.
     pub literal: bool,
+    /// What shows when the key has no string.
+    pub otherwise: Option<Box<PopUpText>>,
 }
 
 impl PopUpText {
@@ -75,7 +77,15 @@ impl PopUpText {
             key: key.into(),
             args,
             literal: false,
+            otherwise: None,
         }
+    }
+
+    /// This line, or `other` when its key has no string.
+    #[must_use]
+    pub fn or(mut self, other: PopUpText) -> Self {
+        self.otherwise = Some(Box::new(other));
+        self
     }
 }
 
@@ -106,6 +116,8 @@ pub enum MenuCommandKind {
     PopUp(MenuPopUp),
     /// Every centre popup is taken away (Black Ops' `clearCenterPopups`).
     HidePopUps,
+    /// A line for the HUD's centre print (Black Ops' client `Center Print`).
+    CenterPrint(PopUpText),
 }
 
 #[derive(Clone, Debug, PartialEq)]

@@ -52,6 +52,8 @@ pub struct WeaponHudFacts {
     pub offhand_class: i32,
     pub overlay_reticle: i32,
     pub fuel_tank: bool,
+    pub missile_guidance: i32,
+    pub overlay_interface: i32,
     /// What the grenade indicator reads of the weapon's projectiles.
     pub proj_explosion_type: i32,
     pub show_indicator: bool,
@@ -118,6 +120,8 @@ impl WeaponHudFacts {
             offhand_class: f.offhand_class,
             overlay_reticle: f.overlay_reticle,
             fuel_tank: f.fuel_tank,
+            missile_guidance: f.missile_guidance,
+            overlay_interface: f.overlay_interface,
             proj_explosion_type: f.projectile_explosion_type,
             show_indicator: f.show_indicator,
             timed_detonation: f.timed_detonation,

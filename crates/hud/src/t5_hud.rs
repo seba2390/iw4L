@@ -39,6 +39,14 @@ const CG_POPUP_TEXT: i32 = 336;
 const CG_RANK_POPUP_NAME: i32 = 338;
 const CG_RANK_POPUP_ICON: i32 = 339;
 const CG_PLAYER_EMBLEM: i32 = 389;
+/// The rank's name: a letter each `popInLetterFXTime`, decaying at 4 s for 1 s.
+const RANK_LINE_LETTER_MS: i32 = 40;
+const RANK_LINE_DECAY_START_MS: i32 = 4000;
+const RANK_LINE_DECAY_MS: i32 = 1000;
+/// The centre print (the obituary's revive lines), and how long a line stays.
+const CG_CENTER_PRINT: i32 = 90;
+const CENTER_TIME_DEFAULT_SECONDS: f32 = 5.0;
+const CENTER_PRINT_FADE_MS: i32 = 100;
 const CG_WAGER_LIFE_ALIVE: i32 = 126;
 const CG_WAGER_LIFE_DEAD: i32 = 127;
 const CG_WAGER_BULLETS: i32 = 128;
@@ -572,6 +580,41 @@ struct T5HudHost<'a, 'b> {
     virtual_to_real: f32,
 }
 
+impl T5HudHost<'_, '_> {
+    /// The weapon the view shows.
+    fn view_weapon(&self) -> u32 {
+        weapon_iw4::get_viewmodel_weapon_index(self.state.ps)
+    }
+
+    /// What the game's visibility bits read of the weapons in hand: the held
+    /// one, and the one the view shows.
+    fn visibility_weapon(&self) -> game_api::hud::VisibilityWeapon {
+        let ps = self.state.ps;
+        let weapons = self.state.weapons;
+        let facts = |index| weapons?.row(index)?.hud_facts();
+        let view_weapon = self.view_weapon();
+        let view = facts(view_weapon);
+        let window = view.map_or(0.0, |facts| facts.ads_zoom_in_frac);
+        let has_overlay = view.is_some_and(|facts| facts.overlay_reticle != 0)
+            || weapons.is_some_and(|w| w.registry().overlay_material_of(view_weapon).is_some());
+        let mut shown = ps.f_weapon_pos_frac - (1.0 - window);
+        if shown > 0.0 {
+            shown /= window;
+        }
+        game_api::hud::VisibilityWeapon {
+            missile_guidance: facts(ps.weapon).map_or(0, |facts| facts.missile_guidance),
+            clip_empty: self
+                .state
+                .ammo
+                .as_ref()
+                .is_some_and(|ammo| ammo.clip == Some(0)),
+            fuel_tank: view.is_some_and(|facts| facts.fuel_tank),
+            overlay_interface: view.map_or(0, |facts| facts.overlay_interface),
+            overlay_shown: has_overlay && ps.f_weapon_pos_frac != 0.0 && shown > 0.01,
+        }
+    }
+}
+
 impl ExprHost for T5HudHost<'_, '_> {
     fn binding_label(&self, command: &str) -> Option<&str> {
         self.state
@@ -709,6 +752,9 @@ impl ExprHost for T5HudHost<'_, '_> {
             dvar: &|name| self.state.dvars.float(name),
             selecting_location: self.state.selector.is_some(),
             extra_camera: self.state.extra_camera,
+            flashbanged: self.state.vis.flashbanged,
+            ui_open: self.state.vis.ui_active,
+            weapon: self.visibility_weapon(),
         };
         rule(bit, &view)
             .map(i32::from)
@@ -778,7 +824,7 @@ impl ExprHost for T5HudHost<'_, '_> {
         Ok(i32::from(self.state.ammo.as_ref().is_some_and(|a| a.dual)))
     }
     fn is_fuel_weapon(&self) -> Result<i32, ExprError> {
-        let weapon = weapon_iw4::get_viewmodel_weapon_index(self.state.ps);
+        let weapon = self.view_weapon();
         Ok(i32::from(
             self.state
                 .weapons
@@ -1393,10 +1439,62 @@ fn paint_popup_text(
         return OwnerDrawPaint::Painted;
     }
     crate::chrome::expand_bindings(&mut text, host);
-    match push_owner_text(args, &text, args.color, frame) {
-        Ok(()) => OwnerDrawPaint::Painted,
-        Err(kind) => OwnerDrawPaint::Gap(kind),
+    if let Err(kind) = push_owner_text(args, &text, args.color, frame) {
+        return OwnerDrawPaint::Gap(kind);
     }
+    // The rank's name types itself out from the popup's start.
+    if args.item.owner_draw == CG_RANK_POPUP_NAME
+        && let Some(birth_time) = host.menus.and_then(|menus| menus.rank_line_start)
+        && let Some(Draw2dCmd {
+            op: Draw2dOp::TextRun { fx, .. },
+            ..
+        }) = frame.list.cmds.last_mut()
+    {
+        let letter_time = host
+            .state
+            .dvars
+            .float("popInLetterFXTime")
+            .map_or(RANK_LINE_LETTER_MS, |value| value as i32);
+        *fx = Some(crate::hudelem::pulse_text_fx(
+            host.state.ms,
+            birth_time,
+            letter_time,
+            RANK_LINE_DECAY_START_MS,
+            RANK_LINE_DECAY_MS,
+        ));
+    }
+    OwnerDrawPaint::Painted
+}
+
+/// The centre print (owner draw 90): the line, half its width left of the
+/// item, for `cg_centertime` seconds, fading over its last 100 ms.
+fn paint_center_print(
+    host: &T5HudHost<'_, '_>,
+    args: &OwnerDrawArgs<'_>,
+    frame: &mut ChromeFrame,
+) -> OwnerDrawPaint {
+    let Some((start, text)) = host.menus.and_then(|menus| menus.center_print.as_ref()) else {
+        return OwnerDrawPaint::Painted;
+    };
+    let seconds = host
+        .state
+        .dvar("cg_centertime")
+        .and_then(|value| value.parse().ok())
+        .unwrap_or(CENTER_TIME_DEFAULT_SECONDS);
+    let left = (seconds * 1000.0) as i32 - (host.state.ms - *start);
+    if left <= 0 {
+        return OwnerDrawPaint::Painted;
+    }
+    let mut color = args.color;
+    if left < CENTER_PRINT_FADE_MS {
+        color[3] *= left as f32 / CENTER_PRINT_FADE_MS as f32;
+    }
+    let hint = OwnerHintText::Text {
+        text: text.clone(),
+        white: false,
+        alpha: Some(color[3]),
+    };
+    paint_owner_hint(args, &hint, frame)
 }
 
 /// The rank popup's icon (owner draw 339): the local variable's material in
@@ -1626,8 +1724,12 @@ fn paint_owner(
         FULL_MAP_MAP => paint_full_map(state, &args, frame),
         FULL_MAP_LOCATOR => paint_locator(state, &args, frame),
         CG_POPUP_TEXT | CG_RANK_POPUP_NAME => paint_popup_text(host, &args, frame),
-        // A player's emblem (`t5.hud.player_card_emblem`): no player has one.
+        // A player's emblem: Black Ops draws the image it has fetched for the
+        // player's xuid from the online service, and without one, nothing.
         CG_PLAYER_EMBLEM => OwnerDrawPaint::Painted,
+        CG_CENTER_PRINT if host.menus.is_some_and(|menus| menus.center_print.is_some()) => {
+            paint_center_print(host, &args, frame)
+        }
         CG_RANK_POPUP_ICON => paint_rank_popup_icon(host, &args, frame),
         n => match state.owner_hints.iter().find(|(draw, _)| *draw == n) {
             Some((_, hint)) => paint_owner_hint(&args, hint, frame),
