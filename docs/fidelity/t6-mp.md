@@ -217,6 +217,12 @@ Each open section names the issue that works it.
 - [ ] **G** Carried and remote turrets (`iscarryingturret`,
       `maketurretusable`, `remotecontrolturret`, …): Guardian, Sentry Gun
       (#693).
+- [ ] **G** `t6.turret.tow`, `t6.turret.projectile`,
+      `t6.turret.impact_explode`, `t6.turret.bullet_bounce`
+      (`natives::t6::sentry`): a TOW turret's think, and turret weapons
+      firing projectiles, exploding on impact or bouncing their bullets,
+      are not implemented. No zombies map reaches them: their turret weapons
+      all fire plain bullets and their scripts set no TOW type (#693).
 - [ ] **G** Missile drones and targets (`missile_settarget`, `target_set`,
       …): Hunter Killer, Swarm (#694).
 - [ ] **G** EMP Systems and the K9 Unit's dogs (#695).

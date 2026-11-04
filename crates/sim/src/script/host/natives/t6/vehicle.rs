@@ -43,6 +43,8 @@ const MAX_HOPS: usize = 64;
 const CURVE_TRIES: usize = 6;
 const MIN_CURVE_MOVE: f32 = 0.1;
 const MIN_CURVE_LEFT: f32 = 0.01;
+/// A vehicle faces where it will be this many seconds on.
+const LOOK_AHEAD: f32 = 1.3;
 
 #[derive(Clone, Copy, Debug)]
 struct Drive {
@@ -526,6 +528,94 @@ fn path_point([before, from, to, after]: [[f32; 3]; 4], tensions: (f32, f32), t:
     std::array::from_fn(|i| a * before[i] + b * from[i] + c * to[i] + d * after[i])
 }
 
+/// The angles from a point at another (the engine's `vectoangles`, pitch
+/// and yaw within -180..180, no roll); none when they are the same point.
+fn look_angles(from: [f32; 3], to: [f32; 3]) -> Option<[f32; 3]> {
+    let d: [f32; 3] = std::array::from_fn(|i| to[i] - from[i]);
+    if d.iter().map(|v| v * v).sum::<f32>().sqrt() <= 0.0 {
+        return None;
+    }
+    let normal = |angle: f32| angle - 360.0 * (angle / 360.0 + 0.5).floor();
+    let (yaw, pitch) = if d[0] == 0.0 && d[1] == 0.0 {
+        (0.0, if d[2] > 0.0 { -90.0 } else { 90.0 })
+    } else {
+        let flat = d[0].hypot(d[1]);
+        (
+            d[1].atan2(d[0]).to_degrees(),
+            -d[2].atan2(flat).to_degrees(),
+        )
+    };
+    Some([normal(pitch), normal(yaw), 0.0])
+}
+
+/// The engine's step along a path from a point by a distance: along the
+/// curve between nodes by what is left, measured back along the curve, a
+/// few times over, on through the nodes it reaches. Gives where it is on
+/// the path, the point, the nodes it reached, and whether the path ended.
+fn follow(
+    world: &mut World,
+    links: &NodeLinks,
+    mut path: Drive,
+    mut at: [f32; 3],
+    mut left: f32,
+) -> (Drive, [f32; 3], Vec<u64>, bool) {
+    let mut reached = Vec::new();
+    let mut tries = 0;
+    for _ in 0..MAX_HOPS {
+        let (a, b) = (origin(world, path.from), origin(world, path.to));
+        let length = (0..3).map(|i| (b[i] - a[i]).powi(2)).sum::<f32>().sqrt();
+        let t = if length > MIN_STEP {
+            path.t + left / length
+        } else {
+            1.0
+        };
+        if t < 1.0 {
+            let before = links.prev.get(&path.from).map_or(a, |&n| origin(world, n));
+            let after = links.next.get(&path.to).map_or(b, |&n| origin(world, n));
+            let tension = |node: u64| links.tension.get(&node).copied().unwrap_or(0.0);
+            let point = path_point(
+                [before, a, b, after],
+                (tension(path.from), tension(path.to)),
+                t,
+            );
+            let moved = (0..3)
+                .map(|i| (point[i] - at[i]).powi(2))
+                .sum::<f32>()
+                .sqrt();
+            let over = left - moved;
+            tries += 1;
+            // A try that overshoots by more than was left is undone.
+            if over <= 0.0 && left < -over && tries > 1 {
+                break;
+            }
+            path.t = t;
+            at = point;
+            left = over;
+            if moved < MIN_CURVE_MOVE || left <= MIN_CURVE_LEFT || tries >= CURVE_TRIES {
+                break;
+            }
+            continue;
+        }
+        left -= ((1.0 - path.t) * length).max(0.0);
+        at = b;
+        reached.push(path.to);
+        match next_node(world, path.to) {
+            Some(next) => {
+                path = Drive {
+                    from: path.to,
+                    to: next,
+                    t: 0.0,
+                };
+            }
+            None => return (path, at, reached, true),
+        }
+        if left <= MIN_STEP {
+            break;
+        }
+    }
+    (path, at, reached, false)
+}
+
 /// Each tick: the vehicles on their paths drive on.
 fn drive(world: &mut World) {
     let seconds = crate::MATCH_TICK_MS as f32 / 1000.0;
@@ -545,90 +635,41 @@ fn drive(world: &mut World) {
         let speed = ease(&mut world.resource_mut::<PathVehicles>(), id, seconds);
         if super::super::super::players::now_ms(world) % 1000 < i64::from(crate::MATCH_TICK_MS) {
             let at = origin(world, id);
-            diag::debug!(Sim, "vehicle {id}: speed {speed:.0} at {at:.0?}");
+            let angles = field(world, id, "angles");
+            diag::debug!(
+                Sim,
+                "vehicle {id}: speed {speed:.0} at {at:.0?} angles {angles:?}"
+            );
         }
-        // The engine's step: along the path by what is left of the frame's
-        // distance, measured back along the curve, a few times over.
         let links = node_links(world);
-        let mut left = speed * seconds;
-        let mut at = origin(world, id);
-        let mut reached = Vec::new();
-        let mut ended = false;
-        let mut tries = 0;
-        for _ in 0..MAX_HOPS {
-            let (a, b) = (origin(world, path.from), origin(world, path.to));
-            let length = (0..3).map(|i| (b[i] - a[i]).powi(2)).sum::<f32>().sqrt();
-            let t = if length > MIN_STEP {
-                path.t + left / length
-            } else {
-                1.0
-            };
-            if t < 1.0 {
-                let before = links.prev.get(&path.from).map_or(a, |&n| origin(world, n));
-                let after = links.next.get(&path.to).map_or(b, |&n| origin(world, n));
-                let tension = |node: u64| links.tension.get(&node).copied().unwrap_or(0.0);
-                let point = path_point(
-                    [before, a, b, after],
-                    (tension(path.from), tension(path.to)),
-                    t,
-                );
-                let moved = (0..3)
-                    .map(|i| (point[i] - at[i]).powi(2))
-                    .sum::<f32>()
-                    .sqrt();
-                let over = left - moved;
-                tries += 1;
-                // A try that overshoots by more than was left is undone.
-                if over <= 0.0 && left < -over && tries > 1 {
-                    break;
-                }
-                path.t = t;
-                at = point;
-                left = over;
-                if moved < MIN_CURVE_MOVE || left <= MIN_CURVE_LEFT || tries >= CURVE_TRIES {
-                    break;
-                }
-                continue;
-            }
-            left -= ((1.0 - path.t) * length).max(0.0);
-            at = b;
-            reached.push(path.to);
-            if let Some(mph) = node_speed(world, path.to) {
+        let start = origin(world, id);
+        let (next, at, reached, ended) = follow(world, &links, path, start, speed * seconds);
+        path = next;
+        for &node in &reached {
+            if let Some(mph) = node_speed(world, node) {
                 world.resource_mut::<PathVehicles>().speed.insert(id, mph);
-            }
-            match next_node(world, path.to) {
-                Some(next) => {
-                    path = Drive {
-                        from: path.to,
-                        to: next,
-                        t: 0.0,
-                    };
-                }
-                None => {
-                    ended = true;
-                    break;
-                }
-            }
-            if left <= MIN_STEP {
-                break;
             }
         }
         let was = origin(world, id);
         if (0..3).any(|i| (at[i] - was[i]).abs() > MIN_STEP) {
-            let flat = [at[0] - was[0], at[1] - was[1]];
-            let was_yaw = match field(world, id, "angles") {
-                Value::Vector(v) => v[1],
-                _ => 0.0,
+            let was_angles = match field(world, id, "angles") {
+                Value::Vector(v) => v,
+                _ => [0.0; 3],
             };
-            // Faces the way it drives; a drop straight down keeps its facing.
-            let yaw = if flat[0].abs() + flat[1].abs() > MIN_STEP {
-                flat[1].atan2(flat[0]).to_degrees()
+            let was_yaw = was_angles[1];
+            // It faces the point it will reach 1.3 s on at its speed, along
+            // the path (the engine's look-ahead copy of the path state);
+            // with nothing ahead it keeps its angles.
+            let angles = if ended {
+                was_angles
             } else {
-                was_yaw
+                let (_, ahead, _, _) = follow(world, &links, path, at, speed * LOOK_AHEAD);
+                look_angles(at, ahead).unwrap_or(was_angles)
             };
+            let yaw = angles[1];
             let mut runtime = world.resource_mut::<RoundScript>();
             runtime.set_object_field(id, "origin", Value::Vector(at));
-            runtime.set_object_field(id, "angles", Value::Vector([0.0, yaw, 0.0]));
+            runtime.set_object_field(id, "angles", Value::Vector(angles));
             if world.resource::<PathVehicles>().platforms.contains(&id) {
                 carry_riders(world, id, was, at, yaw - was_yaw);
             }

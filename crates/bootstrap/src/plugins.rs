@@ -136,6 +136,18 @@ pub fn default_plugins_with_quiet_log(mut window: WindowPlugin) -> bevy::app::Pl
         | WgpuFeatures::TEXTURE_BINDING_ARRAY
         | WgpuFeatures::SAMPLED_TEXTURE_AND_STORAGE_BUFFER_ARRAY_NON_UNIFORM_INDEXING
         | WgpuFeatures::PARTIALLY_BOUND_BINDING_ARRAY;
+    // A run without a window keeps no GPU timers. On Metal each timestamp
+    // query set takes a counter sample buffer, of which the GPU has few;
+    // when several runs hold them, the next one's allocation fails and wgpu
+    // reports it as a lost device.
+    if window.primary_window.is_none() {
+        wgpu.disabled_features = Some(
+            WgpuFeatures::TIMESTAMP_QUERY
+                | WgpuFeatures::TIMESTAMP_QUERY_INSIDE_ENCODERS
+                | WgpuFeatures::TIMESTAMP_QUERY_INSIDE_PASSES
+                | WgpuFeatures::PIPELINE_STATISTICS_QUERY,
+        );
+    }
     let plugins = DefaultPlugins
         .set(window)
         .set(LogPlugin {

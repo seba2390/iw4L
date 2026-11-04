@@ -87,10 +87,8 @@ Each open section names the issue that works it.
       `_spawning.gsc`'s scoring have not run.
 - [ ] **G** `ghost`, `boundswouldtelefrag`, `testspawnpoint`, `killserver`,
       `ban`, `endparty`, `endlobby`, `sethostmigrationstatus` are refused.
-- [ ] **V** `t5.hud.spectator_label`: `hud_spectator`'s `SPECTATING` and the
-      followed player's name do not show while following, though its bits
-      are answered and `player("name")` is the followed player's (#651).
-      A spectator's free look (`+use`, spectate type free) is not verified.
+- [ ] **V** A spectator's free look (`+use`, spectate type free) is not
+      verified.
 
 - [ ] **G** The builtins the multiplayer server binds beyond the shared T5
       catalog (`mp_catalog.rs`, 187 functions and methods read from
@@ -713,6 +711,10 @@ Each open section names the issue that works it.
       or with `specialty_noname` is not marked. His name fades by
       `cg_enemyNameFadeIn` and `Out` or `cg_friendlyNameFadeOut`; the crosshair
       takes the team colours (`cg_crosshairEnemyColor`).
+
+- [x] **V** `t5.hud.spectator_label` (#854): `hud_spectator`'s `SPECTATING` and
+      the followed player's name show: the HUD answers `tablelookup` and
+      `getTextWidth`, and an animated item starts as its `Default` state.
 
 - [x] **V** A client script's `UseAnimTree` and `SetAnim` on a server entity
       (#669): only players and actors are refused, as `BlackOpsMP.exe` does, and
