@@ -286,6 +286,11 @@ Each open section names the issue that works it.
 
 ## Killstreaks (#656–#662)
 
+- [ ] **G** `t5.mp.rcxd_physics`: the RC-XD rolls along the ground by its file's
+      top speed and acceleration, stopped by what it hits; Black Ops' car
+      (`isNitrous`) is a rigid body with wheels. It does not drift, jump or
+      flip, and the client does not predict it (#865).
+
 - [ ] **G** The action slot button builtins
       (`actionSlotOneButtonPressed` … `Four`) read a slot as pressed for the
       server tick its press arrives in and the next: the client sends a
@@ -1305,6 +1310,9 @@ Each open section names the issue that works it.
       victim's player card (`playerCard`, `playerKilled`): `CGAME_KILLED`,
       `CGAME_KILLEDBY`, the team-kill lines, the name and rank. `isDemoPlaying`
       answers 0.
+
+- [x] **G** A script's `switchToWeapon` reaches the client's selection, and a
+      deleted vehicle's driver hears `exit_vehicle` (#865).
 
 - [x] **V** `t5.mp.team_message_popup` (#860): `displayTeamMessage` slides out
       the player's name, rank and the line; no emblem (`t5.hud.player_card_emblem`).

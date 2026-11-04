@@ -1074,6 +1074,14 @@ pub(crate) fn switch_to_weapon(world: &mut FrameWorld, id: ClientId, weapon: u32
         .is_some_and(|ps| ps.weapons.contains(&(weapon as i32)))
     {
         world.client_meta_mut(id).controls.switch_to = weapon;
+        // The client's own selection follows, or its next command takes the
+        // old weapon back.
+        let tick = world.ecs().resource::<crate::step::StepRequest>().tick;
+        world.push_event(
+            tick,
+            crate::EventAudience::Client(id),
+            crate::SimEvent::WeaponSwitchRequested { weapon },
+        );
     }
 }
 
