@@ -169,6 +169,9 @@ impl Motor {
         if intent.use_button {
             cmd.buttons |= buttons::USE;
         }
+        if intent.ads {
+            cmd.buttons |= buttons::ADS;
+        }
         if intent.reload {
             cmd.buttons |= buttons::RELOAD;
         }

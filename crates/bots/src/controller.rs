@@ -168,6 +168,15 @@ impl HostController {
         ]
     }
 
+    /// Black Ops' bot aims down the sights at a target it sees beyond
+    /// `sv_botCloseDistance`.
+    fn sights_on(&self, obs: &BotObservation, target: Contact) -> bool {
+        obs.tuning.is_some_and(|tuning| {
+            let close = tuning.close_distance;
+            dist2(obs.self_state.origin, target.origin) > close * close
+        })
+    }
+
     /// Black Ops' bot holds the trigger of an automatic weapon and presses
     /// another's again only `sv_botMinFireTime` to `sv_botMaxFireTime` after
     /// the last press.
@@ -467,8 +476,16 @@ impl HostController {
             self.fire_on_the_way(obs, world);
         }
         self.intent.turn = obs.tuning.map(|tuning| crate::intent::TurnRates {
-            yaw_speed: tuning.yaw_speed,
-            pitch_speed: tuning.pitch_speed,
+            yaw_speed: if self.intent.ads {
+                tuning.yaw_speed_ads
+            } else {
+                tuning.yaw_speed
+            },
+            pitch_speed: if self.intent.ads {
+                tuning.pitch_speed_ads
+            } else {
+                tuning.pitch_speed
+            },
         });
         self.decision.stage = if matches!(
             self.intent.path,
@@ -943,6 +960,7 @@ impl HostController {
             move_mode,
             fire,
             path,
+            ads: self.sights_on(obs, target),
             ..BotIntent::default()
         }
     }
@@ -971,6 +989,7 @@ impl HostController {
         let fire = self.authorize_fire(ready, target);
         self.intent.look_at = Some(aim_at);
         self.intent.fire = fire;
+        self.intent.ads = self.sights_on(obs, target);
     }
 
     fn pick_fight_target(&self, obs: &BotObservation) -> Option<Contact> {

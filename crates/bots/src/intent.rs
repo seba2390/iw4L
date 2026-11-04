@@ -38,6 +38,8 @@ pub struct BotIntent {
     /// (Black Ops' `sv_botYawSpeed`, `sv_botPitchSpeed`); the host motor's
     /// slew otherwise.
     pub turn: Option<TurnRates>,
+    /// Aim down the sights.
+    pub ads: bool,
 }
 
 /// Black Ops' bot turn: each 50 ms the view covers the angle left times the
@@ -63,6 +65,7 @@ impl Default for BotIntent {
             weapon: None,
             path: PathOutcome::None,
             turn: None,
+            ads: false,
         }
     }
 }
