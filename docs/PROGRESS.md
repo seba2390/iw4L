@@ -248,8 +248,9 @@ Each milestone names its issues; open rules are in
   - [x] Free-for-all and Team Deathmatch install Black Ops' own startup; on Nuketown the scripts spawn the player with the picked class's weapons (#644).
   - [x] The multiplayer client scripts (`clientscripts/mp`) run (#645).
 - [x] Players move by Black Ops' multiplayer movement rules (#647).
-- [ ] Weapons, attachments, lethals, tacticals and equipment work by Black Ops' rules (#648, #649).
+- [x] Weapons, attachments, lethals, tacticals and equipment work by Black Ops' rules (#648, #649).
   - [x] Weapons fire, reload, aim and take attachments by Black Ops' rules (#648).
+  - [x] Lethals, tacticals and equipment (#649, #848): on `mp_nuked` a camera spike places and shows its view, a tactical insertion respawns its owner, a concussion washes the screen.
 - [x] Free-for-all and Team Deathmatch run on Black Ops' own gametype scripts to the end of a match (#646).
   - [x] On `mp_nuked` with Black Ops' bots: a kill scores, a 2-minute FFA ends on its time limit and a TDM on its score limit, each on Black Ops' own end screen and intermission.
 - [x] Every other gametype is verified in a match (#653, #654).

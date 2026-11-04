@@ -1107,7 +1107,22 @@ fn height_lock_depth(world: &mut World, origin: [f32; 3]) -> i32 {
 /// BlackOpsMP.exe's test is the means it never takes.
 fn immune_to_damage(world: &mut World, receiver: &Value, args: &[Value]) -> Result<Value, String> {
     let means = string(args, 1)?;
-    let remote = flight(world, receiver)?.piloted.motion.remote_control;
+    let remote = match flight(world, receiver) {
+        Ok(heli) => heli.piloted.motion.remote_control,
+        // A ground vehicle: its file's.
+        Err(_) => {
+            let vehicle = vehicle_id(receiver)?;
+            let Value::String(kind) = world
+                .resource_mut::<RoundScript>()
+                .object_field(vehicle, "vehicletype")
+            else {
+                return Err("entity is not a vehicle".into());
+            };
+            FrameWorld::from_world(world)
+                .vehicle_motion(&kind)
+                .is_some_and(|motion| motion.remote_control)
+        }
+    };
     let immune = match &*means {
         "MOD_PISTOL_BULLET"
         | "MOD_RIFLE_BULLET"
@@ -1176,9 +1191,10 @@ fn finish_damage(world: &mut World, receiver: &Value, args: &[Value]) -> Result<
     let means = string(args, 4)?;
     let point = optional(args, 6, vector)?;
     let dir = args.get(7).cloned().unwrap_or(Value::Undefined);
-    let heli = *flight(world, receiver)?;
+    let heli = flight(world, receiver).ok().copied();
     let splash = matches!(&*means, "MOD_GRENADE_SPLASH" | "MOD_PROJECTILE_SPLASH");
-    let dealt = (damage as f32 * damage_share(world, &heli, point, splash)) as i32;
+    let share = heli.map_or(1.0, |heli| damage_share(world, &heli, point, splash));
+    let dealt = (damage as f32 * share) as i32;
     let weapon = args.get(5).cloned().unwrap_or(Value::Undefined);
     apply_damage(world, receiver, dealt, attacker, dir, point, &means, weapon);
     Ok(Value::Undefined)
@@ -1196,10 +1212,20 @@ fn finish_radius_damage(
     let means = string(args, 6)?;
     let point = optional(args, 8, vector)?;
     let radius = float(args, 9)?;
-    let heli = *flight(world, receiver)?;
+    let heli = flight(world, receiver).ok().copied();
+    let origin = match heli {
+        Some(heli) => heli.origin,
+        None => match world
+            .resource_mut::<RoundScript>()
+            .object_field(vehicle_id(receiver)?, "origin")
+        {
+            Value::Vector(origin) => origin,
+            _ => [0.0; 3],
+        },
+    };
     let distance = point.map_or(0.0, |at| {
         (0..3)
-            .map(|i| (at[i] - heli.origin[i]) * (at[i] - heli.origin[i]))
+            .map(|i| (at[i] - origin[i]) * (at[i] - origin[i]))
             .sum::<f32>()
             .sqrt()
     });
@@ -1207,7 +1233,8 @@ fn finish_radius_damage(
         return Ok(Value::Undefined);
     }
     let at_range = inner + (outer - inner) * distance / radius;
-    let dealt = (at_range * damage_share(world, &heli, point, true)) as i32;
+    let share = heli.map_or(1.0, |heli| damage_share(world, &heli, point, true));
+    let dealt = (at_range * share) as i32;
     let weapon = args.get(7).cloned().unwrap_or(Value::Undefined);
     apply_damage(
         world,
