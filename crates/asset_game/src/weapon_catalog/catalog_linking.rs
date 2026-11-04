@@ -1,5 +1,16 @@
 use super::*;
 
+/// Black Ops' vehicle classes, a vehicle file's `type`.
+const T5_VEHICLE_CLASSES: [&str; 7] = [
+    "4 wheel",
+    "motorcycle",
+    "tank",
+    "plane",
+    "boat",
+    "artillery",
+    "helicopter",
+];
+
 impl WeaponCatalog {
     /// A Black Ops vehicle file (`vehicles/<name>`, `VEHICLEFILE\\key\\value…`):
     /// what its helicopter flight starts from. Speeds are in miles an hour.
@@ -49,6 +60,18 @@ impl WeaponCatalog {
             name.to_owned(),
             VehicleMotion {
                 max_speed: value("maxSpeed") * MPH,
+                reverse_scale: value("nitrous_reverse_scale"),
+                class: parts
+                    .chunks(2)
+                    .find(|pair| pair[0] == "type")
+                    .and_then(|pair| pair.get(1))
+                    .and_then(|class| {
+                        T5_VEHICLE_CLASSES
+                            .iter()
+                            .position(|name| name == class)
+                            .or_else(|| class.parse().ok())
+                    })
+                    .unwrap_or(0) as u8,
                 accel: value("accel") * MPH,
                 rot_rate: value("rotRate"),
                 rot_accel: value("rotAccel"),

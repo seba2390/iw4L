@@ -872,6 +872,8 @@ struct ServerEntitySnapshot {
     has_eyes: bool,
     hidden: bool,
     dobj: Option<crate::AuthorityDObjState>,
+    /// A Black Ops vehicle's fields.
+    vehicle: Option<super::host::natives::t5_mp_ground::ClientVehicle>,
 }
 
 /// Each client entity's owner, by entity number (`getOwner`).
@@ -1582,6 +1584,9 @@ fn collect_server_entities(server: &mut World) -> Vec<ServerEntitySnapshot> {
                 .find(|row| row.owner.script_model() == Some(presence))
                 .and_then(|row| row.dobj.clone())
         });
+        let vehicle = (entity.kind == EntityKind::Vehicle)
+            .then(|| super::host::natives::t5_mp_ground::client_vehicle(server, id))
+            .flatten();
         snapshots.push(ServerEntitySnapshot {
             server_id: id,
             number: entity.number,
@@ -1602,6 +1607,7 @@ fn collect_server_entities(server: &mut World) -> Vec<ServerEntitySnapshot> {
             has_eyes,
             hidden: entity.hidden,
             dobj,
+            vehicle,
         });
     }
     snapshots
@@ -2053,11 +2059,32 @@ fn sync_snapshot_entities(
                 (object, true, 0)
             };
 
+        if let Some(vehicle) = &snap.vehicle {
+            client
+                .world
+                .get_resource_or_insert_with(
+                    super::host::natives::t5_client::ClientVehicles::default,
+                )
+                .0
+                .insert(client_object, vehicle.clone());
+        }
         {
             let mut runtime = client.world.resource_mut::<RoundScript>();
             runtime.set_object_field(client_object, "origin", Value::Vector(snap.origin));
             runtime.set_object_field(client_object, "angles", Value::Vector(snap.angles));
             runtime.set_object_field(client_object, "type", Value::string(snap.ent_type));
+            if let Some(vehicle) = &snap.vehicle {
+                runtime.set_object_field(
+                    client_object,
+                    "vehicletype",
+                    Value::string(&vehicle.vehicle_type),
+                );
+                runtime.set_object_field(
+                    client_object,
+                    "vehicleclass",
+                    Value::string(vehicle.class),
+                );
+            }
             runtime.set_object_field(client_object, "model", snap.model.clone());
             runtime.set_object_field(
                 client_object,

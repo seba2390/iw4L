@@ -290,12 +290,12 @@ Each open section names the issue that works it.
       top speed and acceleration, stopped by what it hits; Black Ops' car
       (`isNitrous`) is a rigid body with wheels. It does not drift, jump or
       flip, and the client does not predict it (#865).
-- [ ] **V** `t5.mp.rcxd_client`: the RC-XD's client scripts fault: a vehicle has
-      no `vehicleclass` or `vehicletype` on the client, and `ispeelingout`,
-      `iswheelsliding`, `iswheelcolliding`, `getwheelsurface`, `getmaxspeed`,
-      `getmaxreversespeed`, `getthrottle`, `islocalclientdriver` are not
-      answered, so its tread effects and screen dust do not run (#866).
-
+- [ ] **V** `t5.mp.rcxd_client`: the client reads the car's whole state from the
+      server's stand-in: a wheel is its vehicle's, `ispeelingout` is a full
+      throttle under a quarter of top speed, `iswheelsliding` a full lock over
+      half of it, `setstunned` does nothing (its reader is the client's own
+      physics, `t5.mp.rcxd_physics`), and `veh_collision` and
+      `veh_engine_stutter` are not sent.
 - [ ] **G** The action slot button builtins
       (`actionSlotOneButtonPressed` … `Four`) read a slot as pressed for the
       server tick its press arrives in and the next: the client sends a
@@ -713,6 +713,13 @@ Each open section names the issue that works it.
       compensation of Black Ops' movement and weapons are unmeasured.
 
 ## Closed
+
+- [x] **V** The RC-XD's client scripts (#866): a vehicle's `vehicleclass` (the
+      file's `type`) and `vehicletype` reach the client, and `getmaxspeed`,
+      `getmaxreversespeed` (`nitrous_reverse_scale`), `getthrottle`, `getspeed`,
+      `iswheelcolliding`, `getwheelsurface`, `islocalclientdriver` and
+      `getlocalclientdriver` answer, so `_rcbomb.csc` runs its lights and tread
+      effects by the surface under the car.
 
 - [x] **V** Crosshair names and colour (#853): a line of 8192 units along the
       view, stopped by the world, finds the player under the crosshair; an

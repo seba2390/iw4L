@@ -388,6 +388,10 @@ fn leftover_clip_relative_rounds(count: i32, clip_size: i32, clip_relative: bool
 #[derive(Clone, Copy, Debug, Default, PartialEq)]
 pub struct VehicleMotion {
     pub max_speed: f32,
+    /// A share of the top speed in reverse.
+    pub reverse_scale: f32,
+    /// The vehicle file's `type`.
+    pub class: u8,
     pub accel: f32,
     pub rot_rate: f32,
     pub rot_accel: f32,
