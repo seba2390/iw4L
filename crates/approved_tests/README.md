@@ -18,6 +18,16 @@ directories everywhere in the workspace, this crate included.
 | --- | --- |
 | `master_duo_chaos` | two real clients join one dev master lobby, load `mp_boneyard` once, move for 4 seconds and run 16 seconds of RPG chaos with seven bots |
 | `heavy_gameplay_lifecycle` | cold load `mp_overgrown` for free-for-all (`dm`) with 16 players, three input scenes, production disconnect, a watched menu, a second map with three scenes, production quit |
+| `zombies_rounds_t5` | headless `serve t5:zombie_theater` (Black Ops, Kino der Toten, `zombies`) with the rounds test player for 300 game s at timescale 8; passes at round 2 or later, with no script fault outside its allow-list and a clean exit |
+| `zombies_rounds_t6` | headless `serve t6:zm_nuked` (Black Ops II, Nuketown, `zclassic`) with the rounds test player for 300 game s at timescale 8; passes at round 2 or later, with no script fault and a clean exit |
+
+The zombies scenarios' steps are in `src/scenarios/zombies_rounds.rs`. Each
+runs in its own directory with its own settings and profile, so the user's
+are untouched. A missing games root, a zone that is not installed, or (Black
+Ops II) no captured `ffotd_*_zm*.ff` is reported as `skipped: <reason>` with
+exit 0. A failure prints each reason (`failed: reached round 1, short of round
+2`) and exits 1. Neither is seeded; `run.json` keeps the rounds and kills seen,
+every script fault, the marks and the environment.
 
 The scenario's steps are in `src/scenarios/heavy_gameplay_lifecycle.rs` and
 nowhere else: maps, seed rule, scenes, positions, angles, weapons, durations
