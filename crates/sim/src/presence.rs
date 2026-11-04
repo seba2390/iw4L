@@ -17,6 +17,7 @@ pub(crate) fn follow_movers(
         };
         row.hidden = mover.state.e_flags & CG_SCRIPT_MOVER_NODRAW != 0;
         row.solid = !mover.nonsolid;
+        row.entity_number = Some(mover.state.number);
         let pose = (
             evaluate_trajectory(&pos_from_entity_state(&mover.state), time_ms),
             evaluate_trajectory(&apos_from_entity_state(&mover.state), time_ms),
