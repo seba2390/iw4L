@@ -145,6 +145,8 @@ pub struct SnapshotMeta {
 
     /// What the scripts tell their bots to do; the host's own, not sent.
     pub bot_orders: Vec<BotOrder>,
+    /// The game's scripted turrets, as a client's draw reads them.
+    pub turret_models: Vec<TurretModelRow>,
 
     pub entity_dobjs: Vec<(
         crate::AuthorityModelOwner,
@@ -323,4 +325,17 @@ pub struct BotOrder {
     pub use_until_ms: i32,
     /// Attack until this level time.
     pub attack_until_ms: i32,
+}
+
+/// A scripted turret as a client's draw reads it: Black Ops' client draws an
+/// enemy's in its weapon's second world model for a player with Hacker.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub struct TurretModelRow {
+    pub entity: i32,
+    pub weapon: u32,
+    /// `0` free, `1` axis, `2` allies.
+    pub team: u8,
+    /// The client who owns it; `-1` for none.
+    pub owner_client: i32,
+    pub carried: bool,
 }

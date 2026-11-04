@@ -402,6 +402,10 @@ fn interpolate_dobj_tree(state: &mut xmodel_runtime::DObjSemanticState, fraction
     }
 }
 
+/// Marks a composition a viewer's detect model has changed, so its plan is not
+/// the turret's own.
+const DETECT_MODEL_REVISION: u32 = 0x8000_0000;
+
 fn apply_presented_script_model_dobjs(
     presented: Option<Res<net::PresentedSnapshot>>,
     slots: Option<Res<net::CEntitySlots>>,
@@ -409,6 +413,11 @@ fn apply_presented_script_model_dobjs(
     cg_clock: Option<Res<net::FrameClock>>,
     fixed: Option<Res<Time<Fixed>>>,
     mut owners: Query<(&mut WorldScriptModelInstance, &mut Visibility)>,
+    (local, mode, weapons): (
+        Option<Res<net::LocalPresentClient>>,
+        Option<Res<game_api::ModeRules>>,
+        Option<Res<assets::PreparedWeapons>>,
+    ),
 ) {
     let Some(presented) = presented.as_ref() else {
         return;
@@ -425,6 +434,23 @@ fn apply_presented_script_model_dobjs(
         .unwrap_or(snap_time);
     let at_time = presented.trajectory_time_ms(at_time);
     let archived = presented.is_archived_replay();
+    let detect_rule = match mode.as_deref().map(|mode| mode.hud.code_hud) {
+        Some(game_api::Rule::Known(game_api::hud::CodeHud::Game(hud))) => hud.turret_detect_model,
+        _ => None,
+    };
+    let viewer = local.as_ref().and_then(|local| {
+        let meta = snapshot.meta.for_client(local.0)?;
+        Some((
+            presented
+                .player(local.0)?
+                .move_player(local.0.0 as i32, false),
+            local.0.0 as i32,
+            meta.client_state_team,
+        ))
+    });
+    let bound = weapons
+        .as_deref()
+        .and_then(|weapons| weapons.for_snapshot(presented.weapon_epoch()).ok());
     let mut by_owner: std::collections::BTreeMap<
         sim::AuthorityModelOwner,
         &xmodel_runtime::DObjSemanticState,
@@ -445,10 +471,40 @@ fn apply_presented_script_model_dobjs(
             *visibility = Visibility::Hidden;
             continue;
         };
-        if owner.current_model.0 != base.model {
-            owner.current_model = asset_world::MapXModelAssetKey(base.model.clone());
+        // A viewer's detect model in place of a turret's own.
+        let detect = detect_rule
+            .zip(viewer.as_ref())
+            .zip(bound.as_ref())
+            .and_then(|((rule, (player, client, team)), bound)| {
+                let number = i32::from(owner.gentity_number?);
+                let row = snapshot
+                    .meta
+                    .turret_models
+                    .iter()
+                    .find(|row| row.entity == number)?;
+                rule(&game_api::hud::TurretModelView {
+                    player,
+                    client: *client,
+                    team: *team,
+                    turret_team: i32::from(row.team),
+                    turret_owner_client: row.owner_client,
+                    carried: row.carried,
+                })
+                .then(|| bound.registry().alternate_world_model_of(row.weapon, 1))
+                .flatten()
+                .map(|(_, name)| name.to_owned())
+            });
+        let model = detect.as_deref().unwrap_or(&base.model);
+        if owner.current_model.0 != model {
+            owner.current_model = asset_world::MapXModelAssetKey(model.to_owned());
         }
         let mut next_state = state.clone();
+        if let Some(detect) = &detect
+            && let Some(first) = next_state.composition.models.first_mut()
+        {
+            first.model = detect.clone();
+            next_state.composition.revision |= DETECT_MODEL_REVISION;
+        }
         if clock_started && next_state.tree.is_some() {
             let runtime = owner
                 .gentity_number

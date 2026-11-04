@@ -46,7 +46,7 @@ pub fn class_catalog_perk_name(id: u32) -> Option<&'static str> {
 
 pub use snapshot_meta::{
     BotOrder, ClientSnapshotMeta, DroppedItemAmmo, ItemPickupRecord, RngDebugMeta, ScriptDvars,
-    SnapshotMeta, TargetBoxDvar,
+    SnapshotMeta, TargetBoxDvar, TurretModelRow,
 };
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
