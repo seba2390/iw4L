@@ -138,7 +138,7 @@ pub use match_state::{
     MatchEndReason, MenuCommand, MenuCommandKind, MenuPopUp, PelletFxRecord, PersonalClass,
     PopUpText, RadarMode, RemoteMissile, RngDebugMeta, SIM_EVENT_ROSTER, SOUND_REPORTS_LENGTH,
     SPAWNED_DYN_ENT_TAIL, ScriptBlur, ScriptControls, ScriptDepthOfField, ScriptDvars, ScriptSeat,
-    SimEvent, SimEventRow, SnapshotMeta, SpawnedDynEntLaunch, TargetBoxDvar,
+    SimEvent, SimEventRow, SnapshotMeta, SpawnedDynEntLaunch, TargetBoxDvar, TurretModelRow,
     UNRELIABLE_SIM_EVENT_COUNT, ViewEffects, VisionChange, VisionLerp, is_postfx_dvar,
     sim_event_is_reliable,
 };

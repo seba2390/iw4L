@@ -534,6 +534,7 @@ pub fn encode_snapshot_meta_body(
     encode_rng_debug(out, &meta.rng);
     sizes.aliases = section_span(out, mark);
     mark = out.len();
+    encode_turret_models(out, &meta.turret_models);
     encode_entity_dobjs(out, &meta.entity_dobjs);
     sizes.entity_dobjs = section_span(out, mark);
     mark = out.len();
@@ -618,6 +619,7 @@ pub(super) fn decode_snapshot_meta_body(
     let hud_strings = decode_hud_strings(input)?;
     let rng = decode_rng_debug(input)?;
     remaining_after[2] = input.remaining();
+    let turret_models = decode_turret_models(input)?;
     let entity_dobjs = decode_entity_dobjs(input)?;
     remaining_after[3] = input.remaining();
     let corpses = decode_corpse_pool(input)?;
@@ -662,6 +664,7 @@ pub(super) fn decode_snapshot_meta_body(
             world_objects: sim::WorldObjectSnapshot::default(),
             area_entities,
             objectives,
+            turret_models,
             entity_dobjs,
             entities,
             script_movers,
@@ -3419,6 +3422,32 @@ fn decode_item_pickups(input: &mut WireReader<'_>) -> Result<Vec<ItemPickupRecor
             stock: input.get_i32()?,
             swapped_entnum: input.get_i32()?,
             picker_pm_type: input.get_i32()?,
+        });
+    }
+    Ok(rows)
+}
+
+fn encode_turret_models(out: &mut WireWriter, rows: &[sim::TurretModelRow]) {
+    out.put_u8(rows.len() as u8);
+    for row in rows {
+        out.put_i32(row.entity);
+        out.put_u32(row.weapon);
+        out.put_u8(row.team);
+        out.put_i32(row.owner_client);
+        out.put_u8(u8::from(row.carried));
+    }
+}
+
+fn decode_turret_models(input: &mut WireReader<'_>) -> Result<Vec<sim::TurretModelRow>, WireError> {
+    let count = input.get_u8()? as usize;
+    let mut rows = Vec::with_capacity(count);
+    for _ in 0..count {
+        rows.push(sim::TurretModelRow {
+            entity: input.get_i32()?,
+            weapon: input.get_u32()?,
+            team: input.get_u8()?,
+            owner_client: input.get_i32()?,
+            carried: input.get_u8()? != 0,
         });
     }
     Ok(rows)

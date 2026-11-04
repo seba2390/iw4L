@@ -143,6 +143,9 @@ pub struct SnapshotMeta {
 
     pub area_entities: Option<crate::AreaEntityWorldSnapshot>,
 
+    /// The game's scripted turrets, as a client's draw reads them.
+    pub turret_models: Vec<TurretModelRow>,
+
     pub entity_dobjs: Vec<(
         crate::AuthorityModelOwner,
         xmodel_runtime::DObjSemanticState,
@@ -307,4 +310,17 @@ impl<'a> ScriptDvars<'a> {
             line.replace(&format!("&&{}", i + 1), arg)
         }))
     }
+}
+
+/// A scripted turret as a client's draw reads it: Black Ops' client draws an
+/// enemy's in its weapon's second world model for a player with Hacker.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub struct TurretModelRow {
+    pub entity: i32,
+    pub weapon: u32,
+    /// `0` free, `1` axis, `2` allies.
+    pub team: u8,
+    /// The client who owns it; `-1` for none.
+    pub owner_client: i32,
+    pub carried: bool,
 }

@@ -38,6 +38,9 @@ pub struct GameCodeHud {
     /// Whether a resting missile draws with its weapon's retrievable model;
     /// `None` never does.
     pub retrievable_model: Option<RetrievableModelFn>,
+    /// Whether a viewer draws a scripted turret in its weapon's second world
+    /// model; `None` never does.
+    pub turret_detect_model: Option<fn(&TurretModelView<'_>) -> bool>,
     /// Whether the game's HUD visibility bit (its number, which a menu's
     /// `isvisibilitybitset` tests) is set; `None` answers none.
     pub visibility_bit: Option<VisibilityBitFn>,
@@ -661,6 +664,17 @@ pub struct CrosshairPicture {
 
 /// What a game's grenade indicators draw this frame.
 pub type GrenadeIndicatorFn = fn(&GrenadeIndicatorView<'_>) -> GrenadeIndicators;
+
+/// A scripted turret as the client's draw reads it.
+pub struct TurretModelView<'a> {
+    pub player: &'a MovePlayer,
+    /// The viewer's client and team (`0` free, `1` axis, `2` allies).
+    pub client: i32,
+    pub team: i32,
+    pub turret_team: i32,
+    pub turret_owner_client: i32,
+    pub carried: bool,
+}
 
 /// A missile as the client's retrievable model test reads it.
 pub struct RetrievableView<'a> {
