@@ -2093,6 +2093,8 @@ struct BotScript {
     goal: Option<([f32; 3], f32)>,
     /// The goal's `goal` notify has gone out.
     arrived: bool,
+    /// The goal's `bad_path` notify has gone out.
+    bad_path: bool,
     enemy: Option<Value>,
     use_until_ms: i32,
     attack_until_ms: i32,
@@ -2118,6 +2120,23 @@ pub(crate) fn publish_bot_orders(world: &World, snapshot: &mut crate::Snapshot) 
         .collect();
 }
 
+/// A bot's controller cannot get to its script goal: it hears `bad_path`, once a
+/// goal.
+pub(crate) fn report_bot_bad_path(world: &mut World, client: u32) {
+    let Some(mut state) = world.get_resource_mut::<BotScriptState>() else {
+        return;
+    };
+    let Some(script) = state.0.get_mut(&client) else {
+        return;
+    };
+    if script.goal.is_none() || script.arrived || script.bad_path {
+        return;
+    }
+    script.bad_path = true;
+    let player = super::super::players::player_object(world, client);
+    crate::script::runtime::raise(world, player, "bad_path", Vec::new());
+}
+
 /// Each frame a bot that has reached its goal hears `goal`, once.
 fn notify_bots_at_goal(world: &mut World) {
     let Some(state) = world.get_resource::<BotScriptState>() else {
@@ -2139,7 +2158,13 @@ fn notify_bots_at_goal(world: &mut World) {
             origin[1] - goal[1],
             origin[2] - goal[2],
         );
-        if dx * dx + dy * dy > radius * radius || dz.abs() > BOT_GOAL_HEIGHT {
+        if dx * dx + dy * dy > radius * radius {
+            continue;
+        }
+        // Over or under the goal, with nowhere left to go: a goal in the air
+        // (a crate still falling) has no path.
+        if dz.abs() > BOT_GOAL_HEIGHT {
+            report_bot_bad_path(world, client);
             continue;
         }
         if let Some(script) = world
@@ -2218,6 +2243,7 @@ fn register_bots(registry: &mut NativeRegistry) {
         let script = bot_script(world, receiver)?;
         script.goal = Some((goal, radius));
         script.arrived = false;
+        script.bad_path = false;
         Ok(Value::Undefined)
     });
     registry.register(Method, "clearscriptgoal", |world, receiver, _| {
