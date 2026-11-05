@@ -111,6 +111,8 @@ pub struct CapturedCombatInput {
     pub ads_spread: f32,
 
     pub aim_down_sight: bool,
+    /// The clip fraction at or under which the ammo counter warns.
+    pub low_ammo_warning_threshold: f32,
 
     pub no_ads_when_mag_empty: bool,
 
@@ -264,6 +266,8 @@ pub struct WeaponCombatFacts {
     pub ads_spread: f32,
 
     pub aim_down_sight: bool,
+    /// The clip fraction at or under which the ammo counter warns.
+    pub low_ammo_warning_threshold: f32,
 
     pub no_ads_when_mag_empty: bool,
 
@@ -382,6 +386,7 @@ impl WeaponCombatFacts {
             hip_spread_prone_decay: 0.0,
             ads_spread: 0.0,
             aim_down_sight: false,
+            low_ammo_warning_threshold: 0.0,
             no_ads_when_mag_empty: false,
             inherits_perks: false,
             ads_reload_trans_time_ms: 0,
@@ -500,6 +505,7 @@ impl WeaponCombatFacts {
             hip_spread_prone_decay: input.hip_spread_prone_decay,
             ads_spread: input.ads_spread,
             aim_down_sight: input.aim_down_sight,
+            low_ammo_warning_threshold: input.low_ammo_warning_threshold,
             no_ads_when_mag_empty: input.no_ads_when_mag_empty,
             ads_reload_trans_time_ms: input.ads_reload_trans_time_ms,
             ads_in_rate: input.ads_in_rate,

@@ -746,6 +746,8 @@ pub const WEAPON_DEF_GRENADE_WEAPON_OFF: usize = 0x58c;
 pub const WEAPON_DEF_COOK_OFF_HOLD_OFF: usize = 0x560;
 pub const WEAPON_DEF_KEEP_CROSSHAIR_WHEN_ADS_OFF: usize = 0x575;
 pub const WEAPON_DEF_AIM_DOWN_SIGHT_OFF: usize = 0x553;
+/// `lowAmmoWarningThreshold` (f32).
+pub const WEAPON_DEF_LOW_AMMO_WARNING_THRESHOLD_OFF: usize = 0x644;
 pub const WEAPON_DEF_RECHAMBER_WHILE_ADS_OFF: usize = 0x554;
 
 pub const WEAPON_DEF_ADS_FIRE_ONLY_OFF: usize = 0x564;

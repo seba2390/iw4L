@@ -333,6 +333,8 @@ pub struct BotOrder {
     pub use_until_ms: i32,
     /// Attack until this level time.
     pub attack_until_ms: i32,
+    /// The player `SetAttacker` named last, and the level time it did.
+    pub attacker: Option<(u32, i32)>,
 }
 
 /// Black Ops' bot dvars (`sv_bot*`), which `_bot.gsc` sets by difficulty.
@@ -359,6 +361,17 @@ pub struct BotTuning {
     pub ads_ms: (i32, i32),
     /// It sprints only toward a goal at least this far away.
     pub sprint_distance: f32,
+    /// Nearer its path's end than this it may crouch, for this long.
+    pub crouch_distance: f32,
+    pub crouch_ms: (i32, i32),
+    /// The chance a frame it starts to strafe, and for how long.
+    pub strafe_chance: f32,
+    pub strafe_ms: (i32, i32),
+    /// It knifes a target this near.
+    pub melee_dist: f32,
+    /// Whether it throws grenades, and the hold of a throw.
+    pub allow_grenades: bool,
+    pub grenade_ms: (i32, i32),
 }
 
 /// A scripted turret as a client's draw reads it: Black Ops' client draws an

@@ -32,6 +32,9 @@ pub struct Contact {
     pub origin: [f32; 3],
     /// How fast it moved when seen; zero for a contact from memory.
     pub velocity: [f32; 3],
+    /// Its eyes above its feet, and whether it stands on something.
+    pub view_height: f32,
+    pub on_ground: bool,
     pub source: KnowledgeSource,
     pub seen_tick: u32,
     pub confidence: f32,
@@ -152,6 +155,9 @@ pub struct WeaponFacts {
     pub max_damage_range: i32,
     pub min_damage_range: i32,
     pub aim_down_sight: bool,
+    /// The most rounds in the clip that Black Ops' bot reloads at: the clip
+    /// size (999 at most) times `lowAmmoWarningThreshold`, rounded down.
+    pub low_ammo_clip: i32,
     pub dual_wield: bool,
     /// The weapon file's `weaponType`, `weaponClass` and `impactType`.
     pub weap_type: i32,
@@ -199,6 +205,7 @@ pub struct SelfState {
     pub id: ClientId,
     pub lifecycle: ClientLifecycle,
     pub origin: [f32; 3],
+    pub velocity: [f32; 3],
     pub viewangles: [f32; 3],
     pub delta_angles: [f32; 3],
     pub view_height: f32,
@@ -297,6 +304,19 @@ pub struct BotObservation {
     /// the test clients (bots) among the players.
     pub fallen: Vec<ClientId>,
     pub test_clients: Vec<ClientId>,
+    /// The player the scripts named the bot's attacker (Black Ops'
+    /// `SetAttacker`).
+    pub attacker: Option<ScriptAttacker>,
+}
+
+/// A bot's attacker as the scripts named it: who, the level time they did,
+/// where it is and whether it lives.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct ScriptAttacker {
+    pub id: ClientId,
+    pub set_ms: i32,
+    pub origin: [f32; 3],
+    pub alive: bool,
 }
 
 impl BotObservation {
