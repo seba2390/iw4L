@@ -51,6 +51,10 @@ pub mod flags {
     pub const SPLATTER: i32 = 0x80;
 
     pub const LOWRESBACKGROUND: i32 = 0x100;
+
+    /// Black Ops' `setCOD7DecodeFX`: the pulse's times draw as its decode
+    /// (scrambled digits, then a fade) instead of the pulse's type-on.
+    pub const COD7_DECODE: i32 = 0x1000;
 }
 
 #[derive(Clone, Copy, Debug, Default, PartialEq)]

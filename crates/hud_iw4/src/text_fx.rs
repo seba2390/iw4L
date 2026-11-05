@@ -4,6 +4,9 @@ pub const TEXT_RENDERFLAG_BIG_SHADOW: u32 = 8;
 
 pub const TEXT_RENDERFLAG_FX_DECODE: u32 = 0x40;
 
+/// Black Ops' text command flag for `setCOD7DecodeFX`'s decode.
+pub const TEXT_RENDERFLAG_COD7_DECODE: u32 = 0x10000;
+
 pub const TEXT_RENDERFLAG_PADDING: u32 = 0x80;
 
 pub const TEXT_RENDERFLAG_OUTLINE: u32 = 0x400;
