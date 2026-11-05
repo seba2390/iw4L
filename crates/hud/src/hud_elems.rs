@@ -667,7 +667,8 @@ pub(crate) fn update_hud_elems(
         _ => None,
     }) {
         any_fx = true;
-        if hud_iw4::decay_tick_count(fx.fx.decay_duration).is_none() {
+        // Black Ops' decode fades a short decay out at once (its own rule).
+        if !fx.decode && hud_iw4::decay_tick_count(fx.fx.decay_duration).is_none() {
             gaps.raise(GapCause::TextDecodeFxDecayTooShort {
                 fx_decay_duration: fx.fx.decay_duration,
             });

@@ -692,8 +692,6 @@ Each open section names the issue that works it.
 - [ ] **V** `t5.mp.contract_popup`: `displaycontract` does not reach the HUD.
       Contracts come from the online service: a private match has none.
 
-- [ ] **V** `t5.hud.decode_fx`: `setCOD7DecodeFX` types its text in and fades it
-      as a pulse does, not with Black Ops' scrambled letters (#651).
 
 ## Bots (#652, #709)
 
@@ -858,6 +856,16 @@ Each open section names the issue that works it.
 
 ## Closed
 
+- [x] **V** `t5.hud.decode_fx` (#651): `setCOD7DecodeFX` draws as Black
+      Ops' text decode: the letters not decoded yet show digits from
+      `023456789` (new ones every 50 ms) at 0xc0 of the text's alpha, one
+      more letter decoding each decode time from the left, spaces kept;
+      after the decay start the whole line fades linearly over the decay
+      (none under one 30 Hz tick), and nothing draws after it. Seen on
+      `mp_nuked`: the spawn notify's `SPET0649` mid-decode and its
+      objective line in digits, then the plain text. The pulse's typing
+      sounds still play for a decode line; whether Black Ops' decode plays
+      any was not read.
 - [x] **V** The compass while a Valkyrie rocket flies (#651): Black Ops
       centres and turns the compass on the camera (the rocket's view), and
       draws the player's arrow at the player's own place, turned to the

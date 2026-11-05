@@ -493,8 +493,8 @@ pub(crate) fn register(registry: &mut NativeRegistry) {
     registry.register(Function, "newdebughudelem", |world, _, _| {
         new_hud_elem(world, HudAudience::All)
     });
-    // `setCOD7DecodeFX(letter, decay start, decay)`: the text comes in letter
-    // by letter and goes after the decay, as a pulse does.
+    // `setCOD7DecodeFX(decode time, decay start, decay)`: the pulse's times,
+    // drawn as Black Ops' decode (elem flag 0x1000).
     registry.register(Method, "setcod7decodefx", |world, receiver, args| {
         let (_, slot) = slot_of(world, receiver)?;
         let (letter, start, decay) = (int(args, 0)?, int(args, 1)?, int(args, 2)?);
@@ -508,6 +508,7 @@ pub(crate) fn register(registry: &mut NativeRegistry) {
         let mut ids = frame.hud_elem_sound_ids();
         if let Some(s) = frame.hud_elem_slots_mut().get_mut(slot) {
             crate::hudelem::set_pulse_fx(&mut s.elem, now, letter, start, decay, &mut ids);
+            s.elem.flags |= flags::COD7_DECODE;
         }
         frame.set_hud_elem_sound_ids(ids);
         Ok(Value::Undefined)

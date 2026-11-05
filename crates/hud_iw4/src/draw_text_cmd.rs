@@ -66,6 +66,8 @@ pub struct GfxCmdDrawTextFx {
     pub fx: TextPulseFx,
     pub fx_material: u32,
     pub fx_material_glow: u32,
+    /// Black Ops' COD7 decode (its text command's flag 0x10000).
+    pub decode: bool,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -157,6 +159,9 @@ pub fn add_cmd_draw_text(
     let mut flags = draw_text_render_flags(args.style);
     if let Some(fx) = args.fx.filter(|fx| fx.fx.birth_time != 0) {
         flags |= FX_DECODE_RENDERFLAGS;
+        if fx.decode {
+            flags |= crate::text_fx::TEXT_RENDERFLAG_COD7_DECODE;
+        }
         write_i32(
             buf,
             start + GFX_CMD_DRAW_TEXT_FX_BIRTH_TIME,
@@ -218,6 +223,7 @@ pub fn parse_gfx_cmd_draw_text(cmd: &[u8]) -> Option<GfxCmdDrawText2D<'_>> {
             },
             fx_material: read_u32(cmd, GFX_CMD_DRAW_TEXT_FX_MATERIAL)?,
             fx_material_glow: read_u32(cmd, GFX_CMD_DRAW_TEXT_FX_MATERIAL_GLOW)?,
+            decode: render_flags & crate::text_fx::TEXT_RENDERFLAG_COD7_DECODE != 0,
         })
     };
     Some(GfxCmdDrawText2D {
