@@ -91,6 +91,8 @@ pub(crate) struct T5HudState<'a> {
     pub rank_scores: Vec<i32>,
     /// The local player's score, kills and deaths.
     pub own_stats: [i32; 3],
+    /// The local player's ping as the server measures it.
+    pub own_ping: i32,
     /// The name of the player in view (the followed one for a spectator).
     pub view_name: String,
     /// Each client's team and whether it is alive.
@@ -649,6 +651,7 @@ impl ExprHost for T5HudHost<'_, '_> {
             "score" => Ok(Operand::Int(score)),
             "kills" => Ok(Operand::Int(kills)),
             "deaths" => Ok(Operand::Int(deaths)),
+            "ping" => Ok(Operand::Int(self.state.own_ping)),
             "name" => Ok(Operand::Str(self.state.view_name.clone())),
             // The first of the players on the local player's score.
             "place" => {

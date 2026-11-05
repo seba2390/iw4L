@@ -570,7 +570,7 @@ Each open section names the issue that works it.
       guided weapon's view; with no guided entity, only while the clip is
       empty or the sights are up); the guided entity's field is taken as
       none, as bits 28 and 50 take it, and a turret's own guided weapon is
-      not read (never one). `player()` answers `score`, `kills`, `deaths` and `place`; its
+      not read (never one). `player()` answers `score`, `kills`, `deaths`, `place` and `ping`; its
       other fields are not answered.
 - [ ] **V** The compass (`compass_old`) draws its map, the player's
       arrow, the enemies the radar shows (170), the teammates (158), the
