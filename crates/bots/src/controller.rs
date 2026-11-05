@@ -1377,8 +1377,7 @@ impl HostController {
         let next = if obs.tuning.is_some()
             && let Some(graph) = nav.filter(|graph| !graph.is_empty())
         {
-            // Black Ops' bot with nothing to do paths to a random path node
-            // (873080).
+            // Black Ops' bot with nothing to do paths to a random path node.
             let roll = self.roll_unit();
             nav::random_node(graph, roll)
         } else if let Some(graph) = nav.filter(|graph| !graph.is_empty()) {
