@@ -715,11 +715,11 @@ Each open section names the issue that works it.
       1); a bot walks the route to a target it sees rather than straight
       along its view; the strafe's blocked test is a 32-unit hull trace in
       the strafe's direction (the engine traces the bot's predicted move);
-      the engine's traversal handling (flags 0x380, 874080's jump and use
-      presses) and its stuck rule (873080: a bot not moving drops its path)
+      the engine's traversal handling (flags 0x380, its jump and use
+      presses) and its stuck rule (a bot not moving drops its path)
       are IW4L's own unstick; the sights' "all the way up" is the bot's
       sights hold; a dead target is not walked to while kept. Grenades
-      (`sv_botAllowGrenades`, 874710) and the weapon choice (871f30) are not
+      (`sv_botAllowGrenades`) and the weapon choice are not
       ported (#913). How they react,
       fire and aim is Black Ops' own once `_bot.gsc` has set its `sv_bot*`
       dvars by difficulty (#870): a target inside `sv_botCloseDistance` is shot
@@ -754,7 +754,7 @@ Each open section names the issue that works it.
       route's goal in a straight line; the engine's traversal check before
       both (flags 0x380) is not read; a crouching bot does not sprint. Not
       read: a weapon field that stops the bot while it aims (variant +0x8c),
-      and the sprint rule's weapon-state and 870a90 gates. The target is Black Ops' own choice (#870):
+      and the sprint rule's weapon-state gate and one more not read. The target is Black Ops' own choice (#870):
       a dead target is kept `sv_botMinDeathTime` to `sv_botMaxDeathTime`; with
       none the bot takes the first enemy it sees by client number; with one it
       looks again only when the target died or is at least
@@ -778,7 +778,7 @@ Each open section names the issue that works it.
       in sight; an empty clip is reloaded or the weapon changed by IW4L's
       rule, as before (the game's own reload on an empty trigger). A script's
       goal (`setscriptgoal`, heard as `goal` on arrival) waits while the bot
-      sees its target or saw it in the last 5 s (873080, 872ec0); on the way
+      sees its target or saw it in the last 5 s; on the way
       it shoots what it sees without leaving the route (IW4L's own rule).
       `pressusebutton`/`pressattackbutton` reach its command. `bad_path` is
       IW4L's own rule, once a goal: no route, stuck, or within the goal's
