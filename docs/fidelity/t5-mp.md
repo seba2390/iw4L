@@ -699,17 +699,23 @@ Each open section names the issue that works it.
       `sv_botMaxFireTime`; the trigger goes down wherever the view is; the aim
       leads the target by `sv_botTargetLeadBias` server frames; each 50 ms the
       view covers the angle left times `sv_botYawSpeed` (slowed past 100°) or
-      `sv_botPitchSpeed`, times 0.05; the sight cone is `sv_botFov`. IW4L's
-      own: the aimed height (Black Ops holds a pitch, rolled between a target's
-      feet and eyes every `sv_botMinPitchTime` to `sv_botMaxPitchTime`, a third
-      of the way up when close by a weapon field not read) is held as a height
-      on a 60-unit-tall target. A bot aims down the sights at a target it
-      sees beyond `sv_botCloseDistance` and turns at `sv_botYawSpeedAds` and
-      `sv_botPitchSpeedAds` while it does; a press holds the sights
-      `sv_botMinAdsTime` to `sv_botMaxAdsTime` even once the bot no longer
-      wants them. Not read: the weapon fields that gate the sights (a bolt
-      action or a class 5 weapon waits for a range of its own) and the
-      crouch timer's chance rolls. The target is Black Ops' own choice (#870):
+      `sv_botPitchSpeed`, times 0.05; the sight cone is `sv_botFov`. The aimed
+      height is rolled between the target's feet and eyes every
+      `sv_botMinPitchTime` to `sv_botMaxPitchTime`, from a third of the way up
+      within the weapon's `maxDamageRange`; a rocket launcher aims at the
+      feet. IW4L's own: the height is held on a 60-unit-tall target, not the
+      target's own view height, and Black Ops' feet rule for a projectile
+      weapon at a target on the ground is not read. A bot aims down the
+      sights at a target it sees beyond `sv_botCloseDistance`, with a weapon
+      that has sights and is neither dual wielded nor a shotgun, and turns at
+      `sv_botYawSpeedAds` and `sv_botPitchSpeedAds` while it does; a press
+      holds the sights `sv_botMinAdsTime` to `sv_botMaxAdsTime` even once the
+      bot no longer wants them. In a fight it closes on its target to the
+      weapon's `minDamageRange` (a dual wielded weapon or a shotgun to its
+      `maxDamageRange`), by IW4L's own fight positioning; it sprints only
+      toward a goal at least `sv_botSprintDistance` away. Not read: the
+      crouch timer's chance rolls, the sprint rule's other gates, and a
+      weapon field that stops the bot while it aims (variant +0x8c). The target is Black Ops' own choice (#870):
       a dead target is kept `sv_botMinDeathTime` to `sv_botMaxDeathTime`; with
       none the bot takes the first enemy it sees by client number; with one it
       looks again only when the target died or is at least
@@ -718,12 +724,18 @@ Each open section names the issue that works it.
       target 500 ms: to an enemy both nearer and more centred, else three
       times in four while its target is a player and not a bot, else half the
       time to one nearer, else half the time to one more centred; otherwise
-      the 500 ms start again. IW4L's own there: the bot measures its target
-      where it last saw it (the engine measures it wherever it is) and drops
-      it when its memory forgets it (4 s unseen); a target it does not see is
-      not fought; Black Ops' switch to the bot's attacker (bot fields
-      +0x424/+0x428, set where not traced) is not ported. Not ported:
-      crouching, strafing, grenades, sprint and melee distances. A script's goal
+      the 500 ms start again; a target out of sight for 10 s is dropped.
+      IW4L's own there: the bot measures its target where it last saw it (the
+      engine measures it wherever it is); a target it does not see is not
+      fought; Black Ops' switch to the bot's attacker when hurt while its
+      target is out of sight (+0x428, set where not traced) is not ported.
+      The bots read their weapon's state from the game's own weapon rules
+      (ready, firing, reloading, switching), not the player state's stale
+      shared fields, so a bot reloads and changes weapons by them; Black Ops'
+      own reload rule (below the weapon's `lowAmmoWarningThreshold` share of
+      the clip, at once out of sight and one think in ten in sight) is not
+      ported: IW4L's bot reloads an empty clip. Not ported:
+      crouching, strafing, grenades and the melee distance. A script's goal
       (`setscriptgoal`, heard as `goal` on arrival) outranks the host bot's
       own tasks, fights included: on the way it shoots what it sees without
       leaving the route (IW4L's own rule; the engine bot code was not read).

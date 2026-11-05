@@ -2146,6 +2146,7 @@ fn bot_tuning(world: &World) -> Option<crate::BotTuning> {
         close_distance: f("sv_botclosedistance", 256.0),
         death_ms: range("sv_botmindeathtime", 500.0, "sv_botmaxdeathtime", 1000.0),
         ads_ms: range("sv_botminadstime", 1000.0, "sv_botmaxadstime", 1500.0),
+        sprint_distance: f("sv_botsprintdistance", 512.0),
     })
 }
 

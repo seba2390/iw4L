@@ -1121,6 +1121,12 @@ impl PlayerMovement for T5Movement {
         }
     }
 
+    fn weapon_reloading(&self, player: &MovePlayer) -> bool {
+        let mut player = *player;
+        let (ps, _) = unpack(&mut player);
+        movement_t5::weapon::state::is_reloading(ps.weaponstate)
+    }
+
     /// Black Ops' end of a client's server frame: a changed weapon; the end
     /// of a raise (pending from a frame raising); the firing states while
     /// alive; night vision.

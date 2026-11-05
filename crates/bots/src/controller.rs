@@ -91,6 +91,9 @@ struct BoTarget {
     dist2: f32,
     acquired_ms: i32,
     keep_until_ms: i32,
+    /// When and where the bot last saw it (0: not since it took it).
+    seen_ms: i32,
+    seen_at: [f32; 3],
 }
 
 impl HostController {
@@ -177,7 +180,7 @@ impl HostController {
     /// and more centred; else three times in four while its target is a
     /// player and not a bot; else half the time to one nearer; else half the
     /// time to one more centred. When none of that happens, the 500 ms start
-    /// again.
+    /// again. A target out of sight for 10 s is dropped.
     fn black_ops_target(&mut self, obs: &BotObservation) {
         let Some(tuning) = obs.tuning else {
             self.bo_target = None;
@@ -187,6 +190,27 @@ impl HostController {
         if obs.self_state.team == 3 {
             self.bo_target = None;
             return;
+        }
+        if let Some(mut current) = self.bo_target
+            && let Some(contact) = self.memory.currently_seen().find(|c| c.id == current.id)
+        {
+            current.seen_ms = now;
+            current.seen_at = contact.origin;
+            self.bo_target = Some(current);
+        }
+        // A target out of sight for 10 s (since it was last seen, or since
+        // it was taken) is dropped.
+        if self.bo_target.is_some_and(|t| {
+            t.seen_ms != now
+                && now
+                    - if t.seen_ms == 0 {
+                        t.acquired_ms
+                    } else {
+                        t.seen_ms
+                    }
+                    > 10_000
+        }) {
+            self.bo_target = None;
         }
         if self
             .bo_target
@@ -204,20 +228,9 @@ impl HostController {
             }
             if !dead {
                 // The engine measures its target wherever it is; the host
-                // measures it where the bot last saw it, and forgets it with
-                // the bot's memory.
-                match self
-                    .memory
-                    .currently_seen()
-                    .chain(self.memory.last_seen())
-                    .find(|c| c.id == current.id)
-                {
-                    Some(contact) => {
-                        (current.dot, current.dist2) = Self::measure(obs, contact.origin);
-                        self.bo_target = Some(current);
-                    }
-                    None => self.bo_target = None,
-                }
+                // measures it where the bot last saw it.
+                (current.dot, current.dist2) = Self::measure(obs, current.seen_at);
+                self.bo_target = Some(current);
             }
         }
         let close2 = tuning.close_distance * tuning.close_distance;
@@ -238,6 +251,8 @@ impl HostController {
                     dist2,
                     acquired_ms: now,
                     keep_until_ms: 0,
+                    seen_ms: now,
+                    seen_at: first.origin,
                 });
             }
             return;
@@ -256,6 +271,8 @@ impl HostController {
                 dist2,
                 acquired_ms: now,
                 keep_until_ms: 0,
+                seen_ms: now,
+                seen_at: contact.origin,
             };
             if dist2 < close2 {
                 self.bo_target = Some(take);
@@ -324,7 +341,24 @@ impl HostController {
         };
         if obs.time_ms >= self.aim_hold_until_ms {
             let roll = self.roll_ms((0, 1000)) as f32 / 1000.0;
-            self.aim_height = roll * TARGET_EYE_HEIGHT;
+            // Within the weapon's `maxDamageRange` the roll starts a third of
+            // the way up; a rocket launcher aims at the feet.
+            let facts = obs
+                .held()
+                .map_or(crate::observation::WeaponFacts::default(), |slot| {
+                    slot.facts
+                });
+            let range = facts.max_damage_range as f32;
+            let low = if dist2(obs.self_state.origin, target.origin) < range * range {
+                TARGET_EYE_HEIGHT / 3.0
+            } else {
+                0.0
+            };
+            self.aim_height = if facts.weap_class == WEAPON_CLASS_ROCKET_LAUNCHER {
+                0.0
+            } else {
+                low + roll * (TARGET_EYE_HEIGHT - low)
+            };
             self.aim_hold_until_ms = obs.time_ms + self.roll_ms(tuning.pitch_hold_ms);
         }
         let lead = tuning.lead_frames * TICK_MS as f32 / 1000.0;
@@ -336,11 +370,20 @@ impl HostController {
     }
 
     /// Black Ops' bot aims down the sights at a target it sees beyond
-    /// `sv_botCloseDistance`.
+    /// `sv_botCloseDistance`, with a weapon that has sights and is neither
+    /// dual wielded nor a shotgun (impact type 5).
     fn sights_on(&self, obs: &BotObservation, target: Contact) -> bool {
         obs.tuning.is_some_and(|tuning| {
             let close = tuning.close_distance;
-            dist2(obs.self_state.origin, target.origin) > close * close
+            let facts = obs
+                .held()
+                .map_or(crate::observation::WeaponFacts::default(), |slot| {
+                    slot.facts
+                });
+            facts.aim_down_sight
+                && !facts.dual_wield
+                && facts.impact_type != IMPACT_TYPE_SHOTGUN
+                && dist2(obs.self_state.origin, target.origin) > close * close
         })
     }
 
@@ -692,10 +735,12 @@ impl HostController {
             && !self.intent.fire
             && !self.intent.reload
             && !self.intent.crouch
-            && self
-                .intent
-                .move_goal
-                .is_some_and(|g| dist_xy(obs.self_state.origin, g) > 160.0);
+            && self.intent.move_goal.is_some_and(|g| {
+                // Black Ops' bot sprints only toward a goal at least
+                // `sv_botSprintDistance` away.
+                let far = obs.tuning.map_or(160.0, |tuning| tuning.sprint_distance);
+                dist_xy(obs.self_state.origin, g) > far
+            });
         // Standing clearance also fits a crouched hull. Require a shot at crouched eye height.
         if self.intent.fire
             && self.intent.move_mode == MoveMode::Hold
@@ -1188,7 +1233,22 @@ impl HostController {
             && (obs.self_state.health as f32) <= 20.0 + 20.0 * self.self_preserve
     }
 
+    /// How close the bot closes on its target. Black Ops' bot walks at it
+    /// while it is beyond the weapon's `minDamageRange`, and a dual wielded
+    /// weapon or a shotgun to its `maxDamageRange`.
     fn hold_range(&self, obs: &BotObservation) -> f32 {
+        if obs.tuning.is_some()
+            && let Some(facts) = obs.held().map(|slot| slot.facts)
+        {
+            let range = if facts.dual_wield || facts.impact_type == IMPACT_TYPE_SHOTGUN {
+                facts.max_damage_range
+            } else {
+                facts.min_damage_range
+            };
+            if range > 0 {
+                return range as f32;
+            }
+        }
         (obs.self_state.weapon_class.fight_hold() - 40.0 * self.aggression).max(48.0)
     }
 
@@ -1693,6 +1753,11 @@ const SCRIPTED_GOAL_UTILITY: f32 = 200.0;
 /// A server frame, and how far above its feet a standing target's eyes are.
 const TICK_MS: u32 = 50;
 const TARGET_EYE_HEIGHT: f32 = 60.0;
+/// Black Ops' `impactType` shotgun, and its `weaponClass` rocketlauncher
+/// (6) as the combat facts number it (the capture maps Black Ops' classes
+/// onto Modern Warfare 2's numbering).
+const IMPACT_TYPE_SHOTGUN: i32 = 5;
+const WEAPON_CLASS_ROCKET_LAUNCHER: i32 = 7;
 
 fn objective_utility(obs: &BotObservation, obj: ModeObjective, route_length: Option<f32>) -> f32 {
     let travel_ms = route_length.unwrap_or_else(|| dist2(obs.self_state.origin, obj.origin).sqrt())

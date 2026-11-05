@@ -52,7 +52,9 @@ pub fn observe_focused(
         health: ps.health,
         weapon: ps.weapon as u16,
         weapon_class: world.weapon_class(ps.weapon as u16),
-        weapon_action: WeaponAction::from_weaponstate(ps.weaponstate_primary),
+        weapon_action: world
+            .weapon_action(ps, bot)
+            .unwrap_or_else(|| WeaponAction::from_weaponstate(ps.weaponstate_primary)),
         ammo_clip: meta.ammo_clip,
         ammo_stock: meta.ammo_stock,
         team,
