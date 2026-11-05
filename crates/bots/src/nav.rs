@@ -734,6 +734,64 @@ fn link_drops(
     drops
 }
 
+/// A graph over a map's own path nodes and their walked links (Black Ops'
+/// bots path on these), each link costing its length.
+pub fn from_path_nodes(nodes: Vec<[f32; 3]>, links: &[(u16, u16, f32)], digest: u64) -> NavGraph {
+    let n = nodes.len();
+    let mut adj = vec![Vec::new(); n];
+    for &(from, to, length) in links {
+        if usize::from(from) < n
+            && usize::from(to) < n
+            && !adj[usize::from(from)].iter().any(|e: &NavEdge| e.to == to)
+        {
+            adj[usize::from(from)].push(NavEdge {
+                to,
+                cost: length,
+                kind: TraversalKind::Walk,
+            });
+        }
+    }
+    let component = label_components(n, &adj);
+    let mut component_links = vec![
+        Vec::new();
+        component
+            .iter()
+            .copied()
+            .max()
+            .map_or(0, |c| c as usize + 1)
+    ];
+    for (i, edges) in adj.iter().enumerate() {
+        for edge in edges {
+            let (a, b) = (component[i], component[edge.to as usize]);
+            if a != b && !component_links[a as usize].contains(&b) {
+                component_links[a as usize].push(b);
+            }
+        }
+    }
+    NavGraph {
+        generation: 0,
+        truncated: false,
+        digest,
+        schema: NAV_SCHEMA,
+        hull: NAV_HULL,
+        nodes,
+        component,
+        adj,
+        drops: 0,
+        component_links,
+    }
+}
+
+/// A node picked by a roll in 0..1, uniform over the graph (Black Ops' bot
+/// wanders to a random path node).
+pub fn random_node(graph: &NavGraph, roll: f32) -> Option<[f32; 3]> {
+    if graph.nodes.is_empty() {
+        return None;
+    }
+    let i = ((roll * graph.nodes.len() as f32) as usize).min(graph.nodes.len() - 1);
+    Some(graph.nodes[i])
+}
+
 fn label_components(n: usize, adj: &[Vec<NavEdge>]) -> Vec<u16> {
     let mut links = vec![Vec::new(); n];
     for (i, edges) in adj.iter().enumerate() {
