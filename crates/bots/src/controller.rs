@@ -91,6 +91,9 @@ struct BoTarget {
     dist2: f32,
     acquired_ms: i32,
     keep_until_ms: i32,
+    /// When and where the bot last saw it (0: not since it took it).
+    seen_ms: i32,
+    seen_at: [f32; 3],
 }
 
 impl HostController {
@@ -177,7 +180,7 @@ impl HostController {
     /// and more centred; else three times in four while its target is a
     /// player and not a bot; else half the time to one nearer; else half the
     /// time to one more centred. When none of that happens, the 500 ms start
-    /// again.
+    /// again. A target out of sight for 10 s is dropped.
     fn black_ops_target(&mut self, obs: &BotObservation) {
         let Some(tuning) = obs.tuning else {
             self.bo_target = None;
@@ -187,6 +190,27 @@ impl HostController {
         if obs.self_state.team == 3 {
             self.bo_target = None;
             return;
+        }
+        if let Some(mut current) = self.bo_target
+            && let Some(contact) = self.memory.currently_seen().find(|c| c.id == current.id)
+        {
+            current.seen_ms = now;
+            current.seen_at = contact.origin;
+            self.bo_target = Some(current);
+        }
+        // A target out of sight for 10 s (since it was last seen, or since
+        // it was taken) is dropped.
+        if self.bo_target.is_some_and(|t| {
+            t.seen_ms != now
+                && now
+                    - if t.seen_ms == 0 {
+                        t.acquired_ms
+                    } else {
+                        t.seen_ms
+                    }
+                    > 10_000
+        }) {
+            self.bo_target = None;
         }
         if self
             .bo_target
@@ -204,20 +228,9 @@ impl HostController {
             }
             if !dead {
                 // The engine measures its target wherever it is; the host
-                // measures it where the bot last saw it, and forgets it with
-                // the bot's memory.
-                match self
-                    .memory
-                    .currently_seen()
-                    .chain(self.memory.last_seen())
-                    .find(|c| c.id == current.id)
-                {
-                    Some(contact) => {
-                        (current.dot, current.dist2) = Self::measure(obs, contact.origin);
-                        self.bo_target = Some(current);
-                    }
-                    None => self.bo_target = None,
-                }
+                // measures it where the bot last saw it.
+                (current.dot, current.dist2) = Self::measure(obs, current.seen_at);
+                self.bo_target = Some(current);
             }
         }
         let close2 = tuning.close_distance * tuning.close_distance;
@@ -238,6 +251,8 @@ impl HostController {
                     dist2,
                     acquired_ms: now,
                     keep_until_ms: 0,
+                    seen_ms: now,
+                    seen_at: first.origin,
                 });
             }
             return;
@@ -256,6 +271,8 @@ impl HostController {
                 dist2,
                 acquired_ms: now,
                 keep_until_ms: 0,
+                seen_ms: now,
+                seen_at: contact.origin,
             };
             if dist2 < close2 {
                 self.bo_target = Some(take);
@@ -326,7 +343,11 @@ impl HostController {
             let roll = self.roll_ms((0, 1000)) as f32 / 1000.0;
             // Within the weapon's `maxDamageRange` the roll starts a third of
             // the way up; a rocket launcher aims at the feet.
-            let facts = obs.held().map(|slot| slot.facts).unwrap_or_default();
+            let facts = obs
+                .held()
+                .map_or(crate::observation::WeaponFacts::default(), |slot| {
+                    slot.facts
+                });
             let range = facts.max_damage_range as f32;
             let low = if dist2(obs.self_state.origin, target.origin) < range * range {
                 TARGET_EYE_HEIGHT / 3.0
@@ -354,7 +375,11 @@ impl HostController {
     fn sights_on(&self, obs: &BotObservation, target: Contact) -> bool {
         obs.tuning.is_some_and(|tuning| {
             let close = tuning.close_distance;
-            let facts = obs.held().map(|slot| slot.facts).unwrap_or_default();
+            let facts = obs
+                .held()
+                .map_or(crate::observation::WeaponFacts::default(), |slot| {
+                    slot.facts
+                });
             facts.aim_down_sight
                 && !facts.dual_wield
                 && facts.impact_type != IMPACT_TYPE_SHOTGUN

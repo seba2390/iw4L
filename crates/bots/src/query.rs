@@ -217,6 +217,17 @@ pub trait WorldQuery {
     fn weapon_facts(&self, _weapon: u16) -> Option<WeaponFacts> {
         None
     }
+
+    /// What the bot's weapon is doing by the game's own weapon rules, when
+    /// the match runs them (the player state's weapon fields are then not
+    /// the game's).
+    fn weapon_action(
+        &self,
+        _ps: &crate::motor::PlayerState,
+        _client: ClientId,
+    ) -> Option<crate::observation::WeaponAction> {
+        None
+    }
 }
 
 /// Counts the collision operations a composite check issues without charging
@@ -267,6 +278,14 @@ impl<W: WorldQuery> WorldQuery for Primitives<'_, W> {
 
     fn weapon_facts(&self, weapon: u16) -> Option<WeaponFacts> {
         self.world.weapon_facts(weapon)
+    }
+
+    fn weapon_action(
+        &self,
+        ps: &crate::motor::PlayerState,
+        client: ClientId,
+    ) -> Option<crate::observation::WeaponAction> {
+        self.world.weapon_action(ps, client)
     }
 }
 
@@ -356,6 +375,14 @@ impl<W: WorldQuery> WorldQuery for Budgeted<'_, W> {
     fn weapon_facts(&self, weapon: u16) -> Option<WeaponFacts> {
         self.world.weapon_facts(weapon)
     }
+
+    fn weapon_action(
+        &self,
+        ps: &crate::motor::PlayerState,
+        client: ClientId,
+    ) -> Option<crate::observation::WeaponAction> {
+        self.world.weapon_action(ps, client)
+    }
 }
 
 impl WorldQuery for SimWorld {
@@ -407,6 +434,27 @@ impl WorldQuery for SimWorld {
 
     fn weapon_class(&self, weapon: u16) -> WeaponClass {
         WeaponClass::from_script_name(self.weapon_script_name(u32::from(weapon)))
+    }
+
+    fn weapon_action(
+        &self,
+        ps: &crate::motor::PlayerState,
+        client: ClientId,
+    ) -> Option<crate::observation::WeaponAction> {
+        use crate::observation::WeaponAction;
+        let (activity, reloading) =
+            self.game_weapon_activity(&ps.move_player(client.0 as i32, false))?;
+        Some(if reloading {
+            WeaponAction::Reloading
+        } else if activity.switching {
+            WeaponAction::Raising
+        } else if activity.meleeing || activity.throwing_grenade {
+            WeaponAction::Busy
+        } else if activity.firing {
+            WeaponAction::Firing
+        } else {
+            WeaponAction::Ready
+        })
     }
 
     fn weapon_facts(&self, weapon: u16) -> Option<WeaponFacts> {

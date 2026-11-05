@@ -916,6 +916,25 @@ impl SimState {
             .as_ref()
     }
 
+    /// What a player's weapon is doing by the game's own weapon rules, and
+    /// whether it reloads; `None` when the match runs the simulation's.
+    pub fn game_weapon_activity(
+        &self,
+        player: &game_api::movement::MovePlayer,
+    ) -> Option<(game_api::movement::WeaponActivity, bool)> {
+        let mode = self.bootstrap.mode?;
+        if mode.weapons != game_api::Rule::Known(game_api::WeaponRules::Game) {
+            return None;
+        }
+        let game_api::Rule::Known(game_api::MovementRules::Game(movement)) = mode.movement else {
+            return None;
+        };
+        Some((
+            movement.weapon_activity(player),
+            movement.weapon_reloading(player),
+        ))
+    }
+
     pub fn weapon_script_name(&self, weapon: u32) -> &str {
         self.content
             .weapons()

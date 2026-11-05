@@ -804,6 +804,11 @@ pub trait PlayerMovement: Sync {
     /// test it.
     fn weapon_activity(&self, player: &MovePlayer) -> WeaponActivity;
 
+    /// Whether the player's weapon is in one of the game's reload states.
+    fn weapon_reloading(&self, _player: &MovePlayer) -> bool {
+        false
+    }
+
     /// The invalid command hint a movement signal raises for the player
     /// (no grenade, target too close, ...), by the game's number for it.
     /// This event of its own player makes the client cycle to its next

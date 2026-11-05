@@ -724,11 +724,17 @@ Each open section names the issue that works it.
       target 500 ms: to an enemy both nearer and more centred, else three
       times in four while its target is a player and not a bot, else half the
       time to one nearer, else half the time to one more centred; otherwise
-      the 500 ms start again. IW4L's own there: the bot measures its target
-      where it last saw it (the engine measures it wherever it is) and drops
-      it when its memory forgets it (4 s unseen); a target it does not see is
-      not fought; Black Ops' switch to the bot's attacker (bot fields
-      +0x424/+0x428, set where not traced) is not ported. Not ported:
+      the 500 ms start again; a target out of sight for 10 s is dropped.
+      IW4L's own there: the bot measures its target where it last saw it (the
+      engine measures it wherever it is); a target it does not see is not
+      fought; Black Ops' switch to the bot's attacker when hurt while its
+      target is out of sight (+0x428, set where not traced) is not ported.
+      The bots read their weapon's state from the game's own weapon rules
+      (ready, firing, reloading, switching), not the player state's stale
+      shared fields, so a bot reloads and changes weapons by them; Black Ops'
+      own reload rule (below the weapon's `lowAmmoWarningThreshold` share of
+      the clip, at once out of sight and one think in ten in sight) is not
+      ported: IW4L's bot reloads an empty clip. Not ported:
       crouching, strafing, grenades and the melee distance. A script's goal
       (`setscriptgoal`, heard as `goal` on arrival) outranks the host bot's
       own tasks, fights included: on the way it shoots what it sees without
