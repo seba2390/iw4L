@@ -159,6 +159,13 @@ pub trait GameQueries {
     fn intermission(&self) -> Result<i32, ExprError> {
         Err(ExprError::Host("the host does not answer isintermission"))
     }
+    /// Whether the local player flies a guided missile (Black Ops'
+    /// `isInGuidedMissile`).
+    fn in_guided_missile(&self) -> Result<i32, ExprError> {
+        Err(ExprError::Host(
+            "the host does not answer isinguidedmissile",
+        ))
+    }
     /// Whether the local client's HUD visibility bit `bit` is set.
     fn visibility_bit(&self, bit: i32) -> Result<i32, ExprError> {
         let _ = bit;

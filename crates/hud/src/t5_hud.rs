@@ -732,6 +732,30 @@ impl ExprHost for T5HudHost<'_, '_> {
     fn time_left(&self) -> Result<i32, ExprError> {
         Ok(self.state.time_left_ms)
     }
+    fn in_guided_missile(&self) -> Result<i32, ExprError> {
+        let Some(rule) = self.state.code_hud.and_then(|hud| hud.in_guided_missile) else {
+            return Ok(0);
+        };
+        let player = self
+            .state
+            .ps
+            .move_player(self.state.local_client as i32, false);
+        let view = game_api::hud::VisibilityView {
+            player: &player,
+            team: self.state.team,
+            scoreboard: self.state.scoreboard,
+            in_killcam: self.state.in_killcam,
+            following: self.state.ps.is_live_follow(),
+            ui_flags: self.state.ui_flags,
+            dvar: &|name| self.state.dvars.float(name),
+            selecting_location: self.state.selector.is_some(),
+            extra_camera: self.state.extra_camera,
+            flashbanged: self.state.vis.flashbanged,
+            ui_open: self.state.vis.ui_active,
+            weapon: self.visibility_weapon(),
+        };
+        Ok(i32::from(rule(&view)))
+    }
     fn visibility_bit(&self, bit: i32) -> Result<i32, ExprError> {
         let rule = self
             .state
