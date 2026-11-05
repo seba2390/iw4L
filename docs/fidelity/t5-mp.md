@@ -332,9 +332,8 @@ Each open section names the issue that works it.
       (`addFriendlyScrambler`) draw on the compass (owner draw 325) as
       Black Ops draws them: `compass_scrambler_large`, 1000 units each way,
       in the own-team colour, cut to the compass. Seen only with a Jammer
-      place injected by a probe; a placed Jammer was not tried. They hide
-      while an enemy counter-spy plane jams the compass, where Black Ops
-      fades them by the static's fade. The nearest enemy Jammer
+      place injected by a probe; a placed Jammer was not tried. The nearest
+      enemy Jammer
       (`setNearestEnemyScrambler`) is not kept
       (`t5.csc.nearest_enemy_scrambler`). Jamming fades the enemy icons.
 - [ ] **V** The compass radar follows every connected player the runtime's
@@ -600,9 +599,7 @@ Each open section names the issue that works it.
       not the client's interpolated one. The grid (317) is the map's own
       placement with the item's material (`map_grid_square`) tiled
       `compassGridCols` by `compassGridRows` (5 each) while
-      `compassGridEnabled` (on); it hides while an enemy counter-spy plane
-      jams the compass, where Black Ops fades it by the static's own fade
-      (not read). Owner draw 319 draws nothing in Black Ops. Dogs (147) are
+      `compassGridEnabled` (on). Owner draw 319 draws nothing in Black Ops. Dogs (147) are
       drawn only for a player with perk 39 (`reconnaissance`), which no
       class or script grants, so none show, as here. Not drawn yet: the
       killstreak vehicles and planes (154, 156; #917), turrets, guided
@@ -612,8 +609,12 @@ Each open section names the issue that works it.
       rebuilt on the client from the map's corner entities and `northyaw`
       as `_compass.gsc`'s `setupMiniMap` and `setminimap` compute it;
       Black Ops sends it (and the map's material) in a config string. The
-      compass's fade (`hud_fade_compass`, 0 by default: no fade) and the
-      static/jam fade are not applied, and the turned map is drawn by the
+      compass's fade (`hud_fade_compass`, 0 by default: no fade) is not
+      applied; the map, its grid, the player's arrow, the objectives and the
+      Jammers fade by one less the nearest enemy Jammer's amount and vanish
+      under an enemy counter-spy plane (its static then shows alone), as
+      Black Ops' draws do — seen for the counter-spy plane, not for an enemy
+      Jammer; and the turned map is drawn by the
       runtime's rotated-texture quad, not compared with Black Ops'
       renderer command. With `compassRotation` 0 the arrow would turn,
       which the runtime does not draw (a gap). The server's `setminimap`
