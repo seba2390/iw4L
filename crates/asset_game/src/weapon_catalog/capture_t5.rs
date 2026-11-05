@@ -601,6 +601,7 @@ pub(super) fn capture_t5_body_facts(
     facts.hip_reticle_side_pos = def_f32(sz::WEAPON_DEF_HIP_RETICLE_SIDE_POS_OFF);
     facts.no_ads_when_mag_empty = def_flag(sz::WEAPON_DEF_NO_ADS_WHEN_MAG_EMPTY_OFF);
     facts.aim_down_sight = def_flag(sz::WEAPON_DEF_AIM_DOWN_SIGHT_OFF);
+    facts.low_ammo_warning_threshold = def_f32(sz::WEAPON_DEF_LOW_AMMO_WARNING_THRESHOLD_OFF);
     facts.rechamber_while_ads = def_flag(sz::WEAPON_DEF_RECHAMBER_WHILE_ADS_OFF);
     facts.ads_fire_only = def_flag(sz::WEAPON_DEF_ADS_FIRE_ONLY_OFF);
     facts.no_partial_reload = def_flag(sz::WEAPON_DEF_NO_PARTIAL_RELOAD_OFF);

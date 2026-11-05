@@ -681,12 +681,12 @@ Each open section names the issue that works it.
 ## Bots (#652, #709)
 
 - [ ] **G** A bot that `_bot.gsc`'s `bot_killstreak_think` switches to a
-      killstreak item (`SwitchToWeapon`, then `waittill weapon_change`) can
-      keep holding it: seen on `mp_nuked` with a bot holding an item weapon
-      (not selectable, clip 1) for the rest of the match, firing at a target
-      664 units away with nothing coming out. This is why a bot "ADSing at
-      661 units" landed no hit (#709): it held no gun. Why the killstreak's
-      use or the fail-safe switch back does not happen is not traced.
+      killstreak item (`SwitchToWeapon`, then `waittill weapon_change`) was
+      seen once (before the bots read the game's weapon state, #911) holding
+      it for the rest of the match. Not reproduced since: on `mp_nuked`, two
+      `_bot.gsc` bots given `radar_mp` switch to the item and are back on
+      their guns about 5 s later. The other items (dogs, counter-spy plane,
+      satellite) were not tried.
 - [ ] **G** `t5.bots.host_ai`: test clients join through Black Ops' own
       `_bot.gsc` (`addtestclient`; their team and class by `menuresponse`,
       their loadout by `bot_give_loadout`), but IW4L's host bots move and
@@ -702,10 +702,11 @@ Each open section names the issue that works it.
       `sv_botPitchSpeed`, times 0.05; the sight cone is `sv_botFov`. The aimed
       height is rolled between the target's feet and eyes every
       `sv_botMinPitchTime` to `sv_botMaxPitchTime`, from a third of the way up
-      within the weapon's `maxDamageRange`; a rocket launcher aims at the
-      feet. IW4L's own: the height is held on a 60-unit-tall target, not the
-      target's own view height, and Black Ops' feet rule for a projectile
-      weapon at a target on the ground is not read. A bot aims down the
+      within the weapon's `maxDamageRange`, on the target's own view height;
+      a rocket launcher aims at the feet, and a projectile weapon at the feet
+      of a target on the ground. IW4L's own: the rolled height is held, not
+      the pitch it gives (the engine holds the pitch), and the target's lean
+      is not added. A bot aims down the
       sights at a target it sees beyond `sv_botCloseDistance`, with a weapon
       that has sights and is neither dual wielded nor a shotgun, and turns at
       `sv_botYawSpeedAds` and `sv_botPitchSpeedAds` while it does; a press
@@ -713,9 +714,17 @@ Each open section names the issue that works it.
       bot no longer wants them. In a fight it closes on its target to the
       weapon's `minDamageRange` (a dual wielded weapon or a shotgun to its
       `maxDamageRange`), by IW4L's own fight positioning; it sprints only
-      toward a goal at least `sv_botSprintDistance` away. Not read: the
-      crouch timer's chance rolls, the sprint rule's other gates, and a
-      weapon field that stops the bot while it aims (variant +0x8c). The target is Black Ops' own choice (#870):
+      toward a goal at least `sv_botSprintDistance` away. It crouches by
+      Black Ops' two rules and holds it `sv_botMinCrouchTime` to
+      `sv_botMaxCrouchTime`: one frame in twenty within
+      `sv_botCrouchDistance` of its path's end (short of its script goal),
+      with the sights' hold one of those in five; and once it has not moved
+      along its view for 250 ms with its target out of sight, on a path,
+      short of its script goal. IW4L's own there: the path's end is the
+      route's goal in a straight line; the engine's traversal check before
+      both (flags 0x380) is not read; a crouching bot does not sprint. Not
+      read: the sprint rule's other gates, and a weapon field that stops the
+      bot while it aims (variant +0x8c). The target is Black Ops' own choice (#870):
       a dead target is kept `sv_botMinDeathTime` to `sv_botMaxDeathTime`; with
       none the bot takes the first enemy it sees by client number; with one it
       looks again only when the target died or is at least
@@ -727,15 +736,19 @@ Each open section names the issue that works it.
       the 500 ms start again; a target out of sight for 10 s is dropped.
       IW4L's own there: the bot measures its target where it last saw it (the
       engine measures it wherever it is); a target it does not see is not
-      fought; Black Ops' switch to the bot's attacker when hurt while its
-      target is out of sight (+0x428, set where not traced) is not ported.
-      The bots read their weapon's state from the game's own weapon rules
-      (ready, firing, reloading, switching), not the player state's stale
-      shared fields, so a bot reloads and changes weapons by them; Black Ops'
-      own reload rule (below the weapon's `lowAmmoWarningThreshold` share of
-      the clip, at once out of sight and one think in ten in sight) is not
-      ported: IW4L's bot reloads an empty clip. Not ported:
-      crouching, strafing, grenades and the melee distance. A script's goal
+      fought. A bot hit in the last 480 ms (the engine's `damageCount`; the
+      host sees its health fall) drops a dead target at once and, when it
+      looks while its own target is out of sight, takes the live player
+      `_bot.gsc`'s damage callback named with `SetAttacker`; the engine
+      forgets that attacker once it is its target or gone. The bots read
+      their weapon's state from the game's own weapon rules (ready, firing,
+      reloading, switching), not the player state's stale shared fields, so
+      a bot reloads and changes weapons by them. A bot presses reload once
+      its clip is down to the weapon's `lowAmmoWarningThreshold` share of the
+      clip size, at once with its target out of sight and one frame in ten
+      in sight; an empty clip is reloaded or the weapon changed by IW4L's
+      rule, as before (the game's own reload on an empty trigger). Not
+      ported: strafing, grenades and the melee distance. A script's goal
       (`setscriptgoal`, heard as `goal` on arrival) outranks the host bot's
       own tasks, fights included: on the way it shoots what it sees without
       leaving the route (IW4L's own rule; the engine bot code was not read).

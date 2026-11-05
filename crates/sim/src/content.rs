@@ -145,6 +145,7 @@ fn hash_combat(h: &mut Digest, combat: &[WeaponCombatFacts]) {
         h.f32(row.hip_spread_prone_decay);
         h.f32(row.ads_spread);
         h.bool(row.aim_down_sight);
+        h.f32(row.low_ammo_warning_threshold);
         h.bool(row.no_ads_when_mag_empty);
         h.i32(row.ads_reload_trans_time_ms);
         h.bool(row.can_hold_breath);

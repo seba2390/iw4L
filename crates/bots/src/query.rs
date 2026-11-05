@@ -474,6 +474,8 @@ impl WorldQuery for SimWorld {
             max_damage_range: facts.max_damage_range as i32,
             min_damage_range: facts.min_damage_range as i32,
             aim_down_sight: facts.aim_down_sight,
+            low_ammo_clip: (facts.clip_size.min(999) as f32 * facts.low_ammo_warning_threshold)
+                .floor() as i32,
             dual_wield: facts.dual_wield,
             weap_type: facts.weap_type,
             weap_class: facts.weap_class,

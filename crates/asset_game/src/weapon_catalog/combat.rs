@@ -97,6 +97,7 @@ fn captured_input(f: WeaponBodyFacts, melee_charge_anim: bool) -> CapturedCombat
         hip_spread_prone_decay: f.hip_spread_prone_decay,
         ads_spread: f.ads_spread,
         aim_down_sight: f.aim_down_sight,
+        low_ammo_warning_threshold: f.low_ammo_warning_threshold,
         no_ads_when_mag_empty: f.no_ads_when_mag_empty,
         ads_reload_trans_time_ms: f.ads_reload_trans_time_ms,
         ads_in_rate: f.ads_in_rate,

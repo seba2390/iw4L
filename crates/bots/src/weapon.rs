@@ -89,7 +89,14 @@ impl WeaponSkill {
 
     /// One decision slice. `allow_start` is the caller's veto: an interaction
     /// close to completion is not displaced merely because a magazine is empty.
-    pub fn update(&mut self, obs: &BotObservation, allow_start: bool) -> WeaponStatus {
+    /// `press_reload` is a reload the caller's own rules ask for with rounds
+    /// still in the clip.
+    pub fn update(
+        &mut self,
+        obs: &BotObservation,
+        allow_start: bool,
+        press_reload: bool,
+    ) -> WeaponStatus {
         if let Some(mut commitment) = self.commitment {
             let outcome = commitment.progress(obs);
             self.commitment = Some(commitment);
@@ -108,7 +115,7 @@ impl WeaponSkill {
         if !allow_start || obs.tick < self.retry_after_tick {
             return self.status;
         }
-        let Some(act) = choose(obs) else {
+        let Some(act) = choose(obs, press_reload) else {
             return self.status;
         };
         self.commitment = Some(Commitment::begin(act, obs));
@@ -205,15 +212,20 @@ fn held_slot(obs: &BotObservation) -> WeaponSlot {
 /// Combat equipment needs attention when the held magazine is empty. Reloading
 /// and switching are then compared on the simulator's own timings, with a
 /// visible threat deciding whether speed outranks keeping the current gun.
-fn choose(obs: &BotObservation) -> Option<WeaponAct> {
+fn choose(obs: &BotObservation, press_reload: bool) -> Option<WeaponAct> {
     let me = &obs.self_state;
-    if !me.weapon_action.is_settled() || me.ammo_clip > 0 {
+    if !me.weapon_action.is_settled() {
         return None;
     }
     let held = held_slot(obs);
     // An offhand or an item in hand is not a readiness decision.
     if obs.held().is_some_and(|slot| !slot.facts.selectable) {
         return None;
+    }
+    if me.ammo_clip > 0 {
+        // A press with no rounds to load does nothing in the game.
+        return (press_reload && me.ammo_stock > 0 && me.ammo_clip < held.facts.clip_size)
+            .then_some(WeaponAct::Reload);
     }
     let reload_ms = (me.ammo_stock > 0).then(|| held.reload_ms());
     let switch = obs

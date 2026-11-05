@@ -1601,7 +1601,6 @@ fn register_entity(registry: &mut NativeRegistry) {
         "setowner" => "owner",
         "setentityowner" => "owner",
         "setteam" => "team",
-        "setattacker" => "attacker",
     );
     registry.register(Method, "clearentityowner", |world, receiver, _| {
         let id = super::engine::entity_id(world, receiver)?;
@@ -2095,6 +2094,8 @@ struct BotScript {
     enemy: Option<Value>,
     use_until_ms: i32,
     attack_until_ms: i32,
+    /// The player `SetAttacker` named last, and the level time it did.
+    attacker: Option<(u32, i32)>,
 }
 
 /// How far above or below a goal a bot may stand and have reached it.
@@ -2113,6 +2114,7 @@ pub(crate) fn publish_bot_orders(world: &World, snapshot: &mut crate::Snapshot) 
             goal: script.goal,
             use_until_ms: script.use_until_ms,
             attack_until_ms: script.attack_until_ms,
+            attacker: script.attacker,
         })
         .collect();
     snapshot.meta.bot_tuning = bot_tuning(world);
@@ -2147,6 +2149,18 @@ fn bot_tuning(world: &World) -> Option<crate::BotTuning> {
         death_ms: range("sv_botmindeathtime", 500.0, "sv_botmaxdeathtime", 1000.0),
         ads_ms: range("sv_botminadstime", 1000.0, "sv_botmaxadstime", 1500.0),
         sprint_distance: f("sv_botsprintdistance", 512.0),
+        crouch_distance: f("sv_botcrouchdistance", 32.0),
+        crouch_ms: range("sv_botmincrouchtime", 2000.0, "sv_botmaxcrouchtime", 4000.0),
+        strafe_chance: f("sv_botstrafechance", 0.1),
+        strafe_ms: range("sv_botminstrafetime", 3000.0, "sv_botmaxstrafetime", 6000.0),
+        melee_dist: f("sv_botmeleedist", 80.0),
+        allow_grenades: f("sv_botallowgrenades", 1.0) != 0.0,
+        grenade_ms: range(
+            "sv_botmingrenadetime",
+            500.0,
+            "sv_botmaxgrenadetime",
+            1000.0,
+        ),
     })
 }
 
@@ -2329,6 +2343,29 @@ fn register_bots(registry: &mut NativeRegistry) {
         let seconds = float(args, 0)?;
         let now = crate::level_time_ms(world.resource::<crate::step::StepRequest>().tick);
         bot_script(world, receiver)?.use_until_ms = now + (seconds * 1000.0) as i32;
+        Ok(Value::Undefined)
+    });
+    // `bot SetAttacker(ent)`: Black Ops keeps the entity on the bot for its
+    // next look for a target (bot +0x428); the host keeps a player. Another
+    // entity's is a field, as before.
+    registry.register(Method, "setattacker", |world, receiver, args| {
+        let value = arg(args, 0)?.clone();
+        if let Ok(client) = player_id(world, receiver) {
+            let now = crate::level_time_ms(world.resource::<crate::step::StepRequest>().tick);
+            let attacker = player_id(world, &value).ok().map(|id| (id, now));
+            world
+                .get_resource_or_insert_with(BotScriptState::default)
+                .into_inner()
+                .0
+                .entry(client)
+                .or_default()
+                .attacker = attacker;
+            return Ok(Value::Undefined);
+        }
+        let id = super::engine::entity_id(world, receiver)?;
+        world
+            .resource_mut::<RoundScript>()
+            .set_object_field(id, "attacker", value);
         Ok(Value::Undefined)
     });
     // `pressAttackButton()`: attack for the next command.

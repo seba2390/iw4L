@@ -2,8 +2,8 @@ use math_iw4::angle_vectors;
 use sim::{ClientId, ClientLifecycle, Snapshot};
 
 use crate::observation::{
-    BotObservation, Contact, DEFAULT_OBJECTIVE_RADIUS, KnowledgeSource, ModeObjective, SelfState,
-    Visibility, WeaponAction, WeaponSlot,
+    BotObservation, Contact, DEFAULT_OBJECTIVE_RADIUS, KnowledgeSource, ModeObjective,
+    ScriptAttacker, SelfState, Visibility, WeaponAction, WeaponSlot,
 };
 use crate::query::{QuerySubsystem, SightSample, WorldQuery};
 
@@ -45,6 +45,7 @@ pub fn observe_focused(
         id: bot,
         lifecycle: meta.lifecycle,
         origin: ps.origin,
+        velocity: ps.velocity,
         viewangles: ps.viewangles,
         delta_angles: ps.delta_angles,
         view_height: ps.view_height_current,
@@ -122,6 +123,8 @@ pub fn observe_focused(
                     id: *id,
                     origin: other.origin,
                     velocity: other.velocity,
+                    view_height: other.view_height_current,
+                    on_ground: other.ground_entity_num != crate::motor::ENTITYNUM_NONE,
                     source: KnowledgeSource::CurrentlySeen,
                     seen_tick: snapshot.tick.0,
                     confidence: 1.0,
@@ -148,6 +151,28 @@ pub fn observe_focused(
     if let Some(goal) = script_goal {
         objectives = vec![goal];
     }
+    // The player the scripts named with `SetAttacker`, where the game has it:
+    // Black Ops' bot reads the entity itself, not what it saw.
+    let attacker = snapshot
+        .meta
+        .bot_orders
+        .iter()
+        .find(|order| order.client == bot.0)
+        .and_then(|order| order.attacker)
+        .and_then(|(id, set_ms)| {
+            let id = ClientId(id);
+            let alive = snapshot
+                .meta
+                .for_client(id)
+                .is_some_and(|m| m.lifecycle == ClientLifecycle::Alive);
+            let (_, other) = snapshot.players.iter().find(|(p, _)| *p == id)?;
+            Some(ScriptAttacker {
+                id,
+                set_ms,
+                origin: other.origin,
+                alive,
+            })
+        });
     Some(BotObservation {
         tick: snapshot.tick.0,
         time_ms: snapshot.tick.0 as i32 * 50,
@@ -172,6 +197,7 @@ pub fn observe_focused(
             .map(|(id, _)| *id)
             .collect(),
         test_clients: Vec::new(),
+        attacker,
     })
 }
 

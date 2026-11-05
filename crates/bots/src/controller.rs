@@ -79,6 +79,16 @@ pub struct HostController {
     /// Black Ops' sights hold: until when, and whether they were up.
     ads_until_ms: i32,
     ads_held: bool,
+    /// The bot's health at its last look, in which life, and the level time
+    /// it last fell: Black Ops' `damageCount` stands while a hit is under
+    /// 480 ms old.
+    health_seen: Option<(sim::LifeSequence, i32)>,
+    hurt_ms: i32,
+    /// The `SetAttacker` the bot has dropped (its level time).
+    attacker_dropped_ms: i32,
+    /// Black Ops' crouch hold, and when the bot last moved along its view.
+    crouch_until_ms: i32,
+    moved_ms: i32,
 }
 
 /// The target record Black Ops' bot keeps: the client, how centred and how
@@ -135,6 +145,11 @@ impl HostController {
             bo_target: None,
             ads_until_ms: 0,
             ads_held: false,
+            health_seen: None,
+            hurt_ms: 0,
+            attacker_dropped_ms: i32::MIN,
+            crouch_until_ms: 0,
+            moved_ms: 0,
         }
     }
 
@@ -180,15 +195,33 @@ impl HostController {
     /// and more centred; else three times in four while its target is a
     /// player and not a bot; else half the time to one nearer; else half the
     /// time to one more centred. When none of that happens, the 500 ms start
-    /// again. A target out of sight for 10 s is dropped.
+    /// again. A target out of sight for 10 s is dropped. A bot hit in the
+    /// last 480 ms drops a dead target at once, and before it looks it takes
+    /// the attacker the scripts named (`SetAttacker`) while its own target is
+    /// out of sight.
     fn black_ops_target(&mut self, obs: &BotObservation) {
         let Some(tuning) = obs.tuning else {
             self.bo_target = None;
             return;
         };
         let now = obs.time_ms;
+        let health = (obs.self_state.life_sequence, obs.self_state.health);
+        if self
+            .health_seen
+            .is_some_and(|(life, old)| life == health.0 && health.1 < old)
+        {
+            self.hurt_ms = now;
+        }
+        self.health_seen = Some(health);
+        // `damageCount`: the hit is stamped 20 ms early and cleared once more
+        // than 500 ms old.
+        let hurt = self.hurt_ms != 0 && now - self.hurt_ms <= 480;
+        let attacker = obs.attacker.filter(|a| a.set_ms > self.attacker_dropped_ms);
         if obs.self_state.team == 3 {
             self.bo_target = None;
+            if let Some(a) = attacker {
+                self.attacker_dropped_ms = a.set_ms;
+            }
             return;
         }
         if let Some(mut current) = self.bo_target
@@ -211,6 +244,12 @@ impl HostController {
                     > 10_000
         }) {
             self.bo_target = None;
+        }
+        if hurt
+            && let Some(current) = self.bo_target.as_mut()
+            && current.keep_until_ms != 0
+        {
+            current.keep_until_ms = now;
         }
         if self
             .bo_target
@@ -239,6 +278,25 @@ impl HostController {
             && current.dist2 < close2
         {
             return;
+        }
+        if hurt
+            && self.bo_target.is_none_or(|t| t.seen_ms != now)
+            && let Some(a) = attacker
+        {
+            if a.alive && self.bo_target.is_none_or(|t| t.id != a.id) {
+                let (dot, dist2) = Self::measure(obs, a.origin);
+                self.bo_target = Some(BoTarget {
+                    id: a.id,
+                    dot,
+                    dist2,
+                    acquired_ms: now,
+                    keep_until_ms: 0,
+                    seen_ms: 0,
+                    seen_at: a.origin,
+                });
+                return;
+            }
+            self.attacker_dropped_ms = a.set_ms;
         }
         let mut seen: Vec<Contact> = self.memory.currently_seen().copied().collect();
         seen.sort_by_key(|c| c.id.0);
@@ -299,6 +357,84 @@ impl HostController {
         }));
     }
 
+    /// Black Ops' bot presses reload once its clip is down to the weapon's
+    /// `lowAmmoWarningThreshold` of the clip size; while it sees its target
+    /// only one think in ten does. Black Ops thinks every server frame and
+    /// the host every other, so the host rolls once for each frame since its
+    /// last think.
+    fn black_ops_reload(&mut self, obs: &BotObservation) -> bool {
+        if obs.tuning.is_none() {
+            return false;
+        }
+        let Some(facts) = obs.held().map(|slot| slot.facts) else {
+            return false;
+        };
+        if obs.self_state.ammo_clip.min(999) > facts.low_ammo_clip {
+            return false;
+        }
+        let sees_target = self.bo_target.is_some_and(|t| t.seen_ms == obs.time_ms);
+        if !sees_target {
+            return true;
+        }
+        (0..THINK_PERIOD_TICKS).any(|_| self.roll_unit() < 0.1)
+    }
+
+    /// Black Ops' bot crouches by two rules, and holds it
+    /// `sv_botMinCrouchTime` to `sv_botMaxCrouchTime` from the press. On a
+    /// path that ends nearer than `sv_botCrouchDistance`, one frame in twenty
+    /// presses crouch (unless it stands at its script goal), and one of those
+    /// in five raises the sights for their hold too. With its target out of
+    /// sight, on a path, short of its script goal and not moving along its
+    /// view for 250 ms, it crouches. Its sights stay up while their hold
+    /// lasts, whatever it is doing.
+    fn black_ops_stance(&mut self, obs: &BotObservation) {
+        let Some(tuning) = obs.tuning else {
+            return;
+        };
+        let now = obs.time_ms;
+        let (forward, _, _) = math_iw4::angle_vectors(obs.self_state.viewangles);
+        let v = obs.self_state.velocity;
+        if (v[0] * forward[0] + v[1] * forward[1] + v[2] * forward[2]).abs() > 1.0 {
+            self.moved_ms = now;
+        }
+        let held = obs.time_ms < self.crouch_until_ms;
+        let on_path = self.intent.move_mode == MoveMode::Walk && self.intent.move_goal.is_some();
+        let at_goal = obs.objective.is_some_and(|o| o.scripted && o.touching);
+        let mut start = false;
+        if on_path {
+            let end = self
+                .route_goal
+                .or(self.intent.move_goal)
+                .unwrap_or(obs.self_state.origin);
+            if dist2(obs.self_state.origin, end).sqrt() < tuning.crouch_distance {
+                for _ in 0..THINK_PERIOD_TICKS {
+                    if self.roll_unit() >= 0.05 {
+                        continue;
+                    }
+                    start |= !at_goal;
+                    if self.roll_unit() < 0.2 {
+                        if !self.ads_held {
+                            self.ads_until_ms = now + self.roll_ms(tuning.ads_ms);
+                        }
+                        self.ads_held = true;
+                    }
+                }
+            }
+        }
+        let sees_target = self.bo_target.is_some_and(|t| t.seen_ms == now);
+        if !sees_target && on_path && !at_goal && now - self.moved_ms > 249 {
+            start = true;
+        }
+        if start && !held {
+            self.crouch_until_ms = now + self.roll_ms(tuning.crouch_ms);
+        }
+        self.intent.crouch = start || now < self.crouch_until_ms;
+        self.intent.ads |= now < self.ads_until_ms;
+        if self.intent.crouch {
+            self.intent.sprint = false;
+        }
+    }
+
     /// A roll between the two, both included.
     fn roll_ms(&mut self, (low, high): (i32, i32)) -> i32 {
         self.rng ^= self.rng << 13;
@@ -332,9 +468,11 @@ impl HostController {
 
     /// Where the shot goes on a target. Black Ops' bot leads it by
     /// `sv_botTargetLeadBias` server frames and aims at a random height
-    /// between its feet and its eyes, rolled again every
-    /// `sv_botMinPitchTime` to `sv_botMaxPitchTime`; the host aims at its
-    /// chest.
+    /// between the target's feet and its own eyes (a third of its view
+    /// height up within the weapon's `maxDamageRange`), rolled again every
+    /// `sv_botMinPitchTime` to `sv_botMaxPitchTime`. A rocket launcher aims
+    /// at the feet, and a projectile weapon at the feet of a target on the
+    /// ground, unled in height. The host aims at its chest.
     fn aim_point(&mut self, obs: &BotObservation, target: Contact) -> [f32; 3] {
         let Some(tuning) = obs.tuning else {
             return [target.origin[0], target.origin[1], target.origin[2] + 48.0];
@@ -349,23 +487,35 @@ impl HostController {
                     slot.facts
                 });
             let range = facts.max_damage_range as f32;
+            let eyes = if target.view_height > 1.0 {
+                target.view_height
+            } else {
+                TARGET_EYE_HEIGHT
+            };
             let low = if dist2(obs.self_state.origin, target.origin) < range * range {
-                TARGET_EYE_HEIGHT / 3.0
+                eyes / 3.0
             } else {
                 0.0
             };
             self.aim_height = if facts.weap_class == WEAPON_CLASS_ROCKET_LAUNCHER {
                 0.0
             } else {
-                low + roll * (TARGET_EYE_HEIGHT - low)
+                low + roll * (eyes - low)
             };
             self.aim_hold_until_ms = obs.time_ms + self.roll_ms(tuning.pitch_hold_ms);
         }
         let lead = tuning.lead_frames * TICK_MS as f32 / 1000.0;
+        let projectile = obs
+            .held()
+            .is_some_and(|slot| slot.facts.weap_type == WEAPON_TYPE_PROJECTILE);
         [
             target.origin[0] + target.velocity[0] * lead,
             target.origin[1] + target.velocity[1] * lead,
-            target.origin[2] + target.velocity[2] * lead + self.aim_height,
+            if projectile && target.on_ground {
+                target.origin[2]
+            } else {
+                target.origin[2] + target.velocity[2] * lead + self.aim_height
+            },
         ]
     }
 
@@ -642,6 +792,9 @@ impl HostController {
             });
             self.task.reason = SwitchReason::ProgressLost;
             self.decision.stage = ActionStage::Approach;
+            if obs.tuning.is_some() {
+                self.black_ops_stance(obs);
+            }
             self.apply_weapon_skill(obs);
             return;
         }
@@ -741,8 +894,12 @@ impl HostController {
                 let far = obs.tuning.map_or(160.0, |tuning| tuning.sprint_distance);
                 dist_xy(obs.self_state.origin, g) > far
             });
+        if obs.tuning.is_some() {
+            self.black_ops_stance(obs);
+        }
         // Standing clearance also fits a crouched hull. Require a shot at crouched eye height.
-        if self.intent.fire
+        if obs.tuning.is_none()
+            && self.intent.fire
             && self.intent.move_mode == MoveMode::Hold
             && obs.self_state.health < 60
             && let Some(target) = self.pick_fight_target(obs)
@@ -814,7 +971,9 @@ impl HostController {
     /// outcome; movement and looking stay with the task.
     fn apply_weapon_skill(&mut self, obs: &BotObservation) {
         // An interaction already under way is not displaced by an empty magazine.
-        self.weapon.update(obs, !self.intent.use_button);
+        let press_reload = self.black_ops_reload(obs);
+        self.weapon
+            .update(obs, !self.intent.use_button, press_reload);
         self.intent.weapon = self.weapon.requested_weapon();
         self.intent.reload = self.weapon.wants_reload();
         if self.intent.weapon.is_some() {
@@ -1758,6 +1917,8 @@ const TARGET_EYE_HEIGHT: f32 = 60.0;
 /// onto Modern Warfare 2's numbering).
 const IMPACT_TYPE_SHOTGUN: i32 = 5;
 const WEAPON_CLASS_ROCKET_LAUNCHER: i32 = 7;
+/// Black Ops' `weaponType` projectile.
+const WEAPON_TYPE_PROJECTILE: i32 = 2;
 
 fn objective_utility(obs: &BotObservation, obj: ModeObjective, route_length: Option<f32>) -> f32 {
     let travel_ms = route_length.unwrap_or_else(|| dist2(obs.self_state.origin, obj.origin).sqrt())
