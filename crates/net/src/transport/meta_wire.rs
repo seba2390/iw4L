@@ -1986,6 +1986,7 @@ fn encode_client_screen(out: &mut WireWriter, screen: &sim::ClientScreen) {
         out.put_f32(xy[0]);
         out.put_f32(xy[1]);
     }
+    out.put_u8(u8::from(screen.flags_away[0]) | u8::from(screen.flags_away[1]) << 1);
     match screen.local_radar {
         None => out.put_u8(0),
         Some(xy) => {
@@ -2177,6 +2178,8 @@ fn decode_client_screen(input: &mut WireReader<'_>) -> Result<sim::ClientScreen,
     let friendly_scramblers = (0..input.get_u8()?)
         .map(|_| Ok([input.get_f32()?, input.get_f32()?]))
         .collect::<Result<Vec<_>, WireError>>()?;
+    let away = input.get_u8()?;
+    let flags_away = [away & 1 != 0, away & 2 != 0];
     let local_radar = match input.get_u8()? {
         0 => None,
         1 => Some([input.get_f32()?, input.get_f32()?]),
@@ -2199,6 +2202,7 @@ fn decode_client_screen(input: &mut WireReader<'_>) -> Result<sim::ClientScreen,
         global_scrambler,
         friendly_scramblers,
         local_radar,
+        flags_away,
     })
 }
 

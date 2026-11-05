@@ -104,6 +104,8 @@ pub(crate) struct LocalPlayerView {
     pub(crate) stocks: std::collections::BTreeMap<String, i32>,
     /// The naked vision the server last set for it, `default` before any.
     pub(crate) naked_vision: String,
+    /// It watches a killcam's replay.
+    pub(crate) in_killcam: bool,
 }
 
 /// The local client's player state from the server's world.
@@ -131,6 +133,11 @@ fn local_player_view(server: &mut World) -> LocalPlayerView {
             runtime.engine.naked_vision.as_ref().map(|v| v.name.clone())
         })
         .unwrap_or_else(|| "default".to_owned());
+    // A killcam: the scripts' seat replays the past (a live follow's
+    // archive time is 0).
+    let in_killcam = crate::script::script_seats(server)
+        .iter()
+        .any(|(client, seat)| *client == id && seat.archive_ms > 0);
     let weapon = super::host::players::script_weapon(server, 0, ps.weapon);
     let frame = crate::frame::FrameWorld::from_world(server);
     let (meleeing, throwing_grenade) = crate::game_move::weapon_activity(&frame, id)
@@ -183,6 +190,7 @@ fn local_player_view(server: &mut World) -> LocalPlayerView {
         clips,
         stocks,
         naked_vision,
+        in_killcam,
     }
 }
 
@@ -558,6 +566,8 @@ pub(crate) struct ClientOutput {
     pub(crate) alternate_aim: bool,
     /// Black Ops multiplayer's scrambler state (`_scrambler.csc`).
     pub(crate) scrambler: super::host::natives::t5_scrambler::ClientScrambler,
+    /// The CTF flags marked away (`SetFlagAsAway`): allies', axis'.
+    pub(crate) flags_away: [bool; 2],
     /// Each entity's named shader constants (`mapShaderConstant`): its
     /// number, and per slot the code constant mapped and its vector.
     pub(crate) shader_constants:
@@ -1112,6 +1122,7 @@ pub(crate) fn advance_client_scripts(server: &mut World) {
             let ui3d_windows = client.world.resource::<ClientOutput>().ui3d_windows;
             let alternate_aim = client.world.resource::<ClientOutput>().alternate_aim;
             let scrambler = client.world.resource::<ClientOutput>().scrambler.screen();
+            let flags_away = client.world.resource::<ClientOutput>().flags_away;
             let local_radar = client
                 .world
                 .resource::<ClientOutput>()
@@ -1134,6 +1145,7 @@ pub(crate) fn advance_client_scripts(server: &mut World) {
                     screen.friendly_scramblers,
                 ) = scrambler;
                 screen.local_radar = local_radar;
+                screen.flags_away = flags_away;
                 screen.script_vectors = script_vectors;
             }
             // Its screen overlays past their time stop and fade, and fades

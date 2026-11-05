@@ -47,6 +47,7 @@ const T5_FN_INKILLCAM: i32 = 38;
 const T5_FN_EMBLEMPLAYERBACKGROUNDMATERIAL: i32 = 401;
 const T5_FN_ISDEMOPLAYING: i32 = 228;
 const T5_FN_ISINGUIDEDMISSILE: i32 = 354;
+const T5_FN_GETFLAGSTATUSFORTEAM: i32 = 416;
 const T5_FN_ISDUALWIELD: i32 = 39;
 const T5_FN_ISFUELWEAPON: i32 = 40;
 const T5_FN_PLAYER: i32 = 41;
@@ -462,6 +463,16 @@ fn call(op: i32, stack: &mut Vec<Value>, host: &dyn GameQueries) -> Result<Opera
         T5_FN_ISDUALWIELD => Operand::Int(host.is_dual_wield()?),
         T5_FN_ISFUELWEAPON => Operand::Int(host.is_fuel_weapon()?),
         T5_FN_ISINGUIDEDMISSILE => Operand::Int(host.in_guided_missile()?),
+        // The axis' flag for `TEAM_AXIS` (any case), else the allies'.
+        T5_FN_GETFLAGSTATUSFORTEAM => {
+            let away = host.flag_away(&arg_str(&args()?)?)?;
+            let key = if away {
+                "OBJECTIVES_FLAG_AWAY_CAPS"
+            } else {
+                "OBJECTIVES_FLAG_HOME_CAPS"
+            };
+            Operand::Str(host.localize(&[Operand::Str(key.into())])?)
+        }
         T5_FN_PLAYER => host.player_field(&arg_str(&args()?)?)?,
         T5_FN_ADSJAVELIN => Operand::Int(i32::from(host.ads_javelin()?)),
         T5_FN_KEYBINDING => host.key_binding(&arg_str(&args()?)?)?,

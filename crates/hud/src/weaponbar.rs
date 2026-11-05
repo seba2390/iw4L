@@ -1084,6 +1084,7 @@ pub(crate) fn update_weaponbar(
             input: client_input.input.as_deref(),
             vis: client_input.vis.read(&presented, local.0),
             in_killcam: view.as_deref().is_some_and(|v| v.in_killcam()),
+            flags_away: meta.map_or([false; 2], |m| m.view_effects.client_screen.flags_away),
             ps,
             weapons: weapons.as_ref(),
             ammo,
