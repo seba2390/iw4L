@@ -42,6 +42,11 @@ pub struct ClientSnapshotMeta {
     pub kill_streak: i32,
     /// Zombies scoreboard: downs, revives, headshots.
     pub zombie_stats: [i32; 3],
+    /// Black Ops multiplayer's scoreboard: the values of the four columns
+    /// `setscoreboardcolumns` named, written when the scripts write the
+    /// player's field, and the scripts' `statusicon` material.
+    pub score_columns: [i32; 4],
+    pub status_icon: String,
     pub radar: RadarMode,
     pub radar_blocked: bool,
     /// Black Ops' player state radar levels: spy plane, satellite.

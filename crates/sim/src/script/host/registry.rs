@@ -221,6 +221,7 @@ impl NativeRegistry {
         natives::t5_perks::register(&mut self);
         natives::t5_popups::register(&mut self);
         natives::t5_radar::register(&mut self);
+        natives::t5_scoreboard::register(&mut self);
         natives::t5_stats::register(&mut self);
         natives::t5_sprint::register(&mut self);
         natives::t5_targets::register(&mut self);

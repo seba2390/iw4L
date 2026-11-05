@@ -128,6 +128,10 @@ pub struct ClientMatchState {
     pub score: i32,
     pub kill_streak: i32,
     pub zombie_stats: [i32; 3],
+    /// Black Ops multiplayer's scoreboard: the four `setscoreboardcolumns`
+    /// values and the scripts' `statusicon`.
+    pub score_columns: [i32; 4],
+    pub status_icon: String,
     pub radar: RadarMode,
     pub radar_blocked: bool,
     /// Black Ops' player state radar levels: spy plane, satellite.
@@ -253,6 +257,8 @@ impl ClientMatchState {
             deaths: self.deaths,
             kill_streak: self.kill_streak,
             zombie_stats: self.zombie_stats,
+            score_columns: self.score_columns,
+            status_icon: self.status_icon.clone(),
             radar: self.radar,
             radar_blocked: self.radar_blocked,
             radar_levels: self.radar_levels,
@@ -338,6 +344,8 @@ impl ClientMatchState {
         self.deaths = meta.deaths;
         self.kill_streak = meta.kill_streak;
         self.zombie_stats = meta.zombie_stats;
+        self.score_columns = meta.score_columns;
+        self.status_icon.clone_from(&meta.status_icon);
         self.radar = meta.radar;
         self.radar_blocked = meta.radar_blocked;
         self.radar_levels = meta.radar_levels;

@@ -1678,6 +1678,7 @@ pub(crate) fn load_field(world: &mut World, client: u32, name: &str) -> Option<V
         "downs" => Value::Int(meta?.zombie_stats[0]),
         "revives" => Value::Int(meta?.zombie_stats[1]),
         "headshots" => Value::Int(meta?.zombie_stats[2]),
+        "statusicon" => Value::String(meta?.status_icon.clone().into()),
         "sessionteam" => Value::string(team_name(meta?.client_state_team)),
         _ => return None,
     })
@@ -1726,6 +1727,23 @@ pub(crate) fn store_field(
     if let Some(field) = seat_field(world, name) {
         if let Some(slot) = world.resource_mut::<RoundScript>().players.get_mut(&client) {
             store_seat_field(&mut slot.seat, field, value)?;
+        }
+        return Ok(true);
+    }
+    if let Some(column) = super::natives::t5_scoreboard::field_column(name)
+        && let Ok(n) = int(value)
+    {
+        super::natives::t5_scoreboard::write_column(world, id, column, n);
+    }
+    if name == "statusicon" {
+        let icon = match value {
+            Value::String(icon) => icon.to_string(),
+            Value::Undefined => String::new(),
+            other => return Err(format!("statusicon takes a string, not {other:?}")),
+        };
+        let mut frame = FrameWorld::from_world(world);
+        if frame.client_meta(id).is_some() {
+            frame.client_meta_mut(id).status_icon = icon;
         }
         return Ok(true);
     }

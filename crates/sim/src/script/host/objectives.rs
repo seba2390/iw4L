@@ -203,6 +203,7 @@ pub(crate) fn publish(world: &mut World) {
                 .map(|(name, value)| (name.clone(), value.clone())),
         )
         .collect();
+    let scoreboard_columns = super::natives::t5_scoreboard::columns(world);
     let game_end_time = runtime.engine.game_end_time;
     let slow_motion = runtime.engine.slow_motion;
     let ambient = runtime.program.is_some().then(|| {
@@ -312,6 +313,7 @@ pub(crate) fn publish(world: &mut World) {
         vehicles,
         vehicle_targets,
         server_info,
+        scoreboard_columns,
         game_end_time,
         slow_motion,
         ambient,

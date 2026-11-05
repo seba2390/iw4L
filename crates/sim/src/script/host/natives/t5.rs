@@ -1726,7 +1726,6 @@ fn register_platform(registry: &mut NativeRegistry) {
         "settimescale",
         "announcement",
         "clientannouncement",
-        "setscoreboardcolumns",
         "setbombtimer",
         "reviveobituary",
         "artilleryiconlocation",

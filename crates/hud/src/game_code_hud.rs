@@ -446,8 +446,10 @@ pub(crate) struct ScoreboardFade {
 pub(crate) fn update_scoreboard(
     surface: Res<Hud2dSurface>,
     presented: Res<PresentedSnapshot>,
+    local: Res<LocalPresentClient>,
     actions: Option<Res<ClientActionInput>>,
     menus: Option<Res<SessionHudMenus>>,
+    tables: Option<Res<asset_game::MenuCatalog>>,
     strings: Option<Res<PreparedLocalizedStrings>>,
     pause: Option<Res<frame::MatchPause>>,
     clock: Res<net::FrameClock>,
@@ -456,8 +458,13 @@ pub(crate) fn update_scoreboard(
     mut fade: Local<ScoreboardFade>,
 ) {
     pass.game_scoreboard = TessJob::Hide;
-    let Some(board) = game_hud(mode.as_deref()).and_then(|hud| hud.scoreboard) else {
+    let Some(hud) = game_hud(mode.as_deref()) else {
         return;
+    };
+    let fade_ms = match (hud.team_scoreboard, hud.scoreboard) {
+        (Some(board), _) => board.fade_ms,
+        (None, Some(board)) => board.fade_ms,
+        (None, None) => return,
     };
     let Some(snap) = presented.snapshot() else {
         return;
@@ -466,7 +473,13 @@ pub(crate) fn update_scoreboard(
         return;
     }
     let now = clock.time();
-    let held = actions.as_ref().is_some_and(|a| a.client.kb.scores.active);
+    // A team board also shows through intermission.
+    let held = actions.as_ref().is_some_and(|a| a.client.kb.scores.active)
+        || (hud.team_scoreboard.is_some()
+            && snap
+                .meta
+                .for_client(local.0)
+                .is_some_and(|m| m.lifecycle == sim::ClientLifecycle::Intermission));
     // Only a release fades the board: a match starting with the key up
     // shows none.
     let alpha = if held {
@@ -481,11 +494,11 @@ pub(crate) fn update_scoreboard(
             return;
         };
         let age = now - released;
-        if age < 0 || age >= board.fade_ms || board.fade_ms <= 0 {
+        if age < 0 || age >= fade_ms || fade_ms <= 0 {
             fade.released_at = None;
             return;
         }
-        (board.fade_ms - age) as f32 / board.fade_ms as f32
+        (fade_ms - age) as f32 / fade_ms as f32
     };
     let Some(catalog) = menus.as_ref().and_then(|m| m.0.as_deref()) else {
         return;
@@ -494,9 +507,21 @@ pub(crate) fn update_scoreboard(
         catalog: Some(catalog),
         localize: strings.as_ref().map(|s| &s.0),
     };
-    let mut rows: Vec<_> = snap.meta.clients.iter().collect();
-    rows.sort_by_key(|(id, _)| id.0);
-    let list = draw_board(board, &assets, &surface, &rows, alpha);
+    let list = if let Some(board) = hud.team_scoreboard {
+        let input = crate::team_scoreboard::BoardInput {
+            snap,
+            tables: tables.as_deref(),
+            local: local.0,
+            alpha,
+        };
+        crate::team_scoreboard::draw(board, &assets, &surface, &input)
+    } else if let Some(board) = hud.scoreboard {
+        let mut rows: Vec<_> = snap.meta.clients.iter().collect();
+        rows.sort_by_key(|(id, _)| id.0);
+        draw_board(board, &assets, &surface, &rows, alpha)
+    } else {
+        None
+    };
     let Some(list) = list else {
         return;
     };

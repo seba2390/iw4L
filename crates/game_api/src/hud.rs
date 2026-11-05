@@ -24,6 +24,8 @@ pub struct GameCodeHud {
     pub damage_icons: DamageIcons,
     pub crosshair: CrosshairFn,
     pub scoreboard: Option<&'static CodeScoreboard>,
+    /// A scoreboard drawn by team; it stands in for `scoreboard` when set.
+    pub team_scoreboard: Option<&'static TeamScoreboard>,
     /// What the game's hint and message owner draws show.
     pub owner_hint: OwnerHintFn,
     /// The game's weapon info: its action slot arrows and low ammo
@@ -874,6 +876,118 @@ pub struct CodeScoreboard {
     pub footer_step: f32,
     pub footer_floor: f32,
     pub hostname: &'static str,
+}
+
+/// A scoreboard the game's executable draws by team on the virtual 640x480
+/// screen: a banner per team (its icon, score, name and player count) over
+/// its players' rows, the column titles on the first banner's line, and the
+/// host's name in a footer.
+#[derive(Debug)]
+pub struct TeamScoreboard {
+    /// The board's width and height (`cg_scoreboardWidth`,
+    /// `cg_scoreboardHeight`): centred, its top raised by `top_raise` (and
+    /// no higher than the screen's).
+    pub width: f32,
+    pub height: f32,
+    pub top_raise: f32,
+    /// The first banner's top, below the board's top.
+    pub first_banner: f32,
+    /// `cg_scoreboardBannerHeight`.
+    pub banner_height: f32,
+    /// The content's inset from the board's left, and the width it loses
+    /// against the board's.
+    pub inset: f32,
+    pub inner_trim: f32,
+    /// No banner or row is drawn past the board's bottom less this.
+    pub bottom_room: f32,
+    /// A row's height, and the gap after a row or a banner.
+    pub row_height: f32,
+    pub row_gap: f32,
+    /// The rank and status icons' size.
+    pub icon_size: f32,
+    /// `cg_scoreboardFont`; the column titles' and the banners' scales.
+    pub font: i32,
+    pub header_scale: f32,
+    pub banner_scale: f32,
+    /// A banner's team score: its font, scale and how far below the
+    /// banner's text it sits.
+    pub score_font: i32,
+    pub score_scale: f32,
+    pub score_drop: f32,
+    /// A banner's team icon is this many banner heights wide, hung left of
+    /// the content.
+    pub icon_scale: f32,
+    /// The rows' text scale; a cell's scale steps down while its text is
+    /// wider than its column, and draws without a shadow below
+    /// `plain_below`.
+    pub row_scale: f32,
+    pub scale_step: f32,
+    pub plain_below: f32,
+    /// `cg_scoreboardTextOffset`: a cell's text sits this far down the row
+    /// and the text's height.
+    pub text_offset: f32,
+    /// The local player's text (`cg_scoreboardMyColor`), the others'.
+    pub my_color: [f32; 4],
+    /// A row's back, under its team's colour at half its alpha.
+    pub row_back: [f32; 4],
+    /// The rows' colours by team: free, axis, allies, spectator.
+    pub team_colors: [[f32; 4]; 4],
+    /// The fixed columns, then a share of what is left for each named
+    /// score column, then the ping column when shown.
+    pub columns: &'static [TeamScoreColumn],
+    pub ping: Option<TeamScoreColumn>,
+    /// The score columns' titles by column type, and which types draw.
+    pub column_titles: &'static [&'static str],
+    pub column_align: ScoreAlign,
+    /// The type of column worked out from kills and deaths (`kdratio`),
+    /// and the type the client multiplies by ten (`x2score`).
+    pub ratio_column: u8,
+    pub tenfold_column: u8,
+    /// The gametype whose banners count the living players, and the
+    /// localized word after the count.
+    pub alive_gametype: &'static str,
+    pub alive_text: &'static str,
+    /// Server dvars naming each team's icon and name (free, axis, allies,
+    /// spectator); a missing name is `spectator_name`.
+    pub team_icons: [&'static str; 4],
+    pub team_names: [&'static str; 4],
+    pub spectator_name: &'static str,
+    /// The footer: the host's name at the left, its scale stepped down
+    /// from `footer_scale` by `footer_step` to no less than `footer_floor`
+    /// until it fits, centred in a band `footer_height` high whose bottom
+    /// is `footer_bottom` above the board's.
+    pub footer_height: f32,
+    pub footer_bottom: f32,
+    pub footer_scale: f32,
+    pub footer_step: f32,
+    pub footer_floor: f32,
+    pub hostname: &'static str,
+    /// The board fades out over this long once it is let go, in
+    /// milliseconds.
+    pub fade_ms: i32,
+}
+
+/// A column of a team scoreboard: what it shows, its share of the board's
+/// inner width, its localized title and its alignment.
+#[derive(Clone, Copy, Debug)]
+pub struct TeamScoreColumn {
+    pub cell: TeamScoreCell,
+    pub width: f32,
+    pub title: &'static str,
+    pub align: ScoreAlign,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum TeamScoreCell {
+    /// The rank's number and icon.
+    Rank,
+    /// The scripts' status icon.
+    Status,
+    Name,
+    /// Voice chat's icons.
+    Voice,
+    Score,
+    Ping,
 }
 
 #[derive(Clone, Copy, Debug)]
