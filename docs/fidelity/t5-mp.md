@@ -157,8 +157,13 @@ Each open section names the issue that works it.
 - [ ] **V** The use hint of a weapon on the ground (`weapon + 7` in the cursor
       hint) was not seen on screen in a run; the pick up itself was.
 - [ ] **V** `t5.csc.total_ammo`: the client's `gettotalammo` answers the
-      weapon's stock and clip; Black Ops sums the clips of every held weapon
-      that shares the weapon's ammo cap instead, which is not applied.
+      weapon's stock and clip. Black Ops (7ee930) answers the clip plus its
+      reserve (5ba900): with no shared ammo cap, the stock, or for a
+      clip-only weapon its clip again; with one, the sum over the held
+      weapons on the same cap of each distinct ammo's stock (clip-only: each
+      distinct clip). The only multiplayer caller (`_players.csc`,
+      `m1911_mp`: no shared cap, not clip-only) gets the same answer here;
+      the other branches are not ported (the cap's name is not captured).
 - [ ] **G** Lethal, tactical and equipment items (`_weaponobjects.gsc`):
       `t5.mp.launch_entity`: `launch` only reaches a missile (no base game
       script launches anything else). `t5.mp.fakefire_shots`: a decoy's burst
@@ -599,9 +604,10 @@ Each open section names the issue that works it.
       `compassGridEnabled` (on). Owner draw 319 draws nothing in Black Ops. Dogs (147) are
       drawn only for a player with perk 39 (`reconnaissance`), which no
       class or script grants, so none show, as here. Not drawn yet: the
-      killstreak vehicles and planes (154, 156; #917), turrets, guided
-      missiles, artillery (146, 148–151, 155) and the Jammer, flicker and
-      fake-fire effects (325, 312, 376). A HUD material's picture samples
+      killstreak vehicles, planes, turrets and guided missiles (146, 148,
+      154–156; #917), artillery (149–151), and the decoy's fake fire and the
+      Jammer flicker (312, 376; #923); the teammates' talk, yell and Second
+      Chance states are #924. A HUD material's picture samples
       by its texture's sampler state (wrap or clamp), as the zone has it. The map's frame is
       rebuilt on the client from the map's corner entities and `northyaw`
       as `_compass.gsc`'s `setupMiniMap` and `setminimap` compute it;
@@ -848,9 +854,19 @@ Each open section names the issue that works it.
       4.3 KB/s (about 200 bytes each); with 16 bots added (18 players) it sends
       22.4 to 24.6 KB/s, at the 25 000 bytes a second budget, which holds back
       18 to 39 % of the snapshots (11.5 to 16.4 sent a second, 1.4 to 2.0 KB
-      each, the largest 5.2 KB, about 340 entities). Black Ops' own rate
-      limits (`rate`, `sv_maxRate`, `snaps`) are not compared. Frame time with
-      18 players was recorded (a Perfetto trace) but not summarised.
+      each, the largest 5.2 KB, about 340 entities). Black Ops' own limits,
+      from `BlackOpsMP.exe`: the client's `rate` registers 25000 (1000 to
+      25000) and `snaps` 20 (1 to 30); the server takes a client's userinfo
+      `rate` (5000 when empty, held to 1000–90000) and `snaps` (20 a second
+      when empty, else 1–30), and sends at most `sv_maxRate` (registered
+      5000, 0–25000; 0 is no limit, below 1000 is raised to 1000) — so by
+      default 5000 bytes a second at 20 snapshots a second (`sv_fps` 20).
+      Whether a private match's configs raise `sv_maxRate` was not read.
+      IW4L's 25 000 bytes a second budget is its own: its snapshots are not
+      Black Ops' delta-compressed ones (about 200 bytes each with two
+      players), so Black Ops' 5000 would hold back most of them with 18
+      players. Frame time with 18 players was recorded (a Perfetto trace) but
+      not summarised.
 
 ## Closed
 
