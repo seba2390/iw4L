@@ -92,8 +92,8 @@ Each open section names the issue that works it.
 - [ ] **G** Spawn selection: the spawn influencer builtins
       (`addsphereinfluencer`, `addcylinderinfluencer`, …) and
       `_spawning.gsc`'s scoring have not run.
-- [ ] **G** `ghost`, `boundswouldtelefrag`, `testspawnpoint`, `killserver`,
-      `ban`, `endparty`, `endlobby`, `sethostmigrationstatus` are refused.
+- [ ] **G** `ghost`, `killserver`, `ban`, `endparty`, `endlobby`,
+      `sethostmigrationstatus` are refused.
 - [ ] **V** A spectator's free look (`+use`, spectate type free) is not
       verified.
 
@@ -1449,8 +1449,13 @@ Each open section names the issue that works it.
       localized string and an invalid dvar name and turns the value's
       double quotes to single ones, as Black Ops' client does.
 - [x] **G** Every base map loads and plays a Team Deathmatch to its end
-      with Black Ops' bots; the only script fault is `testspawnpoint`
-      when a bot carries a tactical insertion (#649) (#670).
+      with Black Ops' bots (#670). `testspawnpoint`, the one script fault
+      then (a bot carrying a tactical insertion), is served by the
+      multiplayer natives; the shared table's stale refusal of it,
+      `spawntimedfx` and `boundswouldtelefrag` is gone. Checked on
+      `mp_nuked`: a bot given `tactical_insertion_mp` runs
+      `_tacticalinsertion::postLoadout`'s `TestSpawnPoint` loop for 15 s with
+      no fault.
 
 - [x] **G** `spawnvehicle`, `setvehicleteam`, `boundswouldtelefrag`, Black Ops'
       `physicstrace`, and `usevehicle` on a ground vehicle (#864): an RC-XD spawns

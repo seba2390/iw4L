@@ -282,7 +282,7 @@ Each milestone names its issues; open rules are in
   - [x] On `mp_nuked`: a killcam, a final killcam and an S&D round end replay the killer's view; a dead S&D player follows a living teammate, and a player on the spectator team cycles through the players, each with the followed player's view, viewmodel and ammo. The `SPECTATING` label is `t5.hud.spectator_label` (#651).
 - [ ] Black Ops' multiplayer HUD, front end and sound (#651, #664, #668).
 - [ ] Every base map plays, with its destructibles and interactives (#669, #670).
-  - [x] Each of the 14 base maps plays a Team Deathmatch to its end with Black Ops' bots, its scripts faulting only on `testspawnpoint` when a bot carries a tactical insertion (#670).
+  - [x] Each of the 14 base maps plays a Team Deathmatch to its end with Black Ops' bots (#670); `testspawnpoint`, which faulted when a bot carried a tactical insertion, is served (checked on `mp_nuked`).
 - [ ] The multiplayer fidelity ledger ([`fidelity/t5-mp.md`](fidelity/t5-mp.md)) has no open item.
 
 ## Black Ops II — Zombies
