@@ -1374,7 +1374,13 @@ impl HostController {
         }
         self.roam_gen = self.roam_gen.saturating_add(1);
         let salt = obs.self_state.id.0 ^ self.roam_gen;
-        let next = if let Some(graph) = nav.filter(|graph| !graph.is_empty()) {
+        let next = if obs.tuning.is_some()
+            && let Some(graph) = nav.filter(|graph| !graph.is_empty())
+        {
+            // Black Ops' bot with nothing to do paths to a random path node.
+            let roll = self.roll_unit();
+            nav::random_node(graph, roll)
+        } else if let Some(graph) = nav.filter(|graph| !graph.is_empty()) {
             nav::roam_node(graph, obs.self_state.origin, salt)
         } else {
             let ang = (salt as f32) * 0.37;
