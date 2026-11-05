@@ -2146,6 +2146,8 @@ fn bot_tuning(world: &World) -> Option<crate::BotTuning> {
         fov: f("sv_botfov", 70.0),
         lead_frames: f("sv_bottargetleadbias", 0.0),
         close_distance: f("sv_botclosedistance", 256.0),
+        death_ms: range("sv_botmindeathtime", 500.0, "sv_botmaxdeathtime", 1000.0),
+        ads_ms: range("sv_botminadstime", 1000.0, "sv_botmaxadstime", 1500.0),
     })
 }
 
