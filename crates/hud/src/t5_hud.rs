@@ -131,6 +131,8 @@ pub(crate) struct T5Compass {
     pub player: Option<([f32; 2], f32)>,
     /// Where the local player's own Jammers are (`addFriendlyScrambler`).
     pub jammers: Vec<[f32; 2]>,
+    /// How much the nearest enemy Jammer jams (`setEnemyScramblerAmount`).
+    pub enemy_jam: f32,
     pub radar: Option<T5CompassRadar>,
 }
 
@@ -1781,6 +1783,17 @@ fn paint_owner(
     }
 }
 
+/// Black Ops' static fade on the compass's map, arrow, objectives and
+/// Jammers: one less the nearest enemy Jammer's amount, none while an enemy
+/// counter-spy plane jams the compass.
+fn static_alpha(compass: &T5Compass) -> f32 {
+    if compass.radar.as_ref().is_some_and(|radar| radar.jammed) {
+        0.0
+    } else {
+        (1.0 - compass.enemy_jam).max(0.0)
+    }
+}
+
 /// A compass dvar's value, or its registered default.
 fn compass_dvar(state: &T5HudState<'_>, name: &str, default: f32) -> f32 {
     state
@@ -1828,7 +1841,7 @@ fn paint_compass_map(
 
 /// The grid over the compass's map: the item's material placed like the
 /// map but tiled `compassGridCols` by `compassGridRows` across it, while
-/// `compassGridEnabled`; hidden while an enemy counter-spy plane jams it.
+/// `compassGridEnabled`; faded by the static as the map is.
 fn paint_compass_grid(
     state: &T5HudState<'_>,
     args: &OwnerDrawArgs<'_>,
@@ -1870,6 +1883,11 @@ fn paint_compass_map_material(
     let Some(compass) = state.compass.as_ref() else {
         return OwnerDrawPaint::Painted;
     };
+    // The map and its grid fade by the static; the static itself does not.
+    let mut color = args.color;
+    if turns {
+        color[3] *= static_alpha(compass);
+    }
     let Some([x, y, w, h]) = compass_rect(state, compass, args) else {
         return OwnerDrawPaint::Gap(ChromeGapKind::OwnerDraw);
     };
@@ -1918,7 +1936,7 @@ fn paint_compass_map_material(
         t0: 0.0,
         s1: 1.0,
         t1: 1.0,
-        color: args.color,
+        color,
         material,
         op: Draw2dOp::RotateSt {
             center_s: center_s * cols,
@@ -1950,6 +1968,8 @@ fn paint_compass_player(
         Ok(false) => return OwnerDrawPaint::Painted,
         Err(_) => return OwnerDrawPaint::Gap(ChromeGapKind::OwnerDraw),
     }
+    let mut color = args.color;
+    color[3] *= static_alpha(compass);
     let rotation = compass_dvar(
         state,
         "compassRotation",
@@ -1997,7 +2017,7 @@ fn paint_compass_player(
             t0: 0.0,
             s1: 1.0,
             t1: 1.0,
-            color: args.color,
+            color,
             material,
             op: Draw2dOp::RotatedPic {
                 deg: from - player_yaw,
@@ -2019,7 +2039,7 @@ fn paint_compass_player(
         y + h * 0.5 - arrow_h * 0.5,
         arrow_w,
         arrow_h,
-        args.color,
+        color,
         frame,
     );
     OwnerDrawPaint::Painted
@@ -2071,9 +2091,7 @@ fn paint_compass_jammers(
     let Some(compass) = state.compass.as_ref() else {
         return OwnerDrawPaint::Painted;
     };
-    // Black Ops fades the Jammers by the static's fade; here they hide
-    // while an enemy counter-spy plane jams the compass, as the grid does.
-    if compass.jammers.is_empty() || compass.radar.as_ref().is_some_and(|r| r.jammed) {
+    if compass.jammers.is_empty() || static_alpha(compass) <= 0.0 {
         return OwnerDrawPaint::Painted;
     }
     let Some([x, y, w, h]) = compass_rect(state, compass, args) else {
@@ -2141,7 +2159,7 @@ fn paint_compass_jammers(
             t0: (y0 - applied.y) / applied.h,
             s1: (x1 - applied.x) / applied.w,
             t1: (y1 - applied.y) / applied.h,
-            color: [r, g, b, args.color[3]],
+            color: [r, g, b, args.color[3] * static_alpha(compass)],
             material: "compass_scrambler_large".into(),
             op: Draw2dOp::StretchPic,
             provenance: Draw2dProvenance::OwnerDraw(args.item.owner_draw),
@@ -2236,7 +2254,12 @@ fn paint_full_map_player(
         t0: 0.0,
         s1: 1.0,
         t1: 1.0,
-        color: args.color,
+        color: [
+            args.color[0],
+            args.color[1],
+            args.color[2],
+            args.color[3] * static_alpha(compass),
+        ],
         material,
         op: Draw2dOp::RotatedPic {
             deg: compass.north_yaw - yaw,
@@ -2668,7 +2691,7 @@ fn paint_compass_objectives(
         } else {
             min_alpha
         };
-        alpha = alpha.min(item_alpha);
+        alpha = alpha.min(item_alpha) * static_alpha(compass);
         let [ux, uy] = compass_project(compass, rotation, max_range, h, objective.pos);
         let ([dx, dy], _) = compass_offset(compass, rotation, max_range, [w, h], objective.pos);
         let (px, py) = (cx + ux, cy + uy);
