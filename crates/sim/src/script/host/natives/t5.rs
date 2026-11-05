@@ -2029,8 +2029,6 @@ fn register_refused(registry: &mut NativeRegistry) {
         }
         super::t5_physics::launch(world, id, args)
     });
-    refused!(Function: "spawntimedfx", "boundswouldtelefrag", "testspawnpoint"
-        => "not simulated");
     refused!(Method: "launch", "fakefire",
         "revive", "docowardswayanims",
         "ghost", "teleport", "istouchingvolume", "playersighttrace",
