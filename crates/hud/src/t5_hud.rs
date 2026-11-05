@@ -129,6 +129,8 @@ pub(crate) struct T5Compass {
     /// The player's own place and yaw while the camera is elsewhere (a
     /// guided missile's), where the arrow then draws.
     pub player: Option<([f32; 2], f32)>,
+    /// Where the local player's own Jammers are (`addFriendlyScrambler`).
+    pub jammers: Vec<[f32; 2]>,
     pub radar: Option<T5CompassRadar>,
 }
 
@@ -1758,6 +1760,7 @@ fn paint_owner(
         {
             paint_compass_objectives(state, &args, frame)
         }
+        COMPASS_JAMMERS => paint_compass_jammers(state, &args, frame),
         FULL_MAP_MAP => paint_full_map(state, &args, frame),
         FULL_MAP_LOCATOR => paint_locator(state, &args, frame),
         CG_POPUP_TEXT | CG_RANK_POPUP_NAME => paint_popup_text(host, &args, frame),
@@ -2048,6 +2051,101 @@ fn menu_bits_shown(
         }
     }
     (shown, unknown)
+}
+
+/// The compass's own Jammers (BlackOpsMP.exe's second owner-draw table).
+const COMPASS_JAMMERS: i32 = 325;
+
+/// The local player's Jammers on the compass: `compass_scrambler_large`
+/// over each, as wide as the Jammer's 1000-unit reach each way, in the
+/// own-team colour (`g_TeamColor_MyTeamAlt` with `team_indicator` 3),
+/// cut to the compass's rect and held to the item's alpha.
+fn paint_compass_jammers(
+    state: &T5HudState<'_>,
+    args: &OwnerDrawArgs<'_>,
+    frame: &mut ChromeFrame,
+) -> OwnerDrawPaint {
+    let Some(compass) = state.compass.as_ref() else {
+        return OwnerDrawPaint::Painted;
+    };
+    // Black Ops fades the Jammers by the static's fade; here they hide
+    // while an enemy counter-spy plane jams the compass, as the grid does.
+    if compass.jammers.is_empty() || compass.radar.as_ref().is_some_and(|r| r.jammed) {
+        return OwnerDrawPaint::Painted;
+    }
+    let Some([x, y, w, h]) = compass_rect(state, compass, args) else {
+        return OwnerDrawPaint::Gap(ChromeGapKind::OwnerDraw);
+    };
+    let max_range = compass_dvar(state, "compassMaxRange", compass.rules.max_range);
+    let rotation = compass_dvar(
+        state,
+        "compassRotation",
+        f32::from(u8::from(compass.rules.rotation)),
+    ) != 0.0;
+    let size = h / max_range * 1000.0 * 2.0;
+    let [r, g, b] = if compass_dvar(state, "team_indicator", 0.0) as i32 == 3 {
+        state
+            .dvar("g_TeamColor_MyTeamAlt")
+            .and_then(|rgb| {
+                let mut values = rgb.split_whitespace().map(str::parse::<f32>);
+                Some([
+                    values.next()?.ok()?,
+                    values.next()?.ok()?,
+                    values.next()?.ok()?,
+                ])
+            })
+            .unwrap_or([0.509, 0.772, 0.537])
+    } else {
+        [0.509, 0.772, 0.537]
+    };
+    let namespace = args
+        .assets
+        .catalog
+        .and_then(|c| c.namespace)
+        .unwrap_or(crate::images::HUD_CHROME_NAMESPACE);
+    let clip = args.surface.apply_rect(
+        x,
+        y,
+        w,
+        h,
+        args.rect.horz_align as i32,
+        args.rect.vert_align as i32,
+    );
+    for &pos in &compass.jammers {
+        let [dx, dy] = compass_project(compass, rotation, max_range, h, pos);
+        let applied = args.surface.apply_rect(
+            x + w * 0.5 - size * 0.5 + dx,
+            y + h * 0.5 - size * 0.5 + dy,
+            size,
+            size,
+            args.rect.horz_align as i32,
+            args.rect.vert_align as i32,
+        );
+        // The scissor: the part of the icon inside the compass.
+        let (x0, y0) = (applied.x.max(clip.x), applied.y.max(clip.y));
+        let x1 = (applied.x + applied.w).min(clip.x + clip.w);
+        let y1 = (applied.y + applied.h).min(clip.y + clip.h);
+        if x1 <= x0 || y1 <= y0 || applied.w <= 0.0 || applied.h <= 0.0 {
+            continue;
+        }
+        frame.list.cmds.push(Draw2dCmd {
+            material_namespace: namespace,
+            x: x0,
+            y: y0,
+            w: x1 - x0,
+            h: y1 - y0,
+            s0: (x0 - applied.x) / applied.w,
+            t0: (y0 - applied.y) / applied.h,
+            s1: (x1 - applied.x) / applied.w,
+            t1: (y1 - applied.y) / applied.h,
+            color: [r, g, b, args.color[3]],
+            material: "compass_scrambler_large".into(),
+            op: Draw2dOp::StretchPic,
+            provenance: Draw2dProvenance::OwnerDraw(args.item.owner_draw),
+            layer: 1,
+        });
+    }
+    OwnerDrawPaint::Painted
 }
 
 /// The full map's owner draws: the map and the location selector.

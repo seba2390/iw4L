@@ -1067,6 +1067,9 @@ pub(crate) fn update_weaponbar(
                     origin: centre,
                     yaw: centre_yaw,
                     player: camera.map(|_| ([ps.origin[0], ps.origin[1]], ps.viewangles[1])),
+                    jammers: meta.map_or(Vec::new(), |m| {
+                        m.view_effects.client_screen.friendly_scramblers.clone()
+                    }),
                     radar,
                 })
             });

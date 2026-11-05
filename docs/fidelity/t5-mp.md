@@ -329,8 +329,12 @@ Each open section names the issue that works it.
       client fire ping does, and the dogs and other actors on Black Ops'
       actor list are not swept (the runtime's compass keeps no actors).
 - [ ] **V** `t5.hud.compass_jammers`: the local player's Jammers
-      (`compass_scrambler_large`, owner draw 325) are kept from
-      `addFriendlyScrambler` but not drawn; the nearest enemy Jammer
+      (`addFriendlyScrambler`) draw on the compass (owner draw 325) as
+      Black Ops draws them: `compass_scrambler_large`, 1000 units each way,
+      in the own-team colour, cut to the compass. Seen only with a Jammer
+      place injected by a probe; a placed Jammer was not tried. They hide
+      while an enemy counter-spy plane jams the compass, where Black Ops
+      fades them by the static's fade. The nearest enemy Jammer
       (`setNearestEnemyScrambler`) is not kept
       (`t5.csc.nearest_enemy_scrambler`). Jamming fades the enemy icons.
 - [ ] **V** The compass radar follows every connected player the runtime's
