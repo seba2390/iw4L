@@ -357,6 +357,8 @@ pub struct BotTuning {
     pub death_ms: (i32, i32),
     /// Once it aims down the sights, it holds them at least this long.
     pub ads_ms: (i32, i32),
+    /// It sprints only toward a goal at least this far away.
+    pub sprint_distance: f32,
 }
 
 /// A scripted turret as a client's draw reads it: Black Ops' client draws an

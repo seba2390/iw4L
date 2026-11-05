@@ -423,6 +423,13 @@ impl WorldQuery for SimWorld {
             reload_time_ms: facts.reload_time_ms,
             reload_empty_time_ms: facts.reload_empty_time_ms,
             holds_fire: matches!(facts.fire_type, 0 | 6),
+            max_damage_range: facts.max_damage_range as i32,
+            min_damage_range: facts.min_damage_range as i32,
+            aim_down_sight: facts.aim_down_sight,
+            dual_wield: facts.dual_wield,
+            weap_type: facts.weap_type,
+            weap_class: facts.weap_class,
+            impact_type: facts.impact_type,
         })
     }
 }

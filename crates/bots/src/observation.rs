@@ -148,6 +148,15 @@ pub struct WeaponFacts {
     /// The trigger is held for this weapon (full auto, or Black Ops' fire
     /// type 6) rather than pressed shot by shot.
     pub holds_fire: bool,
+    /// The ranges its damage falls off between, to the unit.
+    pub max_damage_range: i32,
+    pub min_damage_range: i32,
+    pub aim_down_sight: bool,
+    pub dual_wield: bool,
+    /// The weapon file's `weaponType`, `weaponClass` and `impactType`.
+    pub weap_type: i32,
+    pub weap_class: i32,
+    pub impact_type: i32,
 }
 
 /// One owned weapon with the ammunition the match state holds for it.
