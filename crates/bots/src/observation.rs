@@ -284,6 +284,10 @@ pub struct BotObservation {
     /// The game's own bot dvars, when its scripts set them (Black Ops'
     /// `sv_bot*`); the host's own rules otherwise.
     pub tuning: Option<sim::BotTuning>,
+    /// The clients that are not alive this tick (as a kill feed tells), and
+    /// the test clients (bots) among the players.
+    pub fallen: Vec<ClientId>,
+    pub test_clients: Vec<ClientId>,
 }
 
 impl BotObservation {

@@ -492,6 +492,7 @@ fn think_bots(mut p: ThinkBots) {
     }
 
     let snapshot = p.world.0.snapshot(Tick(p.clock.tick.saturating_sub(1)));
+    let test_clients: Vec<sim::ClientId> = p.roster.bots.iter().map(|b| b.id).collect();
     let fires = p.fire.drain();
     let mut budget = TraceBudget::new(TRACE_QUOTA);
     let mut astar = ASTAR_QUOTA;
@@ -542,11 +543,12 @@ fn think_bots(mut p: ThinkBots) {
             }
         } else if let Some(brain) = bot.brain.as_mut() {
             let mut queried = Budgeted::new(&mut p.world.0, &mut budget);
-            let Some(obs) =
+            let Some(mut obs) =
                 sensor::observe_focused(&snapshot, bot.id, &mut queried, brain.focus_target())
             else {
                 continue;
             };
+            obs.test_clients.clone_from(&test_clients);
             let started = std::time::Instant::now();
             let mut cmd = brain.drive_nav(
                 &obs,

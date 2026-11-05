@@ -680,6 +680,13 @@ Each open section names the issue that works it.
 
 ## Bots (#652, #709)
 
+- [ ] **G** A bot that `_bot.gsc`'s `bot_killstreak_think` switches to a
+      killstreak item (`SwitchToWeapon`, then `waittill weapon_change`) can
+      keep holding it: seen on `mp_nuked` with a bot holding an item weapon
+      (not selectable, clip 1) for the rest of the match, firing at a target
+      664 units away with nothing coming out. This is why a bot "ADSing at
+      661 units" landed no hit (#709): it held no gun. Why the killstreak's
+      use or the fail-safe switch back does not happen is not traced.
 - [ ] **G** `t5.bots.host_ai`: test clients join through Black Ops' own
       `_bot.gsc` (`addtestclient`; their team and class by `menuresponse`,
       their loadout by `bot_give_loadout`), but IW4L's host bots move and
@@ -698,11 +705,25 @@ Each open section names the issue that works it.
       of the way up when close by a weapon field not read) is held as a height
       on a 60-unit-tall target. A bot aims down the sights at a target it
       sees beyond `sv_botCloseDistance` and turns at `sv_botYawSpeedAds` and
-      `sv_botPitchSpeedAds` while it does; Black Ops' ADS also hangs on two
-      timers (`sv_botMinAdsTime`, `sv_botMaxAdsTime`) whose release is not
-      read, and on weapon fields not read (a bolt action or a class 5 weapon
-      waits for a range of its own). Not ported: crouching, strafing,
-      grenades, sprint and melee distances, and Black Ops' choice of target. A script's goal
+      `sv_botPitchSpeedAds` while it does; a press holds the sights
+      `sv_botMinAdsTime` to `sv_botMaxAdsTime` even once the bot no longer
+      wants them. Not read: the weapon fields that gate the sights (a bolt
+      action or a class 5 weapon waits for a range of its own) and the
+      crouch timer's chance rolls. The target is Black Ops' own choice (#870):
+      a dead target is kept `sv_botMinDeathTime` to `sv_botMaxDeathTime`; with
+      none the bot takes the first enemy it sees by client number; with one it
+      looks again only when the target died or is at least
+      `sv_botCloseDistance` away, takes a seen enemy inside that distance at
+      once, and otherwise changes at most once a look after holding its
+      target 500 ms: to an enemy both nearer and more centred, else three
+      times in four while its target is a player and not a bot, else half the
+      time to one nearer, else half the time to one more centred; otherwise
+      the 500 ms start again. IW4L's own there: the bot measures its target
+      where it last saw it (the engine measures it wherever it is) and drops
+      it when its memory forgets it (4 s unseen); a target it does not see is
+      not fought; Black Ops' switch to the bot's attacker (bot fields
+      +0x424/+0x428, set where not traced) is not ported. Not ported:
+      crouching, strafing, grenades, sprint and melee distances. A script's goal
       (`setscriptgoal`, heard as `goal` on arrival) outranks the host bot's
       own tasks, fights included: on the way it shoots what it sees without
       leaving the route (IW4L's own rule; the engine bot code was not read).

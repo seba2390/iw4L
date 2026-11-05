@@ -353,6 +353,10 @@ pub struct BotTuning {
     pub lead_frames: f32,
     /// Within this a bot fires with no reaction time.
     pub close_distance: f32,
+    /// How long it keeps a target that died before looking for another.
+    pub death_ms: (i32, i32),
+    /// Once it aims down the sights, it holds them at least this long.
+    pub ads_ms: (i32, i32),
 }
 
 /// A scripted turret as a client's draw reads it: Black Ops' client draws an
