@@ -124,7 +124,6 @@ pub fn observe_focused(
                     origin: other.origin,
                     velocity: other.velocity,
                     view_height: other.view_height_current,
-                    on_ground: other.ground_entity_num != crate::motor::ENTITYNUM_NONE,
                     source: KnowledgeSource::CurrentlySeen,
                     seen_tick: snapshot.tick.0,
                     confidence: 1.0,
@@ -198,6 +197,22 @@ pub fn observe_focused(
             .collect(),
         test_clients: Vec::new(),
         attacker,
+        positions: if snapshot.meta.bot_tuning.is_some() {
+            snapshot
+                .players
+                .iter()
+                .filter(|(id, _)| {
+                    *id != bot
+                        && snapshot
+                            .meta
+                            .for_client(*id)
+                            .is_some_and(|m| m.lifecycle == ClientLifecycle::Alive)
+                })
+                .map(|(id, other)| (*id, other.origin))
+                .collect()
+        } else {
+            Vec::new()
+        },
     })
 }
 
