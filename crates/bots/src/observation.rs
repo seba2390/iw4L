@@ -32,9 +32,8 @@ pub struct Contact {
     pub origin: [f32; 3],
     /// How fast it moved when seen; zero for a contact from memory.
     pub velocity: [f32; 3],
-    /// Its eyes above its feet, and whether it stands on something.
+    /// Its eyes above its feet.
     pub view_height: f32,
-    pub on_ground: bool,
     pub source: KnowledgeSource,
     pub seen_tick: u32,
     pub confidence: f32,

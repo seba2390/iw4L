@@ -703,8 +703,9 @@ Each open section names the issue that works it.
       height is rolled between the target's feet and eyes every
       `sv_botMinPitchTime` to `sv_botMaxPitchTime`, from a third of the way up
       within the weapon's `maxDamageRange`, on the target's own view height;
-      a rocket launcher aims at the feet, and a projectile weapon at the feet
-      of a target on the ground. IW4L's own: the rolled height is held, not
+      a rocket launcher aims at the feet. A projectile weapon aims at a
+      turret target's origin (gentity +0x150, the turret info): the host's
+      bots target players only. IW4L's own: the rolled height is held, not
       the pitch it gives (the engine holds the pitch), and the target's lean
       is not added. A bot aims down the
       sights at a target it sees beyond `sv_botCloseDistance`, with a weapon

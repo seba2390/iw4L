@@ -471,8 +471,7 @@ impl HostController {
     /// between the target's feet and its own eyes (a third of its view
     /// height up within the weapon's `maxDamageRange`), rolled again every
     /// `sv_botMinPitchTime` to `sv_botMaxPitchTime`. A rocket launcher aims
-    /// at the feet, and a projectile weapon at the feet of a target on the
-    /// ground, unled in height. The host aims at its chest.
+    /// at the feet. The host aims at its chest.
     fn aim_point(&mut self, obs: &BotObservation, target: Contact) -> [f32; 3] {
         let Some(tuning) = obs.tuning else {
             return [target.origin[0], target.origin[1], target.origin[2] + 48.0];
@@ -505,17 +504,10 @@ impl HostController {
             self.aim_hold_until_ms = obs.time_ms + self.roll_ms(tuning.pitch_hold_ms);
         }
         let lead = tuning.lead_frames * TICK_MS as f32 / 1000.0;
-        let projectile = obs
-            .held()
-            .is_some_and(|slot| slot.facts.weap_type == WEAPON_TYPE_PROJECTILE);
         [
             target.origin[0] + target.velocity[0] * lead,
             target.origin[1] + target.velocity[1] * lead,
-            if projectile && target.on_ground {
-                target.origin[2]
-            } else {
-                target.origin[2] + target.velocity[2] * lead + self.aim_height
-            },
+            target.origin[2] + target.velocity[2] * lead + self.aim_height,
         ]
     }
 
@@ -1917,8 +1909,6 @@ const TARGET_EYE_HEIGHT: f32 = 60.0;
 /// onto Modern Warfare 2's numbering).
 const IMPACT_TYPE_SHOTGUN: i32 = 5;
 const WEAPON_CLASS_ROCKET_LAUNCHER: i32 = 7;
-/// Black Ops' `weaponType` projectile.
-const WEAPON_TYPE_PROJECTILE: i32 = 2;
 
 fn objective_utility(obs: &BotObservation, obj: ModeObjective, route_length: Option<f32>) -> f32 {
     let travel_ms = route_length.unwrap_or_else(|| dist2(obs.self_state.origin, obj.origin).sqrt())

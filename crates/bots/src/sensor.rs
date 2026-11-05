@@ -124,7 +124,6 @@ pub fn observe_focused(
                     origin: other.origin,
                     velocity: other.velocity,
                     view_height: other.view_height_current,
-                    on_ground: other.ground_entity_num != crate::motor::ENTITYNUM_NONE,
                     source: KnowledgeSource::CurrentlySeen,
                     seen_tick: snapshot.tick.0,
                     confidence: 1.0,
