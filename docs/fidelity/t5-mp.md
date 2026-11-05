@@ -503,9 +503,6 @@ Each open section names the issue that works it.
       hud elements with `hidewhileremotecontrolling` (the objective icons of
       Search and Destroy, Demolition and `_gameobjects.gsc`) and selects its
       filter type 4; neither is ported.
-- [ ] **V** The compass while a Valkyrie rocket flies: the player's arrow
-      stays at the player; `BlackOpsMP.exe`'s compass was not read for this
-      case.
 
 ## Client scripts (#645)
 
@@ -851,6 +848,15 @@ Each open section names the issue that works it.
       18 players was recorded (a Perfetto trace) but not summarised.
 
 ## Closed
+
+- [x] **V** The compass while a Valkyrie rocket flies (#651): Black Ops
+      centres and turns the compass on the camera (the rocket's view), and
+      draws the player's arrow at the player's own place, turned to the
+      player's yaw and clamped to the compass's edge (not drawn off it
+      without `compassClampIcons`). The camera stays where the rocket last
+      was while the guided missile record outlives its projectile (the
+      explosion hold). Seen on `mp_nuked`: the map slides under the rocket
+      and the arrow ends clamped at the edge.
 
 - [x] **V** The compass grid (#651): owner draw 317 lays the item's
       material over the map, tiled `compassGridCols` by `compassGridRows`,
