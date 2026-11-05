@@ -3,8 +3,8 @@
 //! enemies its radar shows.
 
 use game_api::hud::{
-    CompassActor, CompassFrame, CompassPing, CompassRadar, CompassRadarLine, CompassRadarRing,
-    CompassRadarRules, CompassRadarView, CompassRules,
+    CompassActor, CompassFrame, CompassGridRules, CompassPing, CompassRadar, CompassRadarLine,
+    CompassRadarRing, CompassRadarRules, CompassRadarView, CompassRules,
 };
 use game_api::movement::MovePlayer;
 use game_api::{Unknown, unknown};
@@ -15,6 +15,14 @@ use movement_t5::state::{e_flags, e_flags2};
 pub(crate) static COMPASS: CompassRules = CompassRules {
     map_owner_draw: 159,
     player_owner_draw: 150,
+    // `compassGridEnabled` registers on, `compassGridCols` and
+    // `compassGridRows` 5 (1 to 9); owner draw 319 draws nothing.
+    grid: Some(CompassGridRules {
+        owner_draw: 317,
+        enabled: true,
+        cols: 5,
+        rows: 5,
+    }),
     size: 1.0,
     max_range: 2500.0,
     rotation: true,

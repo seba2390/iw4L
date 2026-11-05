@@ -1693,6 +1693,14 @@ fn paint_owner(
         n if state
             .compass
             .as_ref()
+            .and_then(|c| c.rules.grid)
+            .is_some_and(|grid| grid.owner_draw == n) =>
+        {
+            paint_compass_grid(state, &args, frame)
+        }
+        n if state
+            .compass
+            .as_ref()
             .is_some_and(|c| c.rules.player_owner_draw == n) =>
         {
             paint_compass_player(state, &args, frame)
@@ -1730,7 +1738,7 @@ fn paint_owner(
             match state.compass.as_ref().and_then(|c| c.radar.as_ref()) {
                 Some(radar) if radar.jammed => match background_key(&args.item.background) {
                     Some((_, material)) => {
-                        paint_compass_map_material(state, &args, material, false, frame)
+                        paint_compass_map_material(state, &args, material, false, [1.0, 1.0], frame)
                     }
                     None => OwnerDrawPaint::Gap(ChromeGapKind::MaterialExp),
                 },
@@ -1797,7 +1805,45 @@ fn paint_compass_map(
     let Some(compass) = state.compass.as_ref() else {
         return OwnerDrawPaint::Painted;
     };
-    paint_compass_map_material(state, args, compass.material.clone(), true, frame)
+    paint_compass_map_material(
+        state,
+        args,
+        compass.material.clone(),
+        true,
+        [1.0, 1.0],
+        frame,
+    )
+}
+
+/// The grid over the compass's map: the item's material placed like the
+/// map but tiled `compassGridCols` by `compassGridRows` across it, while
+/// `compassGridEnabled`; hidden while an enemy counter-spy plane jams it.
+fn paint_compass_grid(
+    state: &T5HudState<'_>,
+    args: &OwnerDrawArgs<'_>,
+    frame: &mut ChromeFrame,
+) -> OwnerDrawPaint {
+    let Some(compass) = state.compass.as_ref() else {
+        return OwnerDrawPaint::Painted;
+    };
+    let Some(grid) = compass.rules.grid else {
+        return OwnerDrawPaint::Painted;
+    };
+    if compass_dvar(
+        state,
+        "compassGridEnabled",
+        f32::from(u8::from(grid.enabled)),
+    ) == 0.0
+        || compass.radar.as_ref().is_some_and(|radar| radar.jammed)
+    {
+        return OwnerDrawPaint::Painted;
+    }
+    let Some((_, material)) = background_key(&args.item.background) else {
+        return OwnerDrawPaint::Painted;
+    };
+    let cols = compass_dvar(state, "compassGridCols", grid.cols as f32).trunc();
+    let rows = compass_dvar(state, "compassGridRows", grid.rows as f32).trunc();
+    paint_compass_map_material(state, args, material, true, [cols, rows], frame)
 }
 
 /// A material laid over the compass like its map, turned with the view
@@ -1807,6 +1853,7 @@ fn paint_compass_map_material(
     args: &OwnerDrawArgs<'_>,
     material: String,
     turns: bool,
+    [cols, rows]: [f32; 2],
     frame: &mut ChromeFrame,
 ) -> OwnerDrawPaint {
     let Some(compass) = state.compass.as_ref() else {
@@ -1863,11 +1910,11 @@ fn paint_compass_map_material(
         color: args.color,
         material,
         op: Draw2dOp::RotateSt {
-            center_s,
-            center_t,
+            center_s: center_s * cols,
+            center_t: center_t * rows,
             radius_st,
-            scale_final_s,
-            scale_final_t,
+            scale_final_s: scale_final_s * cols,
+            scale_final_t: scale_final_t * rows,
             deg,
         },
         provenance: Draw2dProvenance::OwnerDraw(args.item.owner_draw),

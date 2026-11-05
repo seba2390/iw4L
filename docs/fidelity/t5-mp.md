@@ -480,7 +480,6 @@ Each open section names the issue that works it.
       time at once. The executable clones the playing node and fades the old
       one out over the blend, so the restart pops. `move_walk`'s per-frame
       restart is ported as read; no script line sets `a.movement` to walk.
-- [ ] **G** The dog's compass icon (`compassping_dog`, with #651) is not done.
       `setflashbangimmunity` (no multiplayer script calls it) is not
       registered, so no actor is immune to `setFlashBanged`.
 - [ ] **G** `heliturretdogtrace`: the handler first retries what blocked the
@@ -592,10 +591,18 @@ Each open section names the issue that works it.
       (Closed); an objective's own size and colour (unset by the
       scripts; no builtin here sets them) are not carried, and an
       objective on an entity is placed at the server's entity origin,
-      not the client's interpolated one. Not drawn yet: the grid (317, 319),
-      the killstreak icons (helicopters, planes, dogs, turrets, tanks,
-      guided missiles, artillery: 146–156) and the Jammer, flicker and
-      fake-fire effects (325, 312, 376). The map's frame is
+      not the client's interpolated one. The grid (317) is the map's own
+      placement with the item's material (`map_grid_square`) tiled
+      `compassGridCols` by `compassGridRows` (5 each) while
+      `compassGridEnabled` (on); it hides while an enemy counter-spy plane
+      jams the compass, where Black Ops fades it by the static's own fade
+      (not read). Owner draw 319 draws nothing in Black Ops. Dogs (147) are
+      drawn only for a player with perk 39 (`reconnaissance`), which no
+      class or script grants, so none show, as here. Not drawn yet: the
+      killstreak vehicles and planes (154, 156; #917), turrets, guided
+      missiles, artillery (146, 148–151, 155) and the Jammer, flicker and
+      fake-fire effects (325, 312, 376). A HUD material's picture samples
+      by its texture's sampler state (wrap or clamp), as the zone has it. The map's frame is
       rebuilt on the client from the map's corner entities and `northyaw`
       as `_compass.gsc`'s `setupMiniMap` and `setminimap` compute it;
       Black Ops sends it (and the map's material) in a config string. The
@@ -810,6 +817,16 @@ Each open section names the issue that works it.
       18 players was recorded (a Perfetto trace) but not summarised.
 
 ## Closed
+
+- [x] **V** The compass grid (#651): owner draw 317 lays the item's
+      material over the map, tiled `compassGridCols` by `compassGridRows`,
+      while `compassGridEnabled`; 319 draws nothing in Black Ops. HUD
+      pictures now sample by their material texture's sampler state, so a
+      tiled one wraps. Seen on `mp_nuked`: faint lines turning with the map.
+- [x] **G** The dog's compass icon (#651): Black Ops draws dogs on the
+      compass (147) only for a player with perk 39 (`reconnaissance`); no
+      perk-table row and no multiplayer script grants it, so a match shows
+      none, as IW4L does.
 
 - [x] **V** `t5.hud.mp_scoreboard` (#898): TAB shows BlackOpsMP.exe's
       code-drawn scoreboard. A banner per team (the local player's team
