@@ -709,11 +709,17 @@ Each open section names the issue that works it.
       `sv_botSprintDistance` along the path, or with an empty clip in sight
       of its target when the path runs within 5° of its view. `GetThreat`
       answers the bot's own target and `GetLookaheadDist`/`GetLookaheadDir`
-      its path's distance left and direction. IW4L's own there: the paths
-      are IW4L's navigation graph and routes, not Black Ops' path nodes (a
-      wander goal is a random graph node, not a random path node of type
-      1); a bot walks the route to a target it sees rather than straight
-      along its view; the strafe's blocked test is a 32-unit hull trace in
+      its path's distance left and direction. The bots route on the map's
+      own path nodes (#709): the `Path` nodes and their walked links, each
+      node dropped to the floor, a link costing its length; a wander goal is
+      a random path node. IW4L's own there: the search is IW4L's A* over
+      those links (Black Ops' path search and its lookahead smoothing are
+      not read), the walk onto and off the graph is IW4L's, traversal links
+      (mantles, jumps) are left out, so a place reached only by one is out
+      of reach; the engine's random node also skips nodes with a field at
+      +0xa set, not read; a map with no path nodes uses IW4L's baked graph;
+      a bot walks the route to a target it sees rather than straight along
+      its view; the strafe's blocked test is a 32-unit hull trace in
       the strafe's direction (the engine traces the bot's predicted move);
       the engine's traversal handling (flags 0x380, its jump and use
       presses) and its stuck rule (a bot not moving drops its path)
