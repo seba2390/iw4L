@@ -40,6 +40,9 @@ pub struct ClientSnapshotMeta {
     pub kills: i32,
     pub deaths: i32,
     pub kill_streak: i32,
+    /// The server's measured ping for the client (Black Ops' scoreboard
+    /// ping), 0 while it has acknowledged no snapshot.
+    pub ping: i32,
     /// Zombies scoreboard: downs, revives, headshots.
     pub zombie_stats: [i32; 3],
     /// Black Ops multiplayer's scoreboard: the values of the four columns
