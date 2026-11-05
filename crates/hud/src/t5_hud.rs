@@ -1763,6 +1763,9 @@ fn paint_owner(
         COMPASS_JAMMERS => paint_compass_jammers(state, &args, frame),
         FULL_MAP_MAP => paint_full_map(state, &args, frame),
         FULL_MAP_LOCATOR => paint_locator(state, &args, frame),
+        FULL_MAP_PLAYER => paint_full_map_player(state, &args, frame),
+        FULL_MAP_FRIENDLIES => paint_full_map_pings(state, &args, frame, true),
+        FULL_MAP_ENEMIES => paint_full_map_pings(state, &args, frame, false),
         CG_POPUP_TEXT | CG_RANK_POPUP_NAME => paint_popup_text(host, &args, frame),
         // A player's emblem: Black Ops draws the image it has fetched for the
         // player's xuid from the online service, and without one, nothing.
@@ -2148,9 +2151,188 @@ fn paint_compass_jammers(
     OwnerDrawPaint::Painted
 }
 
-/// The full map's owner draws: the map and the location selector.
+/// The full map's owner draws (BlackOpsMP.exe's third owner-draw table):
+/// the map, the location selector, the player's arrow, the teammates and
+/// the enemies the radar shows. Each runs the compass draw's code with the
+/// full map's type.
 const FULL_MAP_MAP: i32 = 181;
+const FULL_MAP_PLAYER: i32 = 183;
+const FULL_MAP_FRIENDLIES: i32 = 185;
 const FULL_MAP_LOCATOR: i32 = 186;
+const FULL_MAP_ENEMIES: i32 = 188;
+
+/// A place on the full map, from the rect's centre: the map's own
+/// placement (north up), held at the rect's edge when off it.
+fn full_map_offset(compass: &T5Compass, [w, h]: [f32; 2], pos: [f32; 2]) -> ([f32; 2], bool) {
+    let map = compass.frame;
+    let [n0, n1] = map.north;
+    let [width, height] = map.size;
+    if width <= 0.0 || height <= 0.0 {
+        return ([0.0, 0.0], true);
+    }
+    let dx = pos[0] - map.upper_left[0];
+    let dy = pos[1] - map.upper_left[1];
+    let mut p = [
+        w * ((n1 * dx - n0 * dy) / width - 0.5),
+        h * ((-(n1 * dy) - n0 * dx) / height - 0.5),
+    ];
+    let mut clamped = false;
+    for (axis, half) in [(0, w * 0.5), (1, h * 0.5)] {
+        if p[axis].abs() > half {
+            let k = half / p[axis].abs();
+            p = [p[0] * k, p[1] * k];
+            clamped = true;
+        }
+    }
+    (p, clamped)
+}
+
+/// The player's arrow on the full map: `cg_hudMapPlayerWidth` by
+/// `cg_hudMapPlayerHeight` at the camera's place, turned from north to the
+/// player's yaw; with the camera elsewhere (a guided missile) at the
+/// player's own place.
+fn paint_full_map_player(
+    state: &T5HudState<'_>,
+    args: &OwnerDrawArgs<'_>,
+    frame: &mut ChromeFrame,
+) -> OwnerDrawPaint {
+    let Some(compass) = state.compass.as_ref() else {
+        return OwnerDrawPaint::Painted;
+    };
+    let player = state.ps.move_player(state.local_client as i32, false);
+    match (compass.rules.player_arrow)(&player) {
+        Ok(true) => {}
+        Ok(false) => return OwnerDrawPaint::Painted,
+        Err(_) => return OwnerDrawPaint::Gap(ChromeGapKind::OwnerDraw),
+    }
+    let Some([x, y, w, h]) = full_map_rect(state, compass, args) else {
+        return OwnerDrawPaint::Gap(ChromeGapKind::OwnerDraw);
+    };
+    let Some((namespace, material)) = background_key(&args.item.background) else {
+        return OwnerDrawPaint::Gap(ChromeGapKind::MaterialExp);
+    };
+    let arrow_w = compass_dvar(state, "cg_hudMapPlayerWidth", 20.0);
+    let arrow_h = compass_dvar(state, "cg_hudMapPlayerHeight", 20.0);
+    let (place, yaw) = compass.player.unwrap_or((compass.origin, compass.yaw));
+    let ([dx, dy], clamped) = full_map_offset(compass, [w, h], place);
+    if clamped && compass.player.is_some() && compass_dvar(state, "compassClampIcons", 1.0) == 0.0 {
+        return OwnerDrawPaint::Painted;
+    }
+    let applied = args.surface.apply_rect(
+        x + w * 0.5 - arrow_w * 0.5 + dx,
+        y + h * 0.5 - arrow_h * 0.5 + dy,
+        arrow_w,
+        arrow_h,
+        args.rect.horz_align as i32,
+        args.rect.vert_align as i32,
+    );
+    frame.list.cmds.push(Draw2dCmd {
+        material_namespace: namespace,
+        x: applied.x,
+        y: applied.y,
+        w: applied.w,
+        h: applied.h,
+        s0: 0.0,
+        t0: 0.0,
+        s1: 1.0,
+        t1: 1.0,
+        color: args.color,
+        material,
+        op: Draw2dOp::RotatedPic {
+            deg: compass.north_yaw - yaw,
+        },
+        provenance: Draw2dProvenance::OwnerDraw(args.item.owner_draw),
+        layer: 1,
+    });
+    OwnerDrawPaint::Painted
+}
+
+/// The teammates (`friendlies`) or the enemies the radar shows on the full
+/// map: each `cg_hudMapFriendlyWidth` by `cg_hudMapFriendlyHeight` at its
+/// place, turned from north rather than from the view.
+fn paint_full_map_pings(
+    state: &T5HudState<'_>,
+    args: &OwnerDrawArgs<'_>,
+    frame: &mut ChromeFrame,
+    friendlies: bool,
+) -> OwnerDrawPaint {
+    let Some(compass) = state.compass.as_ref() else {
+        return OwnerDrawPaint::Painted;
+    };
+    let Some(radar) = compass.radar.as_ref() else {
+        return OwnerDrawPaint::Painted;
+    };
+    let Some([x, y, w, h]) = full_map_rect(state, compass, args) else {
+        return OwnerDrawPaint::Gap(ChromeGapKind::OwnerDraw);
+    };
+    let icon_w = compass_dvar(state, "cg_hudMapFriendlyWidth", 15.0);
+    let icon_h = compass_dvar(state, "cg_hudMapFriendlyHeight", 15.0);
+    let rotation = compass_dvar(
+        state,
+        "compassRotation",
+        f32::from(u8::from(compass.rules.rotation)),
+    ) != 0.0;
+    // The pings' turns are from the compass's facing; the full map faces
+    // north.
+    let refacing = if rotation {
+        compass.north_yaw - compass.yaw
+    } else {
+        0.0
+    };
+    let clamp_icons = compass_dvar(state, "compassClampIcons", 1.0) != 0.0;
+    let namespace = args
+        .assets
+        .catalog
+        .and_then(|c| c.namespace)
+        .unwrap_or(crate::images::HUD_CHROME_NAMESPACE);
+    let pings = if friendlies {
+        &radar.friendlies
+    } else {
+        &radar.pings
+    };
+    for ping in pings {
+        let ([dx, dy], clamped) = full_map_offset(compass, [w, h], ping.pos);
+        if clamped && !(ping.clamps && clamp_icons) {
+            continue;
+        }
+        let [r, g, b, a] = args.color;
+        let alpha = if friendlies {
+            ping.alpha.min(a)
+        } else {
+            ping.alpha
+        };
+        let applied = args.surface.apply_rect(
+            x + w * 0.5 - icon_w * 0.5 + dx,
+            y + h * 0.5 - icon_h * 0.5 + dy,
+            icon_w,
+            icon_h,
+            args.rect.horz_align as i32,
+            args.rect.vert_align as i32,
+        );
+        frame.list.cmds.push(Draw2dCmd {
+            material_namespace: namespace,
+            x: applied.x,
+            y: applied.y,
+            w: applied.w,
+            h: applied.h,
+            s0: 0.0,
+            t0: 0.0,
+            s1: 1.0,
+            t1: 1.0,
+            color: [r, g, b, alpha],
+            material: ping.material.into(),
+            op: match ping.turn {
+                Some(deg) => Draw2dOp::RotatedPic {
+                    deg: deg + refacing,
+                },
+                None => Draw2dOp::StretchPic,
+            },
+            provenance: Draw2dProvenance::OwnerDraw(args.item.owner_draw),
+            layer: 1,
+        });
+    }
+    OwnerDrawPaint::Painted
+}
 
 /// The full map's rect: the item's, moved by the menu's origin (the x and
 /// y the menu paint hands the full map's owner draws), narrowed to the
