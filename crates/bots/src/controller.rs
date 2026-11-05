@@ -326,7 +326,11 @@ impl HostController {
             let roll = self.roll_ms((0, 1000)) as f32 / 1000.0;
             // Within the weapon's `maxDamageRange` the roll starts a third of
             // the way up; a rocket launcher aims at the feet.
-            let facts = obs.held().map(|slot| slot.facts).unwrap_or_default();
+            let facts = obs
+                .held()
+                .map_or(crate::observation::WeaponFacts::default(), |slot| {
+                    slot.facts
+                });
             let range = facts.max_damage_range as f32;
             let low = if dist2(obs.self_state.origin, target.origin) < range * range {
                 TARGET_EYE_HEIGHT / 3.0
@@ -354,7 +358,11 @@ impl HostController {
     fn sights_on(&self, obs: &BotObservation, target: Contact) -> bool {
         obs.tuning.is_some_and(|tuning| {
             let close = tuning.close_distance;
-            let facts = obs.held().map(|slot| slot.facts).unwrap_or_default();
+            let facts = obs
+                .held()
+                .map_or(crate::observation::WeaponFacts::default(), |slot| {
+                    slot.facts
+                });
             facts.aim_down_sight
                 && !facts.dual_wield
                 && facts.impact_type != IMPACT_TYPE_SHOTGUN
