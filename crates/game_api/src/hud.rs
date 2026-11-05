@@ -134,6 +134,10 @@ pub struct CompassRules {
     /// The owner draws of the map and of the player's arrow.
     pub map_owner_draw: i32,
     pub player_owner_draw: i32,
+    /// The owner draw of the grid laid over the map (the item's material
+    /// tiled `compassGridCols` by `compassGridRows` across the map, while
+    /// `compassGridEnabled`), with those dvars' defaults; `None` draws none.
+    pub grid: Option<CompassGridRules>,
     /// The defaults of the dvars the compass reads: its size scale, the
     /// world distance the map spans, whether the map turns with the view,
     /// and the arrow's size.
@@ -149,6 +153,15 @@ pub struct CompassRules {
     pub player_arrow: fn(&MovePlayer) -> Result<bool, &'static Unknown>,
     /// The enemies the radar shows, when the game's compass draws them.
     pub radar: Option<&'static CompassRadarRules>,
+}
+
+/// A compass's grid owner draw and the defaults of its dvars.
+#[derive(Clone, Copy, Debug)]
+pub struct CompassGridRules {
+    pub owner_draw: i32,
+    pub enabled: bool,
+    pub cols: i32,
+    pub rows: i32,
 }
 
 /// A compass radar: the enemies a spy plane's sweep pings and a

@@ -1693,11 +1693,14 @@ fn zombie_hud_images(
                 images.extend(scanline_overlay_images(&name, material, population, decode));
                 continue;
             }
-            let Some(image) = material
-                .textures
-                .iter()
-                .find_map(|texture| population.images.get(texture.image?))
-            else {
+            // The material samples its picture by the texture's own sampler
+            // state (a tiled grid wraps, a picture clamps).
+            let Some((image, sampler)) = material.textures.iter().find_map(|texture| {
+                Some((
+                    population.images.get(texture.image?)?,
+                    texture.sampler_state,
+                ))
+            }) else {
                 continue;
             };
             match decode(image) {
@@ -1709,7 +1712,7 @@ fn zombie_hud_images(
                             iwi: std::sync::Arc::new([]),
                             state: hud_pass_state(material),
                             rgba: Some((width, height, std::sync::Arc::new(rgba))),
-                            sampler: None,
+                            sampler: Some(sampler),
                             scanline: None,
                         },
                     ));
