@@ -127,6 +127,10 @@ pub struct ClientMatchState {
     pub deaths: i32,
     pub score: i32,
     pub kill_streak: i32,
+    /// The client's ping as the server measures it from its snapshot acks.
+    pub ping: i32,
+    /// The latest snapshot round trips (ms), at most `PING_SAMPLES`.
+    pub ping_samples: std::collections::VecDeque<i32>,
     pub zombie_stats: [i32; 3],
     /// Black Ops multiplayer's scoreboard: the four `setscoreboardcolumns`
     /// values and the scripts' `statusicon`.
@@ -256,6 +260,7 @@ impl ClientMatchState {
             kills: self.kills,
             deaths: self.deaths,
             kill_streak: self.kill_streak,
+            ping: self.ping,
             zombie_stats: self.zombie_stats,
             score_columns: self.score_columns,
             status_icon: self.status_icon.clone(),
@@ -343,6 +348,7 @@ impl ClientMatchState {
         self.kills = meta.kills;
         self.deaths = meta.deaths;
         self.kill_streak = meta.kill_streak;
+        self.ping = meta.ping;
         self.zombie_stats = meta.zombie_stats;
         self.score_columns = meta.score_columns;
         self.status_icon.clone_from(&meta.status_icon);

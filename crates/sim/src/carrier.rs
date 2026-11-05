@@ -632,10 +632,46 @@ impl SimWorld {
 
     /// A remote client acknowledged the snapshot of `tick`.
     pub fn note_snapshot_ack(&mut self, id: ClientId, tick: Tick) {
-        if let Some(mut runtime) = self.ecs.get_resource_mut::<crate::script::RoundScript>() {
-            let acked = runtime.snapshot_acks.entry(id.0).or_insert(tick);
-            *acked = (*acked).max(tick);
+        let newer = match self.ecs.get_resource_mut::<crate::script::RoundScript>() {
+            Some(mut runtime) => {
+                let acked = runtime.snapshot_acks.entry(id.0).or_insert(Tick(0));
+                let newer = tick > *acked;
+                *acked = (*acked).max(tick);
+                newer
+            }
+            None => true,
+        };
+        if newer {
+            self.note_snapshot_round_trip(id, tick);
         }
+    }
+
+    /// Black Ops' ping (`SV_CalcPings`): the mean of the client's last
+    /// snapshot round trips — the server frame's time when the ack came
+    /// less the acknowledged snapshot's — and 999 above 999.
+    fn note_snapshot_round_trip(&mut self, id: ClientId, tick: Tick) {
+        const PING_SAMPLES: usize = 28;
+        let Some(now) = self
+            .ecs
+            .get_resource::<crate::step::StepRequest>()
+            .map(|request| request.tick)
+        else {
+            return;
+        };
+        let rtt = crate::level_time_ms(now)
+            .saturating_sub(crate::level_time_ms(tick))
+            .max(0);
+        let mut frame = crate::frame::FrameWorld::from_world(&mut self.ecs);
+        if frame.client_meta(id).is_none() {
+            return;
+        }
+        let meta = frame.client_meta_mut(id);
+        meta.ping_samples.push_back(rtt);
+        while meta.ping_samples.len() > PING_SAMPLES {
+            meta.ping_samples.pop_front();
+        }
+        let mean = meta.ping_samples.iter().sum::<i32>() / meta.ping_samples.len() as i32;
+        meta.ping = if mean > 999 { 999 } else { mean };
     }
 
     pub fn set_expected_players(&mut self, count: usize) {

@@ -468,9 +468,10 @@ pub(crate) fn draw(
                         cell(paint, &meta.score.to_string(), x, y, w, column.align, color);
                     }
                     Cell::Fixed(TeamScoreCell::Score) => {}
-                    // The runtime measures no ping: every client's is 0.
+                    // The server's measured ping (`cg_ScoresPing_Interval`, its
+                    // divisor, registers 1 and cannot change).
                     Cell::Fixed(TeamScoreCell::Ping) => {
-                        cell(paint, "0", x, y, w, column.align, color);
+                        cell(paint, &meta.ping.to_string(), x, y, w, column.align, color);
                     }
                     Cell::Score(t) if team != 3 => {
                         let text = if t == board.ratio_column {

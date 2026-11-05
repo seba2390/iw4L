@@ -627,10 +627,6 @@ Each open section names the issue that works it.
       view) and stops at the first row past its bottom, but its scroll keys
       (`cg_scoreboardScrollStep`) and the scroll bar with its arrows are not
       drawn or read. With 18 players every row fits.
-- [ ] **V** `t5.mp.scoreboard_ping`: the scoreboard's ping column shows 0
-      for every player: the runtime measures no client's ping, and Black
-      Ops' value (the server's ping for the client over a dvar's divisor)
-      is not sent.
 - [ ] **V** `t5.hud.compass_mounted`: a player mounted on a vehicle is not
       drawn on the compass.
 - [ ] **V** `t5.hud.game_messages`: of Black Ops' three game message
@@ -1586,3 +1582,13 @@ Each open section names the issue that works it.
       `TEAM_AXIS` (that flag) or any other team (the allies'). Neither was
       seen in a run: a CTF match's HUD showed no flag status text at its
       start.
+- [x] **V** `t5.mp.scoreboard_ping` (#666): the scoreboard's ping column
+      shows the server's measured ping for each client, as Black Ops'
+      `SV_CalcPings` has it: the mean of the client's last 28 snapshot round
+      trips (the server frame's time when the ack arrives less the
+      acknowledged snapshot's), 999 above 999, 0 before any ack (bots and
+      the host's own client), over `cg_ScoresPing_Interval` (registered 1,
+      fixed). Seen on one Mac with a host and a client through a local
+      master: both rows read 0 — the loopback ack lands within the frame
+      that sent the snapshot, which Black Ops' frame-time rule also reads as
+      0; a non-zero ping needs latency between two machines.
