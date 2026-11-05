@@ -73,6 +73,8 @@ pub(crate) struct T5HudState<'a> {
     pub input: Option<&'a frame::HudInputView>,
     pub vis: crate::weaponbar::HudPlayerVis,
     pub in_killcam: bool,
+    /// The CTF flags the client scripts mark away: allies', axis'.
+    pub flags_away: [bool; 2],
     pub ps: &'a PlayerState,
     pub weapons: Option<&'a BoundWeapons<'a>>,
     pub ammo: Option<WeaponbarAmmo>,
@@ -740,6 +742,10 @@ impl ExprHost for T5HudHost<'_, '_> {
     }
     fn time_left(&self) -> Result<i32, ExprError> {
         Ok(self.state.time_left_ms)
+    }
+    fn flag_away(&self, team: &str) -> Result<bool, ExprError> {
+        let axis = team.eq_ignore_ascii_case("TEAM_AXIS");
+        Ok(self.state.flags_away[usize::from(axis)])
     }
     fn in_guided_missile(&self) -> Result<i32, ExprError> {
         let Some(rule) = self.state.code_hud.and_then(|hud| hud.in_guided_missile) else {

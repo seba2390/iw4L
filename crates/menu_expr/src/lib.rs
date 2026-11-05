@@ -159,6 +159,14 @@ pub trait GameQueries {
     fn intermission(&self) -> Result<i32, ExprError> {
         Err(ExprError::Host("the host does not answer isintermission"))
     }
+    /// Whether `team`'s CTF flag is away from its base, by the client
+    /// scripts' `SetFlagAsAway` (Black Ops' `getFlagStatusForTeam`).
+    fn flag_away(&self, team: &str) -> Result<bool, ExprError> {
+        let _ = team;
+        Err(ExprError::Host(
+            "the host does not answer getflagstatusforteam",
+        ))
+    }
     /// Whether the local player flies a guided missile (Black Ops'
     /// `isInGuidedMissile`).
     fn in_guided_missile(&self) -> Result<i32, ExprError> {

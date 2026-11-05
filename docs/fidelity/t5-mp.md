@@ -56,9 +56,6 @@ Each open section names the issue that works it.
       runtime's plain falling body, not dynamic entities with Black Ops' physics;
       with no launch they rise at a fixed speed rather than taking the hit's force,
       and the launch's random point is not applied.
-- [ ] **V** `t5.csc.in_killcam`: `GetInKillcam` answers false, the client VM
-      knowing no killcam. `t5.csc.flag_away`: `SetFlagAsAway` does not reach
-      the compass's flag icons.
 
 ## Game mode and flow (#644, #646, #667)
 
@@ -1563,3 +1560,13 @@ Each open section names the issue that works it.
 
 - [x] **V** `t5.mp.team_message_popup` (#860): `displayTeamMessage` slides out
       the player's name, rank and the line; no emblem (`t5.hud.player_card_emblem`).
+- [x] **V** `t5.csc.in_killcam` and `t5.csc.flag_away`: `GetInKillcam`
+      answers whether the local client watches a killcam (the scripts' seat
+      replays the past: its archive time is above 0), as Black Ops answers
+      its client flag cg+0x5f0d8. `SetFlagAsAway` keeps the allies' or the
+      axis' flag away by the entity's team (Black Ops' cg+0x718e0/+0x718e4),
+      and the menus' `getFlagStatusForTeam` (op 416) answers
+      `OBJECTIVES_FLAG_AWAY_CAPS` or `OBJECTIVES_FLAG_HOME_CAPS` for
+      `TEAM_AXIS` (that flag) or any other team (the allies'). Neither was
+      seen in a run: a CTF match's HUD showed no flag status text at its
+      start.

@@ -426,6 +426,10 @@ pub trait ExprHost {
         Err(ExprError::Host("isinguidedmissile"))
     }
 
+    fn flag_away(&self, _team: &str) -> Result<bool, ExprError> {
+        Err(ExprError::Host("getflagstatusforteam"))
+    }
+
     fn spectating_free(&self) -> Result<i32, ExprError> {
         Ok(0)
     }
@@ -639,6 +643,9 @@ impl<H: ExprHost> GameQueries for Queries<'_, H> {
     }
     fn in_guided_missile(&self) -> Result<i32, ExprError> {
         self.0.in_guided_missile()
+    }
+    fn flag_away(&self, team: &str) -> Result<bool, ExprError> {
+        self.0.flag_away(team)
     }
 }
 

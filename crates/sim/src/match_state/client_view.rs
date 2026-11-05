@@ -233,6 +233,9 @@ pub struct ClientScreen {
     pub friendly_scramblers: Vec<[f32; 2]>,
     /// Where the motion sensor's local radar sweeps from, while it is on.
     pub local_radar: Option<[f32; 2]>,
+    /// The CTF flags the client scripts mark away (`SetFlagAsAway`): the
+    /// allies' flag, then the axis'.
+    pub flags_away: [bool; 2],
 }
 
 /// The script vector rows an entity's draws take (`mapshaderconstant`,

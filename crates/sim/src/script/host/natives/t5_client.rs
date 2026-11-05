@@ -1875,30 +1875,32 @@ pub(crate) fn extra_camera(world: &mut World) -> Option<game_api::ExtraCamera> {
 const SPIKE_CAMERA_FOV: f32 = 30.0;
 
 /// `GetInKillcam` and `SetFlagAsAway`, which Black Ops multiplayer's client
-/// keeps in its own state: the client VM here knows neither a killcam nor
-/// the compass's flag icons, so both log and take the living default.
+/// keeps in its own state (cg+0x5f0d8; cg+0x718e0 and +0x718e4).
 fn register_multiplayer_entity(registry: &mut NativeRegistry) {
     use Namespace::Method;
     registry.register(Method, "getinkillcam", |world, receiver, args| {
         entity(world, receiver)?;
         local_index(args)?;
-        diag::warn!(
-            Sim,
-            "t5.csc.in_killcam: GetInKillcam answers false while a killcam plays"
-        );
-        Ok(Value::Int(0))
+        Ok(Value::Int(player_view(world).in_killcam.into()))
     });
+    // `flag SetFlagAsAway(local, away)`: by the entity's team, the allies'
+    // (team 2) or the axis' (team 1) flag; any other team keeps neither.
     registry.register(Method, "setflagasaway", |world, receiver, args| {
-        entity(world, receiver)?;
+        let id = entity(world, receiver)?.0;
         if args.len() < 2 {
             return Err("Not enough parameters supplied to SetFlagAsAway".into());
         }
         local_index(args)?;
-        int(args, 1)?;
-        diag::warn!(
-            Sim,
-            "t5.csc.flag_away: SetFlagAsAway does not reach the compass's flag icons"
-        );
+        let away = int(args, 1)? != 0;
+        let team = world
+            .resource_mut::<crate::script::RoundScript>()
+            .object_field(id, "team");
+        let slot = match &team {
+            Value::String(team) if &**team == "allies" => 0,
+            Value::String(team) if &**team == "axis" => 1,
+            _ => return Ok(Value::Undefined),
+        };
+        world.resource_mut::<ClientOutput>().flags_away[slot] = away;
         Ok(Value::Undefined)
     });
 }
