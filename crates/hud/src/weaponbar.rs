@@ -702,6 +702,8 @@ pub(crate) struct WeaponbarInput<'w, 's> {
     weapon_info_shown: Local<'s, i32>,
     command_hint_latch: Local<'s, crate::t5_hud::CommandHintLatch>,
     compass_radar: Local<'s, game_api::hud::CompassRadar>,
+    /// The guided missile the camera last rode, and where it was.
+    missile_camera: Local<'s, Option<(sim::ProjectileId, [f32; 2], f32)>>,
     location_cursor: Res<'w, net::LocationCursor>,
 }
 
@@ -958,6 +960,35 @@ pub(crate) fn update_weaponbar(
                 let north_yaw = compass.north_yaw.unwrap_or(0.0);
                 let frame = (rules.frame)(corners.a, corners.b, north_yaw)?;
                 let team = meta.map_or(0, |m| m.client_state_team);
+                // Black Ops' compass centres and turns on the camera (the
+                // refdef's view): a guided missile's while it flies.
+                // The record outlives the projectile's snapshot by the
+                // explosion hold; the camera stays where the rocket last was.
+                let guided = meta
+                    .and_then(|m| m.remote_missile.as_ref())
+                    .filter(|missile| missile.guided);
+                let camera = guided.and_then(|missile| {
+                    let flying = snap
+                        .projectiles
+                        .iter()
+                        .find(|p| p.id == missile.projectile)
+                        .map(|p| ([p.origin[0], p.origin[1]], missile.angles[1]));
+                    match flying {
+                        Some((place, yaw)) => {
+                            *client_input.missile_camera = Some((missile.projectile, place, yaw));
+                            Some((place, yaw))
+                        }
+                        None => client_input
+                            .missile_camera
+                            .filter(|(id, _, _)| *id == missile.projectile)
+                            .map(|(_, place, yaw)| (place, yaw)),
+                    }
+                });
+                if guided.is_none() {
+                    *client_input.missile_camera = None;
+                }
+                let (centre, centre_yaw) =
+                    camera.unwrap_or(([ps.origin[0], ps.origin[1]], ps.viewangles[1]));
                 let radar = rules.radar.map(|radar| {
                     let players: Vec<game_api::hud::CompassRadarPlayer> = snap
                         .meta
@@ -989,8 +1020,8 @@ pub(crate) fn update_weaponbar(
                         frame_ms: now - client_input.compass_radar.last_ms.unwrap_or(now),
                         local_client: local.0.0 as usize,
                         local_team: meta.map_or(crate::t5_hud::TEAM_FREE, |m| m.client_state_team),
-                        origin: [ps.origin[0], ps.origin[1]],
-                        view_yaw: ps.viewangles[1],
+                        origin: centre,
+                        view_yaw: centre_yaw,
                         north_yaw,
                         frame,
                         levels: meta.map_or([0; 2], |m| m.radar_levels),
@@ -1033,8 +1064,9 @@ pub(crate) fn update_weaponbar(
                     frame,
                     north_yaw,
                     material: compass.declaration.material.clone()?,
-                    origin: [ps.origin[0], ps.origin[1]],
-                    yaw: ps.viewangles[1],
+                    origin: centre,
+                    yaw: centre_yaw,
+                    player: camera.map(|_| ([ps.origin[0], ps.origin[1]], ps.viewangles[1])),
                     radar,
                 })
             });
