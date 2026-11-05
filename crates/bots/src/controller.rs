@@ -89,6 +89,14 @@ pub struct HostController {
     /// Black Ops' crouch hold, and when the bot last moved along its view.
     crouch_until_ms: i32,
     moved_ms: i32,
+    /// Black Ops' strafe: the moves, until when they hold, and the target
+    /// they were rolled for.
+    strafe: Option<(i8, i8)>,
+    strafe_until_ms: i32,
+    strafe_target: Option<ClientId>,
+    /// The path's lookahead direction and the distance left on it, as the
+    /// scripts' `GetLookaheadDir`/`GetLookaheadDist` read them.
+    lookahead: Option<([f32; 3], f32)>,
 }
 
 /// The target record Black Ops' bot keeps: the client, how centred and how
@@ -150,6 +158,10 @@ impl HostController {
             attacker_dropped_ms: i32::MIN,
             crouch_until_ms: 0,
             moved_ms: 0,
+            strafe: None,
+            strafe_until_ms: 0,
+            strafe_target: None,
+            lookahead: None,
         }
     }
 
@@ -266,9 +278,9 @@ impl HostController {
                 return;
             }
             if !dead {
-                // The engine measures its target wherever it is; the host
-                // measures it where the bot last saw it.
-                (current.dot, current.dist2) = Self::measure(obs, current.seen_at);
+                // The engine measures its target wherever it is.
+                let at = obs.position(current.id).unwrap_or(current.seen_at);
+                (current.dot, current.dist2) = Self::measure(obs, at);
                 self.bo_target = Some(current);
             }
         }
@@ -379,6 +391,55 @@ impl HostController {
         (0..THINK_PERIOD_TICKS).any(|_| self.roll_unit() < 0.1)
     }
 
+    /// What is left of the bot's route: along its committed steps to the
+    /// route's goal, else straight to where it walks.
+    fn route_left(&self, obs: &BotObservation) -> f32 {
+        let here = obs.self_state.origin;
+        if let Some(goal) = self.route_goal
+            && !self.committed.is_empty()
+        {
+            let mut from = here;
+            let mut length = 0.0;
+            for step in &self.committed {
+                length += dist2(from, step.position).sqrt();
+                from = step.position;
+            }
+            return length + dist2(from, goal).sqrt();
+        }
+        self.route_goal
+            .or(self.intent.move_goal)
+            .map_or(0.0, |goal| dist2(here, goal).sqrt())
+    }
+
+    /// Black Ops' sprint (873eb0): on a path, sights down, not while it sees
+    /// its target with rounds in the clip, toward a goal at least
+    /// `sv_botSprintDistance` along the path, or with an empty clip in sight
+    /// of its target when the path runs within 5° of its view.
+    fn black_ops_sprint(&self, obs: &BotObservation, tuning: sim::BotTuning) -> bool {
+        let on_path = self.intent.move_mode == MoveMode::Walk
+            && self.intent.path == PathOutcome::Clear
+            && self.intent.move_goal.is_some();
+        if !on_path
+            || self.intent.ads
+            || self.intent.use_button
+            || self.intent.reload
+            || self.intent.crouch
+        {
+            return false;
+        }
+        let visible = self.bo_target.is_some_and(|t| t.seen_ms == obs.time_ms);
+        let armed = obs.self_state.ammo_clip > 0;
+        if visible && armed {
+            return false;
+        }
+        let aligned = self.intent.move_goal.is_some_and(|goal| {
+            let here = obs.self_state.origin;
+            let yaw = (goal[1] - here[1]).atan2(goal[0] - here[0]).to_degrees();
+            math_iw4::angle_subtract(yaw, obs.self_state.viewangles[1]).abs() < 5.0
+        });
+        self.route_left(obs) >= tuning.sprint_distance || (visible && aligned)
+    }
+
     /// Black Ops' bot crouches by two rules, and holds it
     /// `sv_botMinCrouchTime` to `sv_botMaxCrouchTime` from the press. On a
     /// path that ends nearer than `sv_botCrouchDistance`, one frame in twenty
@@ -401,23 +462,17 @@ impl HostController {
         let on_path = self.intent.move_mode == MoveMode::Walk && self.intent.move_goal.is_some();
         let at_goal = obs.objective.is_some_and(|o| o.scripted && o.touching);
         let mut start = false;
-        if on_path {
-            let end = self
-                .route_goal
-                .or(self.intent.move_goal)
-                .unwrap_or(obs.self_state.origin);
-            if dist2(obs.self_state.origin, end).sqrt() < tuning.crouch_distance {
-                for _ in 0..THINK_PERIOD_TICKS {
-                    if self.roll_unit() >= 0.05 {
-                        continue;
+        if on_path && self.route_left(obs) < tuning.crouch_distance {
+            for _ in 0..THINK_PERIOD_TICKS {
+                if self.roll_unit() >= 0.05 {
+                    continue;
+                }
+                start |= !at_goal;
+                if self.roll_unit() < 0.2 {
+                    if !self.ads_held {
+                        self.ads_until_ms = now + self.roll_ms(tuning.ads_ms);
                     }
-                    start |= !at_goal;
-                    if self.roll_unit() < 0.2 {
-                        if !self.ads_held {
-                            self.ads_until_ms = now + self.roll_ms(tuning.ads_ms);
-                        }
-                        self.ads_held = true;
-                    }
+                    self.ads_held = true;
                 }
             }
         }
@@ -433,6 +488,66 @@ impl HostController {
         if self.intent.crouch {
             self.intent.sprint = false;
         }
+    }
+
+    /// Black Ops' strafe (872c90, 870cd0): each `sv_botMinStrafeTime` to
+    /// `sv_botMaxStrafeTime`, and on a new target, a bot inside its weapon's
+    /// range of a target it sees strafes with `sv_botStrafeChance` and
+    /// otherwise stands. A strafe moves forward or back half speed (two in
+    /// five) and sideways full or half speed, full only with its sights all
+    /// the way up. A strafe that runs into something is picked again.
+    fn black_ops_strafe(
+        &mut self,
+        obs: &BotObservation,
+        world: &mut impl WorldQuery,
+        target: Contact,
+    ) -> Option<(i8, i8)> {
+        let tuning = obs.tuning?;
+        let now = obs.time_ms;
+        if let Some((forward, right)) = self.strafe {
+            let yaw = obs.self_state.viewangles[1].to_radians();
+            let (f, r) = (f32::from(forward) / 127.0, f32::from(right) / 127.0);
+            let dir = [yaw.cos() * f + yaw.sin() * r, yaw.sin() * f - yaw.cos() * r];
+            let here = obs.self_state.origin;
+            let ahead = [here[0] + dir[0] * 32.0, here[1] + dir[1] * 32.0, here[2]];
+            if world.walk_hull(here, ahead) != Ok(WalkSample::Clear) {
+                self.strafe = Some(self.pick_strafe());
+            }
+        }
+        if self.strafe_target != Some(target.id) || now >= self.strafe_until_ms {
+            self.strafe_target = Some(target.id);
+            self.strafe = (self.roll_unit() < tuning.strafe_chance).then(|| self.pick_strafe());
+            self.strafe_until_ms = now + self.roll_ms(tuning.strafe_ms);
+        }
+        self.strafe
+    }
+
+    fn pick_strafe(&mut self) -> (i8, i8) {
+        const FORWARD: [i8; 5] = [-64, 64, 0, 0, 0];
+        const SIDE_ADS: [i8; 2] = [-127, 127];
+        const SIDE: [i8; 4] = [-127, -64, 64, 127];
+        let forward = FORWARD[self.roll_ms((0, 4)) as usize];
+        let side = if self.ads_held {
+            SIDE_ADS[self.roll_ms((0, 1)) as usize]
+        } else {
+            SIDE[self.roll_ms((0, 3)) as usize]
+        };
+        (forward, side)
+    }
+
+    /// Black Ops' knife (874650): a target it sees nearer than
+    /// `sv_botMeleeDist`, its weapon ready: with an empty clip always,
+    /// otherwise three frames in four.
+    fn black_ops_melee(&mut self, obs: &BotObservation, target: Contact) -> bool {
+        let Some(tuning) = obs.tuning else {
+            return false;
+        };
+        if obs.self_state.weapon_action != crate::observation::WeaponAction::Ready
+            || dist2(obs.self_state.origin, target.origin) >= tuning.melee_dist * tuning.melee_dist
+        {
+            return false;
+        }
+        obs.self_state.ammo_clip == 0 || (0..THINK_PERIOD_TICKS).any(|_| self.roll_unit() < 0.75)
     }
 
     /// A roll between the two, both included.
@@ -589,6 +704,16 @@ impl HostController {
 
     pub fn task(&self) -> Task {
         self.task
+    }
+
+    /// The bot's own target, as Black Ops' `GetThreat` answers it.
+    pub fn threat(&self) -> Option<ClientId> {
+        self.bo_target.map(|t| t.id)
+    }
+
+    /// The path's lookahead direction and the distance left on it.
+    pub fn lookahead(&self) -> Option<([f32; 3], f32)> {
+        self.lookahead
     }
 
     pub fn intent(&self) -> BotIntent {
@@ -768,11 +893,14 @@ impl HostController {
         let started = std::time::Instant::now();
         let events = self.memory.ingest(obs);
         self.black_ops_target(obs);
+        // Black Ops' bot knows only the goal its scripts give it.
+        let black_ops = obs.tuning.is_some();
         let touching_use = obs
             .objectives
             .iter()
             .copied()
             .chain(obs.objective)
+            .filter(|obj| !black_ops || obj.scripted)
             .find(|obj| obj.touching && obj.use_button);
         if touching_use.is_none()
             && let Some(intent) = self.unstick(obs, world)
@@ -795,6 +923,7 @@ impl HostController {
                 .iter()
                 .copied()
                 .chain(obs.objective)
+                .filter(|obj| !black_ops || obj.scripted)
                 .max_by(|a, b| {
                     objective_utility(obs, *a, None)
                         .total_cmp(&objective_utility(obs, *b, None))
@@ -873,22 +1002,35 @@ impl HostController {
         } else {
             ActionStage::Approach
         };
-        self.intent.sprint = self.intent.move_mode == MoveMode::Walk
-            && self.intent.path == PathOutcome::Clear
-            && self.memory.currently_seen().next().is_none()
-            && !self.intent.use_button
-            && !self.intent.fire
-            && !self.intent.reload
-            && !self.intent.crouch
-            && self.intent.move_goal.is_some_and(|g| {
-                // Black Ops' bot sprints only toward a goal at least
-                // `sv_botSprintDistance` away.
-                let far = obs.tuning.map_or(160.0, |tuning| tuning.sprint_distance);
-                dist_xy(obs.self_state.origin, g) > far
-            });
+        self.intent.sprint = if let Some(tuning) = obs.tuning {
+            self.black_ops_sprint(obs, tuning)
+        } else {
+            self.intent.move_mode == MoveMode::Walk
+                && self.intent.path == PathOutcome::Clear
+                && self.memory.currently_seen().next().is_none()
+                && !self.intent.use_button
+                && !self.intent.fire
+                && !self.intent.reload
+                && !self.intent.crouch
+                && self.intent.move_goal.is_some_and(|g| {
+                    // Black Ops' bot sprints only toward a goal at least
+                    // `sv_botSprintDistance` away.
+                    let far = obs.tuning.map_or(160.0, |tuning| tuning.sprint_distance);
+                    dist_xy(obs.self_state.origin, g) > far
+                })
+        };
         if obs.tuning.is_some() {
             self.black_ops_stance(obs);
         }
+        self.lookahead = (self.intent.move_mode == MoveMode::Walk)
+            .then_some(self.intent.move_goal)
+            .flatten()
+            .map(|goal| {
+                let here = obs.self_state.origin;
+                let d = [goal[0] - here[0], goal[1] - here[1], goal[2] - here[2]];
+                let len = (d[0] * d[0] + d[1] * d[1] + d[2] * d[2]).sqrt().max(1e-6);
+                (d.map(|v| v / len), self.route_left(obs))
+            });
         // Standing clearance also fits a crouched hull. Require a shot at crouched eye height.
         if obs.tuning.is_none()
             && self.intent.fire
@@ -1046,7 +1188,34 @@ impl HostController {
         None
     }
 
+    /// Black Ops' bot (873080): it fights a target it sees; with its target
+    /// out of sight and not seen for 5 s it goes to its script goal; with a
+    /// target it goes where the target is; with nothing it wanders. It never
+    /// backs off.
+    fn black_ops_task(&mut self, obs: &BotObservation, objective: Option<ModeObjective>) -> Task {
+        let now = obs.time_ms;
+        let target = self.bo_target.filter(|t| t.keep_until_ms == 0);
+        let visible = target.is_some_and(|t| t.seen_ms == now);
+        let recent = target.is_some_and(|t| t.seen_ms != 0 && now - t.seen_ms < 5000);
+        let goal = objective.filter(|o| o.scripted);
+        let (kind, reason) = if visible {
+            (TaskKind::Fight, SwitchReason::SawEnemy)
+        } else if goal.is_some() && !recent {
+            (TaskKind::TouchObj, SwitchReason::ObjectiveReachable)
+        } else if target.is_some() {
+            (TaskKind::Investigate, SwitchReason::LostSight)
+        } else if goal.is_some() {
+            (TaskKind::TouchObj, SwitchReason::ObjectiveReachable)
+        } else {
+            (TaskKind::Hunt, SwitchReason::Spawned)
+        };
+        Task { kind, reason }
+    }
+
     fn pick_task(&mut self, obs: &BotObservation, objective: Option<ModeObjective>) -> Task {
+        if obs.tuning.is_some() {
+            return self.black_ops_task(obs, objective);
+        }
         let seen = self.memory.currently_seen().next().is_some();
         let fresh = self
             .memory
@@ -1141,9 +1310,16 @@ impl HostController {
         astar_budget: &mut u32,
         objective: Option<ModeObjective>,
     ) -> BotIntent {
+        let chase = self
+            .bo_target
+            .filter(|_| obs.tuning.is_some())
+            .and_then(|t| obs.position(t.id));
         match self.task.kind {
             TaskKind::Fight => self.fight(obs, world, nav, astar_budget),
-            TaskKind::Investigate => self.seek(obs, world, nav, astar_budget, SeekKind::LastSeen),
+            TaskKind::Investigate => {
+                let kind = chase.map_or(SeekKind::LastSeen, SeekKind::Chase);
+                self.seek(obs, world, nav, astar_budget, kind)
+            }
             TaskKind::TouchObj => self.seek(
                 obs,
                 world,
@@ -1226,7 +1402,7 @@ impl HostController {
             self.react_to(obs, target);
         }
         let aim_at = self.aim_point(obs, target);
-        if self.wounded(obs) {
+        if obs.tuning.is_none() && self.wounded(obs) {
             return self.fight_break(obs, world, nav, astar_budget, target);
         }
         // Perception can see a head over cover while the chest is occluded.
@@ -1274,6 +1450,34 @@ impl HostController {
         let fire = self.authorize_fire(ready, target);
         let range = dist2(obs.self_state.origin, target.origin).sqrt();
         let hold = self.hold_range(obs);
+        if obs.tuning.is_some() {
+            // Black Ops' bot walks at a target it sees until it is inside the
+            // weapon's range (874190), and there stands or strafes (872c90).
+            let here = obs.self_state.origin;
+            let (move_mode, path, move_goal, strafe) = if range > hold {
+                let (move_mode, path, move_goal) =
+                    self.route(here, target.origin, world, nav, astar_budget);
+                (move_mode, path, move_goal, None)
+            } else {
+                let strafe = self.black_ops_strafe(obs, world, target);
+                (MoveMode::Hold, PathOutcome::Clear, Some(here), strafe)
+            };
+            let want = self.sights_on(obs, target);
+            let ads = self.hold_sights(obs, want);
+            let melee = self.black_ops_melee(obs, target);
+            return BotIntent {
+                look_at: Some(aim_at),
+                move_goal,
+                desired_range: Some(hold),
+                move_mode,
+                fire: fire && !melee,
+                path,
+                ads,
+                strafe,
+                melee,
+                ..BotIntent::default()
+            };
+        }
         let (move_mode, path, move_goal) = self.fight_position(
             obs,
             world,
@@ -1622,6 +1826,18 @@ impl HostController {
                 };
                 (last.origin, false, last.origin)
             }
+            SeekKind::Chase(at) => {
+                let (move_mode, path, move_goal) =
+                    self.route(obs.self_state.origin, at, world, nav, astar_budget);
+                let ahead = move_goal.unwrap_or(at);
+                return BotIntent {
+                    look_at: Some([ahead[0], ahead[1], obs.eye()[2]]),
+                    move_goal,
+                    move_mode,
+                    path,
+                    ..BotIntent::default()
+                };
+            }
             SeekKind::Objective(obj) => {
                 let Some(obj) = obj else {
                     return BotIntent::default();
@@ -1895,6 +2111,9 @@ impl FightScan {
 #[derive(Clone, Copy, PartialEq)]
 enum SeekKind {
     LastSeen,
+    /// Black Ops' bot paths to its target where it is, and looks along the
+    /// way.
+    Chase([f32; 3]),
     Objective(Option<ModeObjective>),
     BackOff,
 }

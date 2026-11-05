@@ -500,6 +500,7 @@ fn think_bots(mut p: ThinkBots) {
     let start = (p.clock.tick as usize / 2) % count.max(1);
     let mut controller_us = 0u64;
     let mut bad_paths = Vec::new();
+    let mut reports = Vec::new();
     let seed = p.roster.seed;
     for offset in 0..count {
         let bot = &mut p.roster.bots[(start + offset) % count];
@@ -558,6 +559,9 @@ fn think_bots(mut p: ThinkBots) {
                 AUTHORITY_MS,
             );
             controller_us += started.elapsed().as_micros() as u64;
+            if obs.tuning.is_some() {
+                reports.push((bot.id, brain.threat(), brain.lookahead()));
+            }
             cmd.server_time = p.clock.time_ms;
             if let Some(order) = snapshot
                 .meta
@@ -600,6 +604,9 @@ fn think_bots(mut p: ThinkBots) {
             }
         }
         p.cmds.push(bot.id, None, cmd, None);
+    }
+    for (id, threat, lookahead) in reports {
+        p.world.0.report_bot_state(id, threat, lookahead);
     }
     for id in bad_paths {
         p.world.0.report_bot_bad_path(id);

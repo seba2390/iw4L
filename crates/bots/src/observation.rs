@@ -306,6 +306,20 @@ pub struct BotObservation {
     /// The player the scripts named the bot's attacker (Black Ops'
     /// `SetAttacker`).
     pub attacker: Option<ScriptAttacker>,
+    /// Where every other live client is, for a game whose own bots read the
+    /// entities themselves (Black Ops' paths to a target it does not see);
+    /// empty for the host's own rules.
+    pub positions: Vec<(ClientId, [f32; 3])>,
+}
+
+impl BotObservation {
+    /// Where the game has a live client, when the game's bots read it.
+    pub fn position(&self, id: ClientId) -> Option<[f32; 3]> {
+        self.positions
+            .iter()
+            .find(|(other, _)| *other == id)
+            .map(|(_, at)| *at)
+    }
 }
 
 /// A bot's attacker as the scripts named it: who, the level time they did,

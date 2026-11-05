@@ -40,6 +40,10 @@ pub struct BotIntent {
     pub turn: Option<TurnRates>,
     /// Aim down the sights.
     pub ads: bool,
+    /// Black Ops' strafe: the command's forward and right moves, against the
+    /// view, in place of walking to `move_goal`.
+    pub strafe: Option<(i8, i8)>,
+    pub melee: bool,
 }
 
 /// Black Ops' bot turn: each 50 ms the view covers the angle left times the
@@ -66,6 +70,8 @@ impl Default for BotIntent {
             path: PathOutcome::None,
             turn: None,
             ads: false,
+            strafe: None,
+            melee: false,
         }
     }
 }

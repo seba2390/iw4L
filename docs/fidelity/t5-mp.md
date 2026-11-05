@@ -689,8 +689,38 @@ Each open section names the issue that works it.
       satellite) were not tried.
 - [ ] **G** `t5.bots.host_ai`: test clients join through Black Ops' own
       `_bot.gsc` (`addtestclient`; their team and class by `menuresponse`,
-      their loadout by `bot_give_loadout`), but IW4L's host bots move and
-      choose their targets, not Black Ops' engine bot code. How they react,
+      their loadout by `bot_give_loadout`). They choose what to do by Black
+      Ops' engine bot code (#869): a bot fights a target it sees; with its
+      target out of sight and not seen for 5 s it goes to its script goal;
+      with a target it walks to where the target is (the engine reads the
+      entity, so the host gives its bots every live client's position);
+      with nothing it wanders between random places; it never backs off
+      (IW4L's wounded retreat and its mode objectives are off for Black
+      Ops' bots). In a fight it walks at a target beyond the weapon's range
+      and inside it stands, or strafes: each `sv_botMinStrafeTime` to
+      `sv_botMaxStrafeTime` and on a new target, with `sv_botStrafeChance`,
+      half speed forward or back two times in five and sideways at full or
+      half speed (full only with its sights up), picked again when the way
+      is blocked. It stands while its view is 50° or more off where it
+      turns. It knifes a target it sees nearer than `sv_botMeleeDist` with
+      its weapon ready, at once with an empty clip and three frames in four
+      otherwise. It sprints on a path with its sights down, not while it
+      sees its target with rounds in the clip, toward a goal at least
+      `sv_botSprintDistance` along the path, or with an empty clip in sight
+      of its target when the path runs within 5° of its view. `GetThreat`
+      answers the bot's own target and `GetLookaheadDist`/`GetLookaheadDir`
+      its path's distance left and direction. IW4L's own there: the paths
+      are IW4L's navigation graph and routes, not Black Ops' path nodes (a
+      wander goal is a random graph node, not a random path node of type
+      1); a bot walks the route to a target it sees rather than straight
+      along its view; the strafe's blocked test is a 32-unit hull trace in
+      the strafe's direction (the engine traces the bot's predicted move);
+      the engine's traversal handling (flags 0x380, 874080's jump and use
+      presses) and its stuck rule (873080: a bot not moving drops its path)
+      are IW4L's own unstick; the sights' "all the way up" is the bot's
+      sights hold; a dead target is not walked to while kept. Grenades
+      (`sv_botAllowGrenades`, 874710) and the weapon choice (871f30) are not
+      ported (#913). How they react,
       fire and aim is Black Ops' own once `_bot.gsc` has set its `sv_bot*`
       dvars by difficulty (#870): a target inside `sv_botCloseDistance` is shot
       at once and another after `sv_botMinReactionTime` to
@@ -714,8 +744,7 @@ Each open section names the issue that works it.
       holds the sights `sv_botMinAdsTime` to `sv_botMaxAdsTime` even once the
       bot no longer wants them. In a fight it closes on its target to the
       weapon's `minDamageRange` (a dual wielded weapon or a shotgun to its
-      `maxDamageRange`), by IW4L's own fight positioning; it sprints only
-      toward a goal at least `sv_botSprintDistance` away. It crouches by
+      `maxDamageRange`). It crouches by
       Black Ops' two rules and holds it `sv_botMinCrouchTime` to
       `sv_botMaxCrouchTime`: one frame in twenty within
       `sv_botCrouchDistance` of its path's end (short of its script goal),
@@ -724,8 +753,8 @@ Each open section names the issue that works it.
       short of its script goal. IW4L's own there: the path's end is the
       route's goal in a straight line; the engine's traversal check before
       both (flags 0x380) is not read; a crouching bot does not sprint. Not
-      read: the sprint rule's other gates, and a weapon field that stops the
-      bot while it aims (variant +0x8c). The target is Black Ops' own choice (#870):
+      read: a weapon field that stops the bot while it aims (variant +0x8c),
+      and the sprint rule's weapon-state and 870a90 gates. The target is Black Ops' own choice (#870):
       a dead target is kept `sv_botMinDeathTime` to `sv_botMaxDeathTime`; with
       none the bot takes the first enemy it sees by client number; with one it
       looks again only when the target died or is at least
@@ -735,9 +764,8 @@ Each open section names the issue that works it.
       times in four while its target is a player and not a bot, else half the
       time to one nearer, else half the time to one more centred; otherwise
       the 500 ms start again; a target out of sight for 10 s is dropped.
-      IW4L's own there: the bot measures its target where it last saw it (the
-      engine measures it wherever it is); a target it does not see is not
-      fought. A bot hit in the last 480 ms (the engine's `damageCount`; the
+      The bot measures its target wherever it is, as the engine does; a
+      target it does not see is not shot at. A bot hit in the last 480 ms (the engine's `damageCount`; the
       host sees its health fall) drops a dead target at once and, when it
       looks while its own target is out of sight, takes the live player
       `_bot.gsc`'s damage callback named with `SetAttacker`; the engine
@@ -748,17 +776,16 @@ Each open section names the issue that works it.
       its clip is down to the weapon's `lowAmmoWarningThreshold` share of the
       clip size, at once with its target out of sight and one frame in ten
       in sight; an empty clip is reloaded or the weapon changed by IW4L's
-      rule, as before (the game's own reload on an empty trigger). Not
-      ported: strafing, grenades and the melee distance. A script's goal
-      (`setscriptgoal`, heard as `goal` on arrival) outranks the host bot's
-      own tasks, fights included: on the way it shoots what it sees without
-      leaving the route (IW4L's own rule; the engine bot code was not read).
+      rule, as before (the game's own reload on an empty trigger). A script's
+      goal (`setscriptgoal`, heard as `goal` on arrival) waits while the bot
+      sees its target or saw it in the last 5 s (873080, 872ec0); on the way
+      it shoots what it sees without leaving the route (IW4L's own rule).
       `pressusebutton`/`pressattackbutton` reach its command. `bad_path` is
       IW4L's own rule, once a goal: no route, stuck, or within the goal's
       radius but more than 72 units above or below it (a crate still in the
-      air, or on a roof). The scripted enemy is only `getthreat`'s answer,
-      and the goal's straight line stands in for
-      `getlookaheaddist`/`getlookaheaddir` (#709).
+      air, or on a roof). The scripted enemy (`setscriptenemy`, the engine's
+      flag 8 that paths to it) is only `getthreat`'s answer while the bot
+      has no target of its own.
 
 ## Audio (#668)
 
