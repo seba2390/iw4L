@@ -356,10 +356,15 @@ Each open section names the issue that works it.
       target is not passed to their missile, so a Strela flies unguided; a
       `launchbomb` missile that accelerates or curves is a gap.
 - [ ] **V** `t5.hud.location_selector`: the location selector's full map
-      draws the map and the selector (and the mortar strikes placed); its
-      player arrow, friendlies, enemies, vehicles, grid and radar effects
-      (owner draws 175–190, 313, 318, 320, 326, 327, 333, 360) are not
-      drawn. The full map's owner draws are moved by the menu's origin,
+      draws the map and the selector (and the mortar strikes placed), the
+      player's arrow (183), the teammates (185) and the enemies the radar
+      shows (188), each sized by its `cg_hudMap*` dvar and placed by the
+      map's own frame, north up (the enemies were not seen in a run). Not
+      drawn: owner draws 176–178, 180, 182, 187, 189, 190 (dogs, vehicles,
+      artillery, objectives, the map's border, turrets, guided missiles)
+      and 313, 318, 326, 327, 333, 360 (fake fire, grid, the scrambler and
+      static, radar effects); Black Ops' third owner-draw table sends each
+      to the compass draw of the same kind with the full map's type. The full map's owner draws are moved by the menu's origin,
       which the menu's layout shows (its map then sits centred with its
       bars) but the menu paint's call was not read. Black Ops cancels the
       selector on any key not bound to `+attack`, `weapnext`, `+reload` or
