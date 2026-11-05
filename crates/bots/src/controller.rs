@@ -411,7 +411,7 @@ impl HostController {
             .map_or(0.0, |goal| dist2(here, goal).sqrt())
     }
 
-    /// Black Ops' sprint (873eb0): on a path, sights down, not while it sees
+    /// Black Ops' sprint: on a path, sights down, not while it sees
     /// its target with rounds in the clip, toward a goal at least
     /// `sv_botSprintDistance` along the path, or with an empty clip in sight
     /// of its target when the path runs within 5° of its view.
@@ -490,7 +490,7 @@ impl HostController {
         }
     }
 
-    /// Black Ops' strafe (872c90, 870cd0): each `sv_botMinStrafeTime` to
+    /// Black Ops' strafe: each `sv_botMinStrafeTime` to
     /// `sv_botMaxStrafeTime`, and on a new target, a bot inside its weapon's
     /// range of a target it sees strafes with `sv_botStrafeChance` and
     /// otherwise stands. A strafe moves forward or back half speed (two in
@@ -535,7 +535,7 @@ impl HostController {
         (forward, side)
     }
 
-    /// Black Ops' knife (874650): a target it sees nearer than
+    /// Black Ops' knife: a target it sees nearer than
     /// `sv_botMeleeDist`, its weapon ready: with an empty clip always,
     /// otherwise three frames in four.
     fn black_ops_melee(&mut self, obs: &BotObservation, target: Contact) -> bool {
@@ -1188,7 +1188,7 @@ impl HostController {
         None
     }
 
-    /// Black Ops' bot (873080): it fights a target it sees; with its target
+    /// Black Ops' bot: it fights a target it sees; with its target
     /// out of sight and not seen for 5 s it goes to its script goal; with a
     /// target it goes where the target is; with nothing it wanders. It never
     /// backs off.
@@ -1459,7 +1459,7 @@ impl HostController {
         let hold = self.hold_range(obs);
         if obs.tuning.is_some() {
             // Black Ops' bot walks at a target it sees until it is inside the
-            // weapon's range (874190), and there stands or strafes (872c90).
+            // weapon's range, and there stands or strafes.
             let here = obs.self_state.origin;
             let (move_mode, path, move_goal, strafe) = if range > hold {
                 let (move_mode, path, move_goal) =
