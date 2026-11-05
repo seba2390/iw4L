@@ -48,6 +48,7 @@ pub(crate) static MP_CODE_HUD: GameCodeHud = GameCodeHud {
     crosshair: mp_crosshair,
     team_scoreboard: Some(&crate::scoreboard::SCOREBOARD),
     visibility_bit: Some(mp_visibility_bit),
+    in_guided_missile: Some(in_guided_missile),
     damage_flash: Some(DamageFlash {
         kick_perk_scale: mp_kick_perk_scale,
         ..ZOMBIES_DAMAGE_FLASH
@@ -137,6 +138,7 @@ const ZOMBIES_CODE_HUD: GameCodeHud = GameCodeHud {
     retrievable_model: None,
     turret_detect_model: None,
     visibility_bit: Some(visibility_bit),
+    in_guided_missile: None,
     killfeed: None,
     compass: None,
     names: None,
@@ -817,6 +819,24 @@ fn visibility_bit(bit: i32, view: &VisibilityView<'_>) -> Result<bool, &'static 
         48 => other_flags() & 2 != 0,
         _ => return Err(OTHER_BITS),
     })
+}
+
+/// Black Ops multiplayer's `isInGuidedMissile()`: a weapon flown from its
+/// own view held with its sights at least 95% up, or aiming held by a
+/// guided weapon's view; then, with no guided entity, only while the clip
+/// is empty or the sights are up. A turret's own guided weapon (a player on
+/// a turret) is not read: never one here.
+fn in_guided_missile(view: &VisibilityView<'_>) -> bool {
+    let mut player = *view.player;
+    let (state, _) = crate::movement::unpack(&mut player);
+    let sights =
+        view.weapon.missile_guidance == MISSILE_GUIDANCE_TV && state.weapon_pos_frac >= 0.95;
+    if !sights && state.e_flags2 & GUIDED_AIM == 0 {
+        return false;
+    }
+    // The guided weapon's entity field is taken as none, as bits 28 and 50
+    // take it.
+    view.weapon.clip_empty || sights
 }
 
 /// `missileGuidance` of a weapon flown from its own view.

@@ -422,6 +422,10 @@ pub trait ExprHost {
         Err(ExprError::Host("isvisibilitybitset"))
     }
 
+    fn in_guided_missile(&self) -> Result<i32, ExprError> {
+        Err(ExprError::Host("isinguidedmissile"))
+    }
+
     fn spectating_free(&self) -> Result<i32, ExprError> {
         Ok(0)
     }
@@ -632,6 +636,9 @@ impl<H: ExprHost> GameQueries for Queries<'_, H> {
     }
     fn visibility_bit(&self, bit: i32) -> Result<i32, ExprError> {
         self.0.visibility_bit(bit)
+    }
+    fn in_guided_missile(&self) -> Result<i32, ExprError> {
+        self.0.in_guided_missile()
     }
 }
 

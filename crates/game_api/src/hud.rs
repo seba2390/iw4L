@@ -46,6 +46,9 @@ pub struct GameCodeHud {
     /// Whether the game's HUD visibility bit (its number, which a menu's
     /// `isvisibilitybitset` tests) is set; `None` answers none.
     pub visibility_bit: Option<VisibilityBitFn>,
+    /// Whether the local player flies a guided missile (a menu's
+    /// `isInGuidedMissile`); `None` answers no.
+    pub in_guided_missile: Option<fn(&VisibilityView<'_>) -> bool>,
     /// The game's kill feed; `None` draws none.
     pub killfeed: Option<&'static KillfeedRules>,
     /// The game's compass owner draws; `None` draws none.
