@@ -122,8 +122,13 @@ pub(crate) struct T5Compass {
     pub frame: game_api::hud::CompassFrame,
     pub north_yaw: f32,
     pub material: String,
+    /// Where the camera is and its yaw: the compass centres and turns on
+    /// it.
     pub origin: [f32; 2],
     pub yaw: f32,
+    /// The player's own place and yaw while the camera is elsewhere (a
+    /// guided missile's), where the arrow then draws.
+    pub player: Option<([f32; 2], f32)>,
     pub radar: Option<T5CompassRadar>,
 }
 
@@ -1939,15 +1944,11 @@ fn paint_compass_player(
         Ok(false) => return OwnerDrawPaint::Painted,
         Err(_) => return OwnerDrawPaint::Gap(ChromeGapKind::OwnerDraw),
     }
-    // The arrow turns only on a map that does not.
-    if compass_dvar(
+    let rotation = compass_dvar(
         state,
         "compassRotation",
         f32::from(u8::from(compass.rules.rotation)),
-    ) == 0.0
-    {
-        return OwnerDrawPaint::Gap(ChromeGapKind::OwnerDraw);
-    }
+    ) != 0.0;
     let Some([x, y, w, h]) = compass_rect(state, compass, args) else {
         return OwnerDrawPaint::Gap(ChromeGapKind::OwnerDraw);
     };
@@ -1957,6 +1958,53 @@ fn paint_compass_player(
     let size = compass_dvar(state, "compassSize", compass.rules.size);
     let arrow_w = compass_dvar(state, "compassPlayerWidth", compass.rules.player_size[0]) * size;
     let arrow_h = compass_dvar(state, "compassPlayerHeight", compass.rules.player_size[1]) * size;
+    // With the camera on a guided missile Black Ops draws the arrow at the
+    // player's own place on the compass centred on the camera, turned to
+    // the player's yaw, and not at all off the compass unless
+    // `compassClampIcons`.
+    if let Some((place, player_yaw)) = compass.player {
+        let max_range = compass_dvar(state, "compassMaxRange", compass.rules.max_range);
+        let ([dx, dy], clamped) = compass_offset(compass, rotation, max_range, [w, h], place);
+        if clamped && compass_dvar(state, "compassClampIcons", 1.0) == 0.0 {
+            return OwnerDrawPaint::Painted;
+        }
+        let from = if rotation {
+            compass.yaw
+        } else {
+            compass.north_yaw
+        };
+        let applied = args.surface.apply_rect(
+            x + w * 0.5 - arrow_w * 0.5 + dx,
+            y + h * 0.5 - arrow_h * 0.5 + dy,
+            arrow_w,
+            arrow_h,
+            args.rect.horz_align as i32,
+            args.rect.vert_align as i32,
+        );
+        frame.list.cmds.push(Draw2dCmd {
+            material_namespace: namespace,
+            x: applied.x,
+            y: applied.y,
+            w: applied.w,
+            h: applied.h,
+            s0: 0.0,
+            t0: 0.0,
+            s1: 1.0,
+            t1: 1.0,
+            color: args.color,
+            material,
+            op: Draw2dOp::RotatedPic {
+                deg: from - player_yaw,
+            },
+            provenance: Draw2dProvenance::OwnerDraw(args.item.owner_draw),
+            layer: 1,
+        });
+        return OwnerDrawPaint::Painted;
+    }
+    // The arrow turns only on a map that does not.
+    if !rotation {
+        return OwnerDrawPaint::Gap(ChromeGapKind::OwnerDraw);
+    }
     push_pic_at(
         args,
         namespace,
