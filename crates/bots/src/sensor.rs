@@ -162,6 +162,14 @@ pub fn observe_focused(
         }),
         objectives,
         tuning: snapshot.meta.bot_tuning,
+        fallen: snapshot
+            .meta
+            .clients
+            .iter()
+            .filter(|(_, m)| m.lifecycle != ClientLifecycle::Alive)
+            .map(|(id, _)| *id)
+            .collect(),
+        test_clients: Vec::new(),
     })
 }
 

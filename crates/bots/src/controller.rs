@@ -74,6 +74,23 @@ pub struct HostController {
     next_fire_ms: i32,
     aim_height: f32,
     aim_hold_until_ms: i32,
+    /// Black Ops' bot's target (`sv_bot*` rules): see `black_ops_target`.
+    bo_target: Option<BoTarget>,
+    /// Black Ops' sights hold: until when, and whether they were up.
+    ads_until_ms: i32,
+    ads_held: bool,
+}
+
+/// The target record Black Ops' bot keeps: the client, how centred and how
+/// near it was when last measured, when the bot took it, and until when it
+/// keeps it once it died (0 while it lives).
+#[derive(Clone, Copy, Debug)]
+struct BoTarget {
+    id: ClientId,
+    dot: f32,
+    dist2: f32,
+    acquired_ms: i32,
+    keep_until_ms: i32,
 }
 
 impl HostController {
@@ -112,7 +129,157 @@ impl HostController {
             next_fire_ms: 0,
             aim_height: TARGET_EYE_HEIGHT * 0.5,
             aim_hold_until_ms: 0,
+            bo_target: None,
+            ads_until_ms: 0,
+            ads_held: false,
         }
+    }
+
+    /// Black Ops' bot raises its sights when it wants them and holds them
+    /// `sv_botMinAdsTime` to `sv_botMaxAdsTime` from the press, even once it
+    /// no longer wants them.
+    fn hold_sights(&mut self, obs: &BotObservation, want: bool) -> bool {
+        let Some(tuning) = obs.tuning else {
+            return want;
+        };
+        if want && !self.ads_held {
+            self.ads_until_ms = obs.time_ms + self.roll_ms(tuning.ads_ms);
+        }
+        self.ads_held = want || obs.time_ms < self.ads_until_ms;
+        self.ads_held
+    }
+
+    /// A roll in 0..=1.
+    fn roll_unit(&mut self) -> f32 {
+        self.roll_ms((0, 1000)) as f32 / 1000.0
+    }
+
+    /// How centred (the cosine off the bot's view) and how near (squared) a
+    /// point is, measured between origins as Black Ops' bot measures them.
+    fn measure(obs: &BotObservation, at: [f32; 3]) -> (f32, f32) {
+        let from = obs.self_state.origin;
+        let d = [at[0] - from[0], at[1] - from[1], at[2] - from[2]];
+        let dist2 = d[0] * d[0] + d[1] * d[1] + d[2] * d[2];
+        let len = dist2.sqrt();
+        let len = if len == 0.0 { 1.0 } else { len };
+        let (forward, _, _) = math_iw4::angle_vectors(obs.self_state.viewangles);
+        let dot = (d[0] * forward[0] + d[1] * forward[1] + d[2] * forward[2]) / len;
+        (dot, dist2)
+    }
+
+    /// Black Ops' bot target choice. A target that died is kept
+    /// `sv_botMinDeathTime` to `sv_botMaxDeathTime`. The bot looks again
+    /// when it has none, when its target died, or when the target is at least
+    /// `sv_botCloseDistance` away. With no target it takes the first enemy it
+    /// sees, by client number. With one, it takes a seen enemy within
+    /// `sv_botCloseDistance` at once. Otherwise it changes at most once a
+    /// look, only after holding its target 500 ms: to an enemy both nearer
+    /// and more centred; else three times in four while its target is a
+    /// player and not a bot; else half the time to one nearer; else half the
+    /// time to one more centred. When none of that happens, the 500 ms start
+    /// again.
+    fn black_ops_target(&mut self, obs: &BotObservation) {
+        let Some(tuning) = obs.tuning else {
+            self.bo_target = None;
+            return;
+        };
+        let now = obs.time_ms;
+        if obs.self_state.team == 3 {
+            self.bo_target = None;
+            return;
+        }
+        if self
+            .bo_target
+            .is_some_and(|t| t.keep_until_ms != 0 && t.keep_until_ms <= now)
+        {
+            self.bo_target = None;
+        }
+        let mut dead = false;
+        if let Some(mut current) = self.bo_target {
+            dead = obs.fallen.contains(&current.id);
+            if dead && current.keep_until_ms == 0 {
+                current.keep_until_ms = now + self.roll_ms(tuning.death_ms);
+                self.bo_target = Some(current);
+                return;
+            }
+            if !dead {
+                // The engine measures its target wherever it is; the host
+                // measures it where the bot last saw it, and forgets it with
+                // the bot's memory.
+                match self
+                    .memory
+                    .currently_seen()
+                    .chain(self.memory.last_seen())
+                    .find(|c| c.id == current.id)
+                {
+                    Some(contact) => {
+                        (current.dot, current.dist2) = Self::measure(obs, contact.origin);
+                        self.bo_target = Some(current);
+                    }
+                    None => self.bo_target = None,
+                }
+            }
+        }
+        let close2 = tuning.close_distance * tuning.close_distance;
+        if let Some(current) = self.bo_target
+            && !dead
+            && current.dist2 < close2
+        {
+            return;
+        }
+        let mut seen: Vec<Contact> = self.memory.currently_seen().copied().collect();
+        seen.sort_by_key(|c| c.id.0);
+        let Some(current) = self.bo_target else {
+            if let Some(first) = seen.first() {
+                let (dot, dist2) = Self::measure(obs, first.origin);
+                self.bo_target = Some(BoTarget {
+                    id: first.id,
+                    dot,
+                    dist2,
+                    acquired_ms: now,
+                    keep_until_ms: 0,
+                });
+            }
+            return;
+        };
+        let human = !obs.test_clients.contains(&current.id);
+        let mut acquired_ms = current.acquired_ms;
+        // A change made here gates the rest of the look as a fresh record
+        // does (its hold time is unset), but an enemy within the close
+        // distance still wins.
+        let mut changed: Option<BoTarget> = None;
+        for contact in seen.iter().filter(|c| c.id != current.id) {
+            let (dot, dist2) = Self::measure(obs, contact.origin);
+            let take = BoTarget {
+                id: contact.id,
+                dot,
+                dist2,
+                acquired_ms: now,
+                keep_until_ms: 0,
+            };
+            if dist2 < close2 {
+                self.bo_target = Some(take);
+                return;
+            }
+            if changed.is_some() || acquired_ms == 0 || now - acquired_ms <= 500 {
+                continue;
+            }
+            let nearer = current.dist2 > dist2;
+            let centred = dot > current.dot;
+            if (nearer && centred)
+                || (human && self.roll_unit() < 0.75)
+                || (nearer && self.roll_unit() < 0.5)
+                || (centred && self.roll_unit() < 0.5)
+            {
+                changed = Some(take);
+                continue;
+            }
+            acquired_ms = now;
+        }
+        self.bo_target = changed.or(Some(BoTarget {
+            acquired_ms,
+            ..current
+        }));
     }
 
     /// A roll between the two, both included.
@@ -415,6 +582,7 @@ impl HostController {
     ) {
         let started = std::time::Instant::now();
         let events = self.memory.ingest(obs);
+        self.black_ops_target(obs);
         let touching_use = obs
             .objectives
             .iter()
@@ -953,6 +1121,8 @@ impl HostController {
             };
             return self.hunt(obs, world, nav, astar_budget);
         }
+        let want = self.sights_on(obs, target);
+        let ads = self.hold_sights(obs, want);
         BotIntent {
             look_at: Some(aim_at),
             move_goal,
@@ -960,7 +1130,7 @@ impl HostController {
             move_mode,
             fire,
             path,
-            ads: self.sights_on(obs, target),
+            ads,
             ..BotIntent::default()
         }
     }
@@ -989,10 +1159,16 @@ impl HostController {
         let fire = self.authorize_fire(ready, target);
         self.intent.look_at = Some(aim_at);
         self.intent.fire = fire;
-        self.intent.ads = self.sights_on(obs, target);
+        let want = self.sights_on(obs, target);
+        self.intent.ads = self.hold_sights(obs, want);
     }
 
     fn pick_fight_target(&self, obs: &BotObservation) -> Option<Contact> {
+        // Black Ops' bot fights its own target, while the bot sees it.
+        if obs.tuning.is_some() {
+            let id = self.bo_target?.id;
+            return self.memory.currently_seen().find(|c| c.id == id).copied();
+        }
         let hold = self.hold_range(obs);
         self.memory
             .currently_seen()
