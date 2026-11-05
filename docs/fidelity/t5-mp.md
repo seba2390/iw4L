@@ -157,8 +157,8 @@ Each open section names the issue that works it.
 - [ ] **V** The use hint of a weapon on the ground (`weapon + 7` in the cursor
       hint) was not seen on screen in a run; the pick up itself was.
 - [ ] **V** `t5.csc.total_ammo`: the client's `gettotalammo` answers the
-      weapon's stock and clip. Black Ops (7ee930) answers the clip plus its
-      reserve (5ba900): with no shared ammo cap, the stock, or for a
+      weapon's stock and clip. Black Ops answers the clip plus its
+      reserve: with no shared ammo cap, the stock, or for a
       clip-only weapon its clip again; with one, the sum over the held
       weapons on the same cap of each distinct ammo's stock (clip-only: each
       distinct clip). The only multiplayer caller (`_players.csc`,
