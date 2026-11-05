@@ -1,6 +1,6 @@
 use hud_iw4::{
     GAME_HUDELEM_CAPACITY, HE_TYPE_FREE, HE_TYPE_TEXT, HUDELEM_BANK_CAPACITY, HudElem, color_rgba,
-    rebase_archival_times,
+    flags as elem_flags, rebase_archival_times,
 };
 use playerstate_iw4::ENTITYNUM_NONE;
 
@@ -138,4 +138,5 @@ pub fn set_pulse_fx(
     elem.fx_decay_start_time = decay_start_time;
     elem.fx_decay_duration = decay_duration;
     elem.sound_id = ids.next();
+    elem.flags &= !elem_flags::COD7_DECODE;
 }

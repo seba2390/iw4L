@@ -46,6 +46,8 @@ pub const TEXT_STYLE_HUDELEM: i32 = 3;
 pub struct TextRunFx {
     pub scene_time: i32,
     pub fx: hud_iw4::TextPulseFx,
+    /// Black Ops' `setCOD7DecodeFX` look instead of the pulse's.
+    pub decode: bool,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -341,6 +343,7 @@ fn tessellate_fonts_in(
                 let font_tok = intern_name(&mut mats, font);
 
                 let cmd_fx = fx.map(|fx| hud_iw4::GfxCmdDrawTextFx {
+                    decode: fx.decode,
                     fx: fx.fx,
                     fx_material: intern_name(&mut mats, hud_iw4::DECODE_CHARACTERS_MATERIAL),
                     fx_material_glow: intern_name(
@@ -486,6 +489,7 @@ fn tessellate_fonts_in(
                             .map(|(fx, scene_time)| TextRunFx {
                                 scene_time,
                                 fx: fx.fx,
+                                decode: fx.decode,
                             });
                         if let Some(glow) = &host.glow {
                             out.extend(text_run_quads(
@@ -572,7 +576,14 @@ fn text_run_quads(
 ) -> Vec<Draw2dQuad> {
     let mut max_length_remaining = i32::MAX;
     let mut vars = None;
-    if let Some(fx) = fx {
+    let mut decode = None;
+    if let Some(fx) = fx.filter(|fx| fx.decode) {
+        let Some(d) = crate::hudelem::decode_fx_vars(text, max_length_remaining, fx) else {
+            return Vec::new();
+        };
+        max_length_remaining = d.max_length;
+        decode = Some(d);
+    } else if let Some(fx) = fx {
         match hud_iw4::setup_pulse_fx_vars(
             hud_iw4::seh_print_strlen(text),
             max_length_remaining,
@@ -620,13 +631,34 @@ fn text_run_quads(
             color = tint;
             continue;
         }
-        let orig_letter = c as u32;
+        let mut orig_letter = c as u32;
         let mut letter = orig_letter;
         let mut fade_alpha = 0u8;
         let mut skip_drawing = false;
         let mut extra_fx_char = false;
-
-        if draw_rand_char_at_end && max_length_remaining == 1 {
+        // Black Ops' decode: the letters not decoded yet are digits at
+        // 0xc0, the rest full while any is; then the whole run fades.
+        let mut decode_alpha = None;
+        if let Some(d) = decode.as_mut() {
+            if let Some((elapsed, duration)) = d.decay {
+                decode_alpha = Some(crate::hudelem::decode_fade(
+                    (color[3] * 255.0) as u8,
+                    elapsed,
+                    duration,
+                ));
+            } else if d.scrambled > 0 {
+                if d.scrambled >= max_length_remaining && c != ' ' {
+                    letter = crate::hudelem::decode_digit(&mut d.seed);
+                    orig_letter = letter;
+                    decode_alpha = Some(0xc0);
+                } else {
+                    decode_alpha = Some(0xff);
+                }
+            }
+        }
+        if let Some(alpha) = decode_alpha {
+            fade_alpha = alpha;
+        } else if draw_rand_char_at_end && max_length_remaining == 1 {
             letter = hud_iw4::font_get_random_letter(seed);
             fade_alpha = hud_iw4::FX_TYPING_LETTER_ALPHA;
             if hud_iw4::rand_with_seed(&mut seed) % 2 != 0 {
@@ -666,7 +698,10 @@ fn text_run_quads(
                 1.0,
                 1.0,
             );
-            let alpha = if decaying || (draw_rand_char_at_end && max_length_remaining == 1) {
+            let alpha = if decaying
+                || decode_alpha.is_some()
+                || (draw_rand_char_at_end && max_length_remaining == 1)
+            {
                 f32::from(hud_iw4::modulate_byte_colors(
                     (color[3] * 255.0) as u8,
                     fade_alpha,
@@ -707,7 +742,10 @@ fn text_run_quads(
             }
         };
         let mut letter_color = color;
-        if decaying || (draw_rand_char_at_end && max_length_remaining == 1) {
+        if decaying
+            || decode_alpha.is_some()
+            || (draw_rand_char_at_end && max_length_remaining == 1)
+        {
             letter_color[3] = f32::from(hud_iw4::modulate_byte_colors(
                 (color[3] * 255.0) as u8,
                 fade_alpha,

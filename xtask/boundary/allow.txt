@@ -439,7 +439,7 @@ pattern crates/hud/src/hud_elems.rs AssetNamespace::<game> 3
 pattern crates/hud/src/hud_elems.rs entity_iw4:: 1
 pattern crates/hud/src/hud_elems.rs hud_iw4:: 7
 pattern crates/hud/src/hud_elems.rs playerstate_iw4:: 1
-pattern crates/hud/src/hudelem.rs hud_iw4:: 3
+pattern crates/hud/src/hudelem.rs hud_iw4:: 2
 pattern crates/hud/src/images.rs AssetNamespace::<game> 1
 pattern crates/hud/src/images.rs gamemode_iw4:: 1
 pattern crates/hud/src/images.rs hud_iw4:: 1
