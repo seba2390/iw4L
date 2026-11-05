@@ -86,9 +86,14 @@ Each open section names the issue that works it.
       `default_private.cfg`); their `reset`, `restoreDvars`,
       `resetCustomGametype` and `if ( … )` lines (client stats, menus)
       are not run, and the front end itself is #664.
-- [ ] **G** Spawn selection: the spawn influencer builtins
-      (`addsphereinfluencer`, `addcylinderinfluencer`, …) and
-      `_spawning.gsc`'s scoring have not run.
+- [ ] **G** Spawn selection (#929): `_spawning.gsc` runs on the spawn
+      influencer builtins (`addsphereinfluencer`, `addcylinderinfluencer`,
+      `setspawnpointsbaseweight`, `setspawnpointrandomvariation`,
+      `getsortedspawnpoints`), but their scoring is IW4L's own (each enabled
+      influencer's score summed, a facing bonus, a random term), not
+      BlackOpsMP.exe's: its per-category extremes and sums, the reach and
+      curve of each shape, the per-team cache and sort are decoded in #929
+      and not ported.
 - [ ] **G** `ghost`, `killserver`, `ban`, `endparty`, `endlobby`,
       `sethostmigrationstatus` are refused.
 - [ ] **V** A spectator's free look (`+use`, spectate type free) is not
