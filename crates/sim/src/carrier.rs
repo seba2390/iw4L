@@ -127,6 +127,37 @@ impl SimWorld {
             .map_or_else(Vec::new, |paths| paths.origins().collect())
     }
 
+    /// The map's path nodes of kind `Path` and the walked links between
+    /// them (from, to, length): the graph Black Ops' bots path on. Traversal
+    /// links and other kinds of node are left out.
+    pub fn path_node_links(&self) -> (Vec<[f32; 3]>, Vec<(u16, u16, f32)>) {
+        let Some(paths) = self.actor_paths() else {
+            return (Vec::new(), Vec::new());
+        };
+        let nodes = paths.nodes();
+        let mut index = vec![u16::MAX; nodes.len()];
+        let mut origins = Vec::new();
+        for (i, node) in nodes.iter().enumerate() {
+            if node.kind == crate::script::NavNodeKind::Path {
+                index[i] = origins.len() as u16;
+                origins.push(node.origin);
+            }
+        }
+        let mut links = Vec::new();
+        for (i, node) in nodes.iter().enumerate() {
+            for &(to, length, traversal) in &node.links {
+                let (a, b) = (
+                    index[i],
+                    index.get(usize::from(to)).copied().unwrap_or(u16::MAX),
+                );
+                if !traversal && a != u16::MAX && b != u16::MAX {
+                    links.push((a, b, length));
+                }
+            }
+        }
+        (origins, links)
+    }
+
     /// Whether a player standing at `origin` touches a volume of a zone the
     /// scripts have enabled (Black Ops 2's `in_enabled_playable_area`), for
     /// a test player.
@@ -427,6 +458,21 @@ impl SimWorld {
     /// A bot's controller cannot get to the goal its script gave it.
     pub fn report_bot_bad_path(&mut self, id: crate::ClientId) {
         crate::script::host::natives::t5::report_bot_bad_path(&mut self.ecs, id.0);
+    }
+
+    /// A bot's target and its path's lookahead, as its controller has them.
+    pub fn report_bot_state(
+        &mut self,
+        id: crate::ClientId,
+        threat: Option<crate::ClientId>,
+        lookahead: Option<([f32; 3], f32)>,
+    ) {
+        crate::script::host::natives::t5::report_bot_state(
+            &mut self.ecs,
+            id.0,
+            threat.map(|t| t.0),
+            lookahead,
+        );
     }
 
     /// The test clients: the host's bots, and those the scripts added.

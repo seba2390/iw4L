@@ -29,6 +29,9 @@ const METER_PERIOD_TICKS: u32 = 200;
 #[derive(Resource, Default)]
 struct BotNav {
     graph: NavGraph,
+    /// The map's own path nodes, for a game whose bots path on them (Black
+    /// Ops' `_bot.gsc` bots); empty when the map has none.
+    paths: NavGraph,
     pending: Option<(u64, Task<NavGraph>, Option<asset_transport::StageHandle>)>,
 }
 
@@ -500,6 +503,7 @@ fn think_bots(mut p: ThinkBots) {
     let start = (p.clock.tick as usize / 2) % count.max(1);
     let mut controller_us = 0u64;
     let mut bad_paths = Vec::new();
+    let mut reports = Vec::new();
     let seed = p.roster.seed;
     for offset in 0..count {
         let bot = &mut p.roster.bots[(start + offset) % count];
@@ -550,14 +554,18 @@ fn think_bots(mut p: ThinkBots) {
             };
             obs.test_clients.clone_from(&test_clients);
             let started = std::time::Instant::now();
-            let mut cmd = brain.drive_nav(
-                &obs,
-                &mut queried,
-                Some(&p.nav.graph),
-                &mut astar,
-                AUTHORITY_MS,
-            );
+            // Black Ops' bots path on the map's path nodes.
+            let graph = if obs.tuning.is_some() && !p.nav.paths.is_empty() {
+                &p.nav.paths
+            } else {
+                &p.nav.graph
+            };
+            let mut cmd =
+                brain.drive_nav(&obs, &mut queried, Some(graph), &mut astar, AUTHORITY_MS);
             controller_us += started.elapsed().as_micros() as u64;
+            if obs.tuning.is_some() {
+                reports.push((bot.id, brain.threat(), brain.lookahead()));
+            }
             cmd.server_time = p.clock.time_ms;
             if let Some(order) = snapshot
                 .meta
@@ -600,6 +608,9 @@ fn think_bots(mut p: ThinkBots) {
             }
         }
         p.cmds.push(bot.id, None, cmd, None);
+    }
+    for (id, threat, lookahead) in reports {
+        p.world.0.report_bot_state(id, threat, lookahead);
     }
     for id in bad_paths {
         p.world.0.report_bot_bad_path(id);
@@ -672,6 +683,36 @@ fn prepare_navigation(
 
 fn refresh_nav(world: &SimWorld, nav: &mut BotNav, load: Option<&assets::MapLoadProcess>) -> bool {
     let digest = nav_digest(world);
+    let paths_digest = digest ^ PATH_NODES_DIGEST;
+    if nav.paths.digest != paths_digest {
+        let (nodes, links) = world.path_node_links();
+        // Each node stands where a player's feet would on the floor below
+        // it, as the engine drops its path nodes.
+        let nodes = nodes
+            .into_iter()
+            .map(|at| {
+                use crate::nav::BakeTraces;
+                let hit =
+                    world.bake_hull([at[0], at[1], at[2] + 16.0], [at[0], at[1], at[2] - 256.0]);
+                if hit.startsolid || hit.fraction >= 1.0 {
+                    at
+                } else {
+                    hit.endpos
+                }
+            })
+            .collect();
+        let generation = nav.paths.generation.wrapping_add(1);
+        nav.paths = crate::nav::from_path_nodes(nodes, &links, paths_digest);
+        nav.paths.generation = generation;
+        if !nav.paths.is_empty() {
+            diag::info!(
+                Sim,
+                "bots: path nodes: {} nodes, {} links",
+                nav.paths.nodes.len(),
+                links.len()
+            );
+        }
+    }
     if nav.graph.digest == digest && nav.graph.schema == NAV_SCHEMA && nav.graph.hull == NAV_HULL {
         return true;
     }
@@ -717,6 +758,8 @@ fn refresh_nav(world: &SimWorld, nav: &mut BotNav, load: Option<&assets::MapLoad
 }
 
 const NAV_CACHE_KIND: &str = "nav";
+/// Keeps the path-node graph's key apart from the baked graph's.
+const PATH_NODES_DIGEST: u64 = 0x5041_5448_4e4f_4445;
 
 fn nav_digest(world: &SimWorld) -> u64 {
     let parts = world.content_components();
