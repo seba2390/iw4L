@@ -1098,6 +1098,7 @@ pub(crate) fn update_weaponbar(
             team_scores: snap.meta.objectives.scores,
             rank_scores,
             own_stats: meta.map_or([0; 3], |m| [m.score, m.kills, m.deaths]),
+            own_ping: meta.map_or(0, |m| m.ping),
             view_name: {
                 let client = if ps.is_live_follow() {
                     sim::ClientId(ps.kill_cam_client_num as u32)
