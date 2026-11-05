@@ -7,6 +7,9 @@ pub struct ObjectiveMatch {
     pub vehicles: Vec<CompassVehicle>,
     pub vehicle_targets: Vec<VehicleHudTarget>,
     pub server_info: Vec<(String, String)>,
+    /// Black Ops multiplayer's scoreboard column types
+    /// (`setScoreboardColumns`).
+    pub scoreboard_columns: [u8; 4],
     pub game_end_time: i32,
     pub slow_motion: Option<crate::ScriptSlowMotion>,
     pub ambient: Option<crate::ScriptAmbient>,

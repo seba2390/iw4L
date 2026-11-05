@@ -26,6 +26,7 @@ mod overlay;
 mod physics;
 mod post_chain;
 mod radius;
+mod scoreboard;
 mod shake;
 mod shock;
 mod surface;
@@ -154,6 +155,14 @@ const MULTIPLAYER_ENGINE_DVARS: &[(&str, &str)] = &[
     ("bodyTypeFromGun", "0"),
     ("attachmentFilter", "0"),
     ("maxAttachmentsPerWeapon", "2"),
+    // The scoreboard's team banners read these server dvars, which
+    // `_scoreboard.gsc` and the team sets set over the registered defaults.
+    ("g_TeamIcon_Allies", "faction_128_usmc"),
+    ("g_TeamIcon_Axis", "faction_128_arab"),
+    ("g_TeamIcon_Free", ""),
+    ("g_TeamIcon_Spectator", ""),
+    ("g_TeamName_Allies", "GAME_ALLIES"),
+    ("g_TeamName_Axis", "GAME_AXIS"),
 ];
 
 /// Black Ops' front-end level: the main menu draws over it.

@@ -29,6 +29,7 @@ pub(crate) mod t5_physics;
 pub(crate) mod t5_poison;
 pub(crate) mod t5_popups;
 pub(crate) mod t5_radar;
+pub(crate) mod t5_scoreboard;
 pub(crate) mod t5_scrambler;
 pub(crate) mod t5_sprint;
 pub(crate) mod t5_stats;

@@ -601,14 +601,15 @@ Each open section names the issue that works it.
       renderer command. With `compassRotation` 0 the arrow would turn,
       which the runtime does not draw (a gap). The server's `setminimap`
       is the shared one, which re-frames the corners it is given.
-- [ ] **V** `t5.hud.mp_scoreboard` (#898): TAB and the end of a match show
-      the zombies scoreboard (Points, Kills, Headshots, the `BlackOpsZombie`
-      footer). Black Ops' multiplayer board is its own code draw: a banner
-      per team (icon, name, score, player count, and how many are alive in
-      round modes), rows with rank, name, score, the gametype's four
-      `setscoreboardcolumns` columns and ping, sorted and scrolled by the
-      `cg_scoreboard*` dvars. The columns and each client's values travel in
-      the player state and the score message; neither is sent.
+- [ ] **V** `t5.hud.mp_scoreboard_scroll`: the TAB scoreboard starts at
+      the row BlackOpsMP.exe's client picks (the local player's row kept in
+      view) and stops at the first row past its bottom, but its scroll keys
+      (`cg_scoreboardScrollStep`) and the scroll bar with its arrows are not
+      drawn or read. With 18 players every row fits.
+- [ ] **V** `t5.mp.scoreboard_ping`: the scoreboard's ping column shows 0
+      for every player: the runtime measures no client's ping, and Black
+      Ops' value (the server's ping for the client over a dvar's divisor)
+      is not sent.
 - [ ] **V** `t5.hud.compass_mounted`: a player mounted on a vehicle is not
       drawn on the compass.
 - [ ] **V** `t5.hud.game_messages`: of Black Ops' three game message
@@ -760,6 +761,29 @@ Each open section names the issue that works it.
 
 ## Closed
 
+- [x] **V** `t5.hud.mp_scoreboard` (#898): TAB shows BlackOpsMP.exe's
+      code-drawn scoreboard. A banner per team (the local player's team
+      first, then the other, then free and spectators): the team icon
+      (`g_TeamIcon_*`, hung left of the board), the team score, the name
+      (`g_TeamName_*`), `( count )`, and in Search and Destroy the count of
+      players with no status icon `MPUI_ALIVE`. The column titles share the
+      first banner's line. Rows: rank number and icon (`rankTable`,
+      `rankIconTable`), the scripts' `statusicon`, name, score, the four
+      `setScoreboardColumns` columns (kdratio worked out by the client,
+      x2score times ten) and ping, on a grey back under the team's colour;
+      the local player's text in `cg_scoreboardMyColor`. The column table
+      (widths 0.07, 0.05, 0.2, 0.05, 0.1, ping 0.1, the rest shared by the
+      named columns), the layout and fonts are the `cg_scoreboard*`
+      registered defaults; the footer is `sv_hostname`'s default for a
+      server that is not dedicated, `BlackOpsPrivate`. The server writes a
+      column's value when the scripts write the field, as the field setters
+      do; rows are ranked by the server's rule (connecting last, spectators
+      after players, score, then fewer deaths). Own choices: equal players
+      keep client order, the board also shows through intermission, its
+      fade also fades the rows, and the free team's rows use
+      `g_ScoresColor_Free` without the client's `ui_team` faction lookup.
+      Verified on `mp_nuked` with a real kill: 100 on the banner and the
+      row, kills 1, ratio 1.00, the victim's deaths 1 and its dead icon.
 - [x] **V** `t5.hud.player_card_emblem`: the kill player card's gamercard
       background (menu function 401, `emblemPlayerBackgroundMaterial`) answers
       as BlackOpsMP.exe's handler does with no online profile entry for the

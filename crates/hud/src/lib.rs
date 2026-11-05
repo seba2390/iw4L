@@ -34,6 +34,7 @@ mod splash;
 mod surface;
 mod t5_hud;
 mod targetmap;
+mod team_scoreboard;
 mod ui_write;
 mod weapon_name;
 mod weaponbar;

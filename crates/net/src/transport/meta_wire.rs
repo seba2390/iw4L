@@ -1244,6 +1244,10 @@ fn encode_client_meta(out: &mut WireWriter, meta: &ClientSnapshotMeta) {
     out.put_u32(meta.player_card_icon);
     out.put_u32(meta.player_card_title);
     out.put_u32(meta.player_card_nameplate);
+    for value in meta.score_columns {
+        out.put_i32(value);
+    }
+    put_text(out, &meta.status_icon);
     debug_assert!(meta.client_dvars.len() <= u16::MAX as usize);
     out.put_u16(meta.client_dvars.len() as u16);
     for (name, value) in &meta.client_dvars {
@@ -1577,6 +1581,13 @@ fn decode_client_meta(input: &mut WireReader<'_>) -> Result<ClientSnapshotMeta, 
     let player_card_icon = input.get_u32()?;
     let player_card_title = input.get_u32()?;
     let player_card_nameplate = input.get_u32()?;
+    let score_columns = [
+        input.get_i32()?,
+        input.get_i32()?,
+        input.get_i32()?,
+        input.get_i32()?,
+    ];
+    let status_icon = get_text(input)?;
     let mut client_dvars = Vec::new();
     for _ in 0..input.get_u16()? {
         client_dvars.push((get_text(input)?, get_text(input)?));
@@ -1778,6 +1789,8 @@ fn decode_client_meta(input: &mut WireReader<'_>) -> Result<ClientSnapshotMeta, 
         player_card_icon,
         player_card_title,
         player_card_nameplate,
+        score_columns,
+        status_icon,
         client_dvars,
         shellshock,
         view_effects,
@@ -3928,6 +3941,7 @@ fn encode_objectives(out: &mut WireWriter, state: &sim::ObjectiveMatch) {
         put_text(out, name);
         put_text(out, value);
     }
+    out.put_bytes(&state.scoreboard_columns);
     out.put_i32(state.game_end_time);
     out.put_u8(u8::from(state.scripted_effects));
     debug_assert!(state.effects.len() <= u16::MAX as usize);
@@ -4047,6 +4061,9 @@ fn decode_objectives(input: &mut WireReader<'_>) -> Result<sim::ObjectiveMatch, 
     let count = input.get_u16()?;
     for _ in 0..count {
         state.server_info.push((get_text(input)?, get_text(input)?));
+    }
+    for column in &mut state.scoreboard_columns {
+        *column = input.get_u8()?;
     }
     state.game_end_time = input.get_i32()?;
     state.scripted_effects = input.get_u8()? != 0;

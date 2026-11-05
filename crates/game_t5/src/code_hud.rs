@@ -30,17 +30,23 @@ pub(crate) static MP_CODE_HUD: GameCodeHud = GameCodeHud {
             "those pieces of its 2D draw (executable)"
         ),
         unknown!(
+            "t5.hud.mp_scoreboard_scroll",
+            "Black Ops multiplayer's TAB scoreboard does not scroll: its scroll keys and scroll bar are not drawn or read",
+            "the scoreboard's scroll input and bar (executable)"
+        ),
+        unknown!(
+            "t5.mp.scoreboard_ping",
+            "Black Ops multiplayer's scoreboard shows a ping of 0 for every player: no client's ping is measured or sent",
+            "the server's measured ping for each client (runtime networking)"
+        ),
+        unknown!(
             "t5.hud.game_messages",
             "Black Ops multiplayer's subtitle window (game message window 2) is not drawn, and a window keeps every line until it ends rather than Black Ops' own cap",
             "the subtitle channel's prints and the window's line store (executable)"
         ),
-        unknown!(
-            "t5.hud.mp_scoreboard",
-            "Black Ops multiplayer's TAB scoreboard (team banners, rank, the gametype's setscoreboardcolumns columns, ping) is not drawn: the zombies board stands in",
-            "its scoreboard draw and the score message's column values (executable)"
-        ),
     ],
     crosshair: mp_crosshair,
+    team_scoreboard: Some(&crate::scoreboard::SCOREBOARD),
     visibility_bit: Some(mp_visibility_bit),
     damage_flash: Some(DamageFlash {
         kick_perk_scale: mp_kick_perk_scale,
@@ -123,6 +129,7 @@ const ZOMBIES_CODE_HUD: GameCodeHud = GameCodeHud {
     },
     crosshair,
     scoreboard: Some(&SCOREBOARD),
+    team_scoreboard: None,
     owner_hint,
     weapon_info: Some(&crate::weapon_info::WEAPON_INFO),
     command_hint: Some(command_hint),
