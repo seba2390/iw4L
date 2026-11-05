@@ -32,9 +32,8 @@ pub struct Contact {
     pub origin: [f32; 3],
     /// How fast it moved when seen; zero for a contact from memory.
     pub velocity: [f32; 3],
-    /// Its eyes above its feet, and whether it stands on something.
+    /// Its eyes above its feet.
     pub view_height: f32,
-    pub on_ground: bool,
     pub source: KnowledgeSource,
     pub seen_tick: u32,
     pub confidence: f32,
@@ -307,6 +306,20 @@ pub struct BotObservation {
     /// The player the scripts named the bot's attacker (Black Ops'
     /// `SetAttacker`).
     pub attacker: Option<ScriptAttacker>,
+    /// Where every other live client is, for a game whose own bots read the
+    /// entities themselves (Black Ops' paths to a target it does not see);
+    /// empty for the host's own rules.
+    pub positions: Vec<(ClientId, [f32; 3])>,
+}
+
+impl BotObservation {
+    /// Where the game has a live client, when the game's bots read it.
+    pub fn position(&self, id: ClientId) -> Option<[f32; 3]> {
+        self.positions
+            .iter()
+            .find(|(other, _)| *other == id)
+            .map(|(_, at)| *at)
+    }
 }
 
 /// A bot's attacker as the scripts named it: who, the level time they did,

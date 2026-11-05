@@ -429,6 +429,21 @@ impl SimWorld {
         crate::script::host::natives::t5::report_bot_bad_path(&mut self.ecs, id.0);
     }
 
+    /// A bot's target and its path's lookahead, as its controller has them.
+    pub fn report_bot_state(
+        &mut self,
+        id: crate::ClientId,
+        threat: Option<crate::ClientId>,
+        lookahead: Option<([f32; 3], f32)>,
+    ) {
+        crate::script::host::natives::t5::report_bot_state(
+            &mut self.ecs,
+            id.0,
+            threat.map(|t| t.0),
+            lookahead,
+        );
+    }
+
     /// The test clients: the host's bots, and those the scripts added.
     pub fn test_clients(&self) -> Vec<crate::ClientId> {
         self.ecs

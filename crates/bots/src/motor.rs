@@ -1,6 +1,6 @@
 use math_iw4::{angle_normalize_360, angle_subtract, yaw_vectors_2d};
 use movement_iw4::ANGLE2SHORT;
-pub(crate) use playerstate_iw4::{ENTITYNUM_NONE, PlayerState, UserCmd, buttons};
+pub(crate) use playerstate_iw4::{PlayerState, UserCmd, buttons};
 
 use crate::intent::{BotIntent, MotorReport, MoveMode, PathOutcome};
 use crate::observation::BotObservation;
@@ -85,8 +85,12 @@ impl Motor {
             self.armed = Some(obs.self_state.life_sequence);
         }
         let dt = dt_ms.max(1) as f32;
+        // Black Ops' bot stands still while its view is 50° or more off where
+        // it turns to (bot flag 0x10).
+        let mut turning = false;
         if let (Some(at), Some(turn)) = (intent.look_at, intent.turn) {
             let desire = look_angles(obs.eye(), at);
+            turning = angle_subtract(desire[1], self.yaw).abs() >= 50.0;
             self.yaw = angle_normalize_360(bot_turn(
                 self.yaw,
                 desire[1],
@@ -133,7 +137,9 @@ impl Motor {
         let walking = matches!(intent.move_mode, MoveMode::Walk | MoveMode::Drop)
             && matches!(intent.path, PathOutcome::Clear | PathOutcome::ProgressLost);
         let (mut forwardmove, mut rightmove) = (0i8, 0i8);
-        if !unsupported
+        if let Some(strafe) = intent.strafe {
+            (forwardmove, rightmove) = strafe;
+        } else if !unsupported
             && walking
             && let Some(goal) = intent.move_goal
         {
@@ -142,6 +148,9 @@ impl Motor {
                 goal[1] - obs.self_state.origin[1],
             ];
             (forwardmove, rightmove) = wish_to_move(self.yaw, wish);
+        }
+        if turning {
+            (forwardmove, rightmove) = (0, 0);
         }
         // A requested weapon has to survive the whole change: the simulator
         // settles a dropping hand back to ready when the command asks for the
@@ -168,6 +177,9 @@ impl Motor {
         }
         if intent.use_button {
             cmd.buttons |= buttons::USE;
+        }
+        if intent.melee {
+            cmd.buttons |= buttons::MELEE_CHARGE;
         }
         if intent.ads {
             cmd.buttons |= buttons::ADS;

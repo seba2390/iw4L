@@ -2096,6 +2096,10 @@ struct BotScript {
     attack_until_ms: i32,
     /// The player `SetAttacker` named last, and the level time it did.
     attacker: Option<(u32, i32)>,
+    /// What the bot's controller reports: its target (bot +0x3e8) and its
+    /// path's lookahead direction and the distance left (+0x398, +0x3ac).
+    threat: Option<u32>,
+    lookahead: Option<([f32; 3], f32)>,
 }
 
 /// How far above or below a goal a bot may stand and have reached it.
@@ -2179,6 +2183,20 @@ pub(crate) fn report_bot_bad_path(world: &mut World, client: u32) {
     script.bad_path = true;
     let player = super::super::players::player_object(world, client);
     crate::script::runtime::raise(world, player, "bad_path", Vec::new());
+}
+
+/// What a bot's controller reports each frame: its target and its path's
+/// lookahead.
+pub(crate) fn report_bot_state(
+    world: &mut World,
+    client: u32,
+    threat: Option<u32>,
+    lookahead: Option<([f32; 3], f32)>,
+) {
+    let mut state = world.get_resource_or_insert_with(BotScriptState::default);
+    let script = state.0.entry(client).or_default();
+    script.threat = threat;
+    script.lookahead = lookahead;
 }
 
 /// Each frame a bot that has reached its goal hears `goal`, once.
@@ -2308,35 +2326,26 @@ fn register_bots(registry: &mut NativeRegistry) {
         bot_script(world, receiver)?.enemy = None;
         Ok(Value::Undefined)
     });
-    // The threat the scripts set; the host bots' own target is not shared.
+    // `GetThreat()`: the bot's own target (bot +0x3e8), as its controller
+    // reports it; the scripts' enemy while it reports none.
     registry.register(Method, "getthreat", |world, receiver, _| {
-        Ok(bot_script(world, receiver)?
-            .enemy
-            .clone()
-            .unwrap_or(Value::Undefined))
+        let script = bot_script(world, receiver)?;
+        let (threat, enemy) = (script.threat, script.enemy.clone());
+        Ok(match threat {
+            Some(client) => super::super::players::player_object(world, client),
+            None => enemy.unwrap_or(Value::Undefined),
+        })
     });
-    // The straight line to the scripts' goal stands in for the path's
-    // lookahead (`t5.bots.host_ai`).
+    // `GetLookaheadDist()`: the distance left on the bot's path (+0x3ac),
+    // 0 with none; `GetLookaheadDir()`: the path's lookahead direction
+    // (+0x398), undefined with none.
     registry.register(Method, "getlookaheaddist", |world, receiver, _| {
-        let origin = origin_of(world, receiver);
-        let goal = bot_script(world, receiver)?.goal;
-        Ok(Value::Float(goal.map_or(0.0, |(goal, _)| {
-            let d = sub(goal, origin);
-            (d[0] * d[0] + d[1] * d[1] + d[2] * d[2]).sqrt()
-        })))
+        let lookahead = bot_script(world, receiver)?.lookahead;
+        Ok(Value::Float(lookahead.map_or(0.0, |(_, dist)| dist)))
     });
     registry.register(Method, "getlookaheaddir", |world, receiver, _| {
-        let origin = origin_of(world, receiver);
-        let goal = bot_script(world, receiver)?.goal;
-        Ok(Value::Vector(goal.map_or([0.0; 3], |(goal, _)| {
-            let d = sub(goal, origin);
-            let len = (d[0] * d[0] + d[1] * d[1] + d[2] * d[2]).sqrt();
-            if len > 0.0 {
-                [d[0] / len, d[1] / len, d[2] / len]
-            } else {
-                [0.0; 3]
-            }
-        })))
+        let lookahead = bot_script(world, receiver)?.lookahead;
+        Ok(lookahead.map_or(Value::Undefined, |(dir, _)| Value::Vector(dir)))
     });
     // `pressUseButton(seconds)`: use held until then.
     registry.register(Method, "pressusebutton", |world, receiver, args| {
