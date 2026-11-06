@@ -1071,6 +1071,10 @@ pub(crate) fn update_weaponbar(
                         m.view_effects.client_screen.friendly_scramblers.clone()
                     }),
                     enemy_jam: meta.map_or(0.0, |m| m.view_effects.client_screen.enemy_scrambler),
+                    fake_fires: meta.map_or(Vec::new(), |m| {
+                        m.view_effects.client_screen.fake_fires.clone()
+                    }),
+                    now: cg_clock.time(),
                     radar,
                 })
             });

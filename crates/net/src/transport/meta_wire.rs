@@ -1990,6 +1990,16 @@ fn encode_client_screen(out: &mut WireWriter, screen: &sim::ClientScreen) {
         out.put_f32(xy[1]);
     }
     out.put_u8(u8::from(screen.flags_away[0]) | u8::from(screen.flags_away[1]) << 1);
+    out.put_u8(screen.fake_fires.len() as u8);
+    for ping in &screen.fake_fires {
+        out.put_f32(ping.pos[0]);
+        out.put_f32(ping.pos[1]);
+        out.put_f32(ping.yaw);
+        out.put_i32(ping.entity);
+        out.put_u8(ping.owner);
+        out.put_i32(ping.time_ms);
+        out.put_u8(u8::from(ping.enemy) | u8::from(ping.directional) << 1);
+    }
     match screen.local_radar {
         None => out.put_u8(0),
         Some(xy) => {
@@ -2183,6 +2193,25 @@ fn decode_client_screen(input: &mut WireReader<'_>) -> Result<sim::ClientScreen,
         .collect::<Result<Vec<_>, WireError>>()?;
     let away = input.get_u8()?;
     let flags_away = [away & 1 != 0, away & 2 != 0];
+    let fake_fires = (0..input.get_u8()?)
+        .map(|_| {
+            let pos = [input.get_f32()?, input.get_f32()?];
+            let yaw = input.get_f32()?;
+            let entity = input.get_i32()?;
+            let owner = input.get_u8()?;
+            let time_ms = input.get_i32()?;
+            let bits = input.get_u8()?;
+            Ok(sim::FakeFirePing {
+                pos,
+                yaw,
+                entity,
+                owner,
+                time_ms,
+                enemy: bits & 1 != 0,
+                directional: bits & 2 != 0,
+            })
+        })
+        .collect::<Result<Vec<_>, WireError>>()?;
     let local_radar = match input.get_u8()? {
         0 => None,
         1 => Some([input.get_f32()?, input.get_f32()?]),
@@ -2206,6 +2235,7 @@ fn decode_client_screen(input: &mut WireReader<'_>) -> Result<sim::ClientScreen,
         friendly_scramblers,
         local_radar,
         flags_away,
+        fake_fires,
     })
 }
 

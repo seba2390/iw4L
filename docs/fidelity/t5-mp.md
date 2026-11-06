@@ -609,8 +609,24 @@ Each open section names the issue that works it.
       drawn only for a player with perk 39 (`reconnaissance`), which no
       class or script grants, so none show, as here. Not drawn yet: the
       killstreak vehicles, planes, turrets and guided missiles (146, 148,
-      154–156; #917), artillery (149–151), and the decoy's fake fire and the
-      Jammer flicker (312, 376; #923); the teammates' talk, yell and Second
+      154–156; #917), artillery (149–151), and the Jammer flicker (376,
+      #923: Black Ops draws the item's material over the compass with a
+      material constant of the jam amount, which the 2D pass has no slot
+      for). The decoy's fake fire (312) draws as Black Ops' does: each
+      viewer keeps two records per owning player (the entity's own again,
+      else the older), none for a spectating owner, an enemy's when the
+      owner is on another team, directional when it fired under the
+      viewer's satellite; each shows until `compassSoundPingFadeTime` past
+      its time (full until then, fading after), at the teammates' icon
+      size, held at the edge with `compassClampIcons`:
+      `compassping_enemyfiring`, `compassping_enemydirectional` turned by
+      the record's yaw, or `compassping_decoyfiring` for a teammate's. IW4L
+      keeps the records on the host and sends them in the client's screen
+      state (Black Ops' client builds them from event 0x45); the place is
+      the entity's when `fakefire` runs and its yaw the entity's angles;
+      Black Ops' extra gate on an enemy's record (cg+0x5ed8c bit 9 without
+      a radar) is not read; the full map's fake fire (313) is not drawn. The
+      teammates' talk, yell and Second
       Chance states are #924. A HUD material's picture samples
       by its texture's sampler state (wrap or clamp), as the zone has it. The map's frame is
       rebuilt on the client from the map's corner entities and `northyaw`

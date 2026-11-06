@@ -137,6 +137,10 @@ pub(crate) struct T5Compass {
     pub jammers: Vec<[f32; 2]>,
     /// How much the nearest enemy Jammer jams (`setEnemyScramblerAmount`).
     pub enemy_jam: f32,
+    /// The fake fire records (a decoy's shots), and the client's level
+    /// time they are read at.
+    pub fake_fires: Vec<sim::FakeFirePing>,
+    pub now: i32,
     pub radar: Option<T5CompassRadar>,
 }
 
@@ -1772,6 +1776,7 @@ fn paint_owner(
             paint_compass_objectives(state, &args, frame)
         }
         COMPASS_JAMMERS => paint_compass_jammers(state, &args, frame),
+        COMPASS_FAKE_FIRE => paint_compass_fake_fire(state, &args, frame),
         FULL_MAP_MAP => paint_full_map(state, &args, frame),
         FULL_MAP_LOCATOR => paint_locator(state, &args, frame),
         FULL_MAP_PLAYER => paint_full_map_player(state, &args, frame),
@@ -2171,6 +2176,107 @@ fn paint_compass_jammers(
             color: [r, g, b, args.color[3] * static_alpha(compass)],
             material: "compass_scrambler_large".into(),
             op: Draw2dOp::StretchPic,
+            provenance: Draw2dProvenance::OwnerDraw(args.item.owner_draw),
+            layer: 1,
+        });
+    }
+    OwnerDrawPaint::Painted
+}
+
+/// Black Ops' fake fire owner draw.
+const COMPASS_FAKE_FIRE: i32 = 312;
+
+/// Black Ops' fake fire pings, while the local player is not spectating:
+/// each record until `compassSoundPingFadeTime` past its time, on the
+/// compass (or held at its edge with `compassClampIcons`), the teammates'
+/// icon size; full until its time, then fading out over the fade time. An
+/// enemy's is `compassping_enemyfiring`, turned `compassping_enemydirectional`
+/// when it fired under the viewer's satellite; a teammate's
+/// `compassping_decoyfiring`.
+fn paint_compass_fake_fire(
+    state: &T5HudState<'_>,
+    args: &OwnerDrawArgs<'_>,
+    frame: &mut ChromeFrame,
+) -> OwnerDrawPaint {
+    let Some(compass) = state.compass.as_ref() else {
+        return OwnerDrawPaint::Painted;
+    };
+    if compass.fake_fires.is_empty() || state.team == TEAM_SPECTATOR {
+        return OwnerDrawPaint::Painted;
+    }
+    let Some([x, y, w, h]) = compass_rect(state, compass, args) else {
+        return OwnerDrawPaint::Gap(ChromeGapKind::OwnerDraw);
+    };
+    let now = compass.now;
+    let fade = compass_dvar(state, "compassSoundPingFadeTime", 2.0) * 1000.0;
+    let size = compass_dvar(state, "compassSize", compass.rules.size);
+    let icon_w = compass_dvar(state, "compassFriendlyWidth", 18.75) * size;
+    let icon_h = compass_dvar(state, "compassFriendlyHeight", 18.75) * size;
+    let max_range = compass_dvar(state, "compassMaxRange", compass.rules.max_range);
+    let rotation = compass_dvar(
+        state,
+        "compassRotation",
+        f32::from(u8::from(compass.rules.rotation)),
+    ) != 0.0;
+    let clamp_icons = compass_dvar(state, "compassClampIcons", 1.0) != 0.0;
+    let turn_from = if rotation {
+        compass.yaw
+    } else {
+        compass.north_yaw
+    };
+    let namespace = args
+        .assets
+        .catalog
+        .and_then(|c| c.namespace)
+        .unwrap_or(crate::images::HUD_CHROME_NAMESPACE);
+    for ping in &compass.fake_fires {
+        if ping.time_ms == 0 || now as f32 >= fade + ping.time_ms as f32 {
+            continue;
+        }
+        let ([dx, dy], clamped) = compass_offset(compass, rotation, max_range, [w, h], ping.pos);
+        if clamped && !clamp_icons {
+            continue;
+        }
+        let alpha = if now <= ping.time_ms {
+            1.0
+        } else {
+            1.0 - (now - ping.time_ms) as f32 / fade
+        };
+        if alpha < 0.0 {
+            continue;
+        }
+        let (material, op) = match (ping.enemy, ping.directional) {
+            (true, true) => (
+                "compassping_enemydirectional",
+                Draw2dOp::RotatedPic {
+                    deg: turn_from - ping.yaw,
+                },
+            ),
+            (true, false) => ("compassping_enemyfiring", Draw2dOp::StretchPic),
+            (false, _) => ("compassping_decoyfiring", Draw2dOp::StretchPic),
+        };
+        let [r, g, b, a] = args.color;
+        let applied = args.surface.apply_rect(
+            x + w * 0.5 - icon_w * 0.5 + dx,
+            y + h * 0.5 - icon_h * 0.5 + dy,
+            icon_w,
+            icon_h,
+            args.rect.horz_align as i32,
+            args.rect.vert_align as i32,
+        );
+        frame.list.cmds.push(Draw2dCmd {
+            material_namespace: namespace,
+            x: applied.x,
+            y: applied.y,
+            w: applied.w,
+            h: applied.h,
+            s0: 0.0,
+            t0: 0.0,
+            s1: 1.0,
+            t1: 1.0,
+            color: [r, g, b, alpha * a],
+            material: material.into(),
+            op,
             provenance: Draw2dProvenance::OwnerDraw(args.item.owner_draw),
             layer: 1,
         });
