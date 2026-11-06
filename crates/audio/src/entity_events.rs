@@ -315,6 +315,27 @@ fn play_cs_sound_alias(
             ent_from_number(payload.payload.number)
         },
     };
+    if payload.payload.simulation_flags & sim::SOUND_THEN_ALIAS != 0 {
+        let then = u8::try_from(payload.payload.other_entity_num)
+            .ok()
+            .and_then(|index| adopted.and_then(|snap| snap.sound_alias_name(index)))
+            .and_then(|name| name.split_once(':'))
+            .and_then(|(ns, name)| {
+                asset_core::AssetNamespace::parse(ns).map(|ns| (ns, name.to_owned()))
+            });
+        if let Some((namespace, alias)) = then {
+            let then = PlayAlias {
+                event: None,
+                namespace,
+                alias,
+                fallback: None,
+                origin_inches: sound.origin_inches,
+                snd_ent: sound.snd_ent,
+            };
+            play.write(crate::AliasCommand::PlayThen { sound, then });
+            return;
+        }
+    }
     let reports = payload.payload.simulation_flags & sim::SOUND_REPORTS_LENGTH != 0;
     // A sound event on an entity follows that entity while it plays (the
     // world and other numbers no entity holds keep their origin).

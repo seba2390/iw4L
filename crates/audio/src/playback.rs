@@ -66,6 +66,7 @@ impl Plugin for PlayerSoundPlugin {
             .scoped::<crate::breath::BreathSources>(frame::Timeline::Running)
             .scoped_message::<AliasCommand>(frame::Timeline::Running)
             .scoped::<SoundLengthReports>(frame::MatchScope::Live)
+            .scoped::<ChainedAliases>(frame::MatchScope::Live)
             .scoped_message::<Footstep>(frame::Timeline::Running)
             .scoped_message::<WeaponSound>(frame::Timeline::Running)
             .scoped_message::<BoundWeaponSound>(frame::Timeline::Running)
@@ -111,6 +112,9 @@ impl Plugin for PlayerSoundPlugin {
                     report_sound_lengths
                         .in_set(frame::InMatch)
                         .after(play_alias_messages),
+                    play_chained_aliases
+                        .in_set(frame::InMatch)
+                        .before(play_alias_messages),
                     play_footstep_messages.in_set(frame::InMatch),
                     crate::entity_events::play_viewmodel_notetrack_messages
                         .in_set(frame::InMatch)
@@ -210,6 +214,7 @@ fn play_alias_messages(
     epoch: Res<ScopeEpoch<MatchScope>>,
     local: Res<net::LocalPresentClient>,
     mut reports: ResMut<SoundLengthReports>,
+    mut chained: ResMut<ChainedAliases>,
 ) {
     for command in events.read() {
         let (event, pitch_scale) = match command {
@@ -217,9 +222,9 @@ fn play_alias_messages(
                 runtime.stop_emitter_cues(*snd_ent, epoch.0);
                 continue;
             }
-            AliasCommand::Play(event) | AliasCommand::PlayOnEntity { sound: event, .. } => {
-                (event, 1.0)
-            }
+            AliasCommand::Play(event)
+            | AliasCommand::PlayOnEntity { sound: event, .. }
+            | AliasCommand::PlayThen { sound: event, .. } => (event, 1.0),
             AliasCommand::PlayPitched { sound, pitch } => (sound, *pitch),
             AliasCommand::Stop {
                 namespace,
@@ -248,7 +253,10 @@ fn play_alias_messages(
             &mut pending,
             &mut decisions,
             sound_entity(event.snd_ent, local.0),
-            matches!(command, AliasCommand::PlayOnEntity { .. }),
+            matches!(
+                command,
+                AliasCommand::PlayOnEntity { .. } | AliasCommand::PlayThen { .. }
+            ),
             SoundClass::World,
             epoch.0,
             pitch_scale,
@@ -264,7 +272,39 @@ fn play_alias_messages(
         {
             reports.pending.push((*entity, handle));
         }
+        if let AliasCommand::PlayThen { then, .. } = command
+            && let Some(handle) = pending.last()
+            && chained.0.len() < CHAINED_ALIAS_SLOTS
+        {
+            chained.0.push((handle, then.clone()));
+        }
     }
+}
+
+/// Black Ops' second-alias queue: 8 slots; a full queue drops the second
+/// alias.
+const CHAINED_ALIAS_SLOTS: usize = 8;
+
+/// Sounds whose second alias waits for them to stop.
+#[derive(Resource, Default)]
+pub(crate) struct ChainedAliases(Vec<(crate::cue::CueHandle, PlayAlias)>);
+
+/// Each frame, a queued second alias whose first sound has stopped plays at
+/// the same entity and place.
+pub(crate) fn play_chained_aliases(
+    mut chained: ResMut<ChainedAliases>,
+    mut play: MessageWriter<AliasCommand>,
+) {
+    chained.0.retain(|(handle, then)| {
+        if handle.active() {
+            return true;
+        }
+        play.write(AliasCommand::PlayOnEntity {
+            sound: then.clone(),
+            report: None,
+        });
+        false
+    });
 }
 
 /// Notified entity sounds whose length the client still has to report.

@@ -45,6 +45,10 @@ pub struct EventRecord {
 /// the event entity's waiting sound notify (Black Ops' `sl` command).
 pub const SOUND_REPORTS_LENGTH: u8 = 0x80;
 
+/// On a sound alias event: `other_entity_num` holds a second alias index
+/// that plays once the first sound stops (Black Ops' battle chatter).
+pub const SOUND_THEN_ALIAS: u8 = 0x40;
+
 #[derive(Clone, Copy, Debug, Default, PartialEq)]
 pub struct EntityEventPayload {
     pub number: i32,
