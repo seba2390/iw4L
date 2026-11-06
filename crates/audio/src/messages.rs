@@ -32,6 +32,12 @@ pub enum AliasCommand {
     StopEntity {
         snd_ent: u32,
     },
+    /// A sound on an entity, then `then` at the same entity and place once
+    /// the first stops (Black Ops' battle chatter).
+    PlayThen {
+        sound: PlayAlias,
+        then: PlayAlias,
+    },
     Stop {
         namespace: AssetNamespace,
         alias: String,

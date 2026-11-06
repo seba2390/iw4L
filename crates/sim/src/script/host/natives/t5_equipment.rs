@@ -65,13 +65,15 @@ pub(crate) fn register(registry: &mut NativeRegistry) {
     registry.register(Function, "setplayerteamrank", |_, _, _| {
         Ok(Value::Undefined)
     });
-    // `playBattleChatterToTeam(alias, enemyAlias, team[, skip])`: a temp sound
-    // on the speaker heard by that team's players.
+    // `playBattleChatterToTeam(alias, alias2, team[, player])`: a temp sound
+    // on the speaker heard by that team's players; a second alias plays
+    // once the first stops.
     registry.register(
         Method,
         "playbattlechattertoteam",
         |world, receiver, args| {
             let alias = string(args, 0)?;
+            let then = string(args, 1)?;
             let team = string(args, 2)?;
             if team != "allies" && team != "axis" {
                 return Err(format!(
@@ -86,14 +88,13 @@ pub(crate) fn register(registry: &mut NativeRegistry) {
                 .number;
             let origin = super::engine::origin_of(world, receiver)?;
             let clients = super::engine::team_clients(world, &team, None);
-            if !clients.is_empty() {
-                super::engine::sound_to(
-                    world,
-                    crate::EventAudience::Clients(clients),
-                    &alias,
-                    number,
-                    origin,
-                );
+            let audience = crate::EventAudience::Clients(clients.clone());
+            match (clients.is_empty(), then.is_empty()) {
+                (true, _) => {}
+                (false, true) => super::engine::sound_to(world, audience, &alias, number, origin),
+                (false, false) => {
+                    super::engine::sound_then_to(world, audience, [&alias, &then], number, origin)
+                }
             }
             Ok(Value::Undefined)
         },
