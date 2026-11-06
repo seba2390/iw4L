@@ -70,10 +70,16 @@ Each open section names the issue that works it.
       no script program and are refused at load (`gsc: refused …
       stage=program unknown=t5.scripts.mp_gametypes`).
 - [ ] **G** `t5.mp.second_chance` (`ModeRules::downed`): going down
-      (Second Chance) does not drop a deployed weapon or reset the weapon
-      state as Black Ops' damage does, and the 500 ms timer it starts is
-      taken as the runtime's damage immunity; its stance animation event
-      is the zombies movement's (#650).
+      (Second Chance) raises Black Ops' stance event (stand, crouch or
+      prone to last stand by the ducked and prone flags), puts a weapon on
+      a turret or deployed (states 0x24–0x26) back to ready and lets go of
+      a grenade being pulled back or held (its throw starts with the
+      grenade's `fireTime` and `fireDelay`), as `BlackOpsMP.exe`'s damage
+      does. Left: the turret is not released through Black Ops' turret stop
+      (IW4L clears the player's turret flags instead), the throw's
+      animation start that follows is not played, and the 500 ms timer the
+      damage sets (gclient+0x2828) is taken as the runtime's damage
+      immunity (#650).
 - [ ] **I** The engine dvars a multiplayer match starts with
       (`MULTIPLAYER_ENGINE_DVARS`: `zombiemode` 0, `ui_multiplayer` 1,
       `systemlink` 0, `onlinegame` 0, `cg_usingClientScripts` 1,
