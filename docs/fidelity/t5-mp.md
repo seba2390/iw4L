@@ -118,7 +118,12 @@ Each open section names the issue that works it.
       `objective_setcolor` are not implemented.
 - [ ] **G** `map_restart` on a multiplayer map reinstalls the scripts but
       the scene never reports spawned again, so a command after it waits
-      out the console's gate (#646).
+      out the console's gate (#646). Seen on `mp_nuked` (2026-11-06): the
+      restart's world spawn reaches its GPU wait with every image resident
+      and every pipeline warm (2769/2769), but the colour pass records no
+      draws (`ColourWorkingSet::hits` 0), so `WorldGpuReady::pipelines`
+      (which needs a hit) never turns true and the wait never goes quiet.
+      A renderer lifecycle fault, not a game rule.
 
 ## Gametypes (#653, #654, #655)
 
