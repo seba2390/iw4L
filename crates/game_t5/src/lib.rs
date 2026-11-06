@@ -582,7 +582,7 @@ const MULTIPLAYER_MODE: ModeRules = ModeRules {
         perk_bit: Some(movement::PISTOL_DEATH),
         unrun: Some(unknown!(
             "t5.mp.second_chance",
-            "going down in multiplayer does not drop a deployed weapon or reset the weapon state as Black Ops does, and its 500 ms timer is taken as damage immunity",
+            "going down in multiplayer does not release a turret through the turret's own stop, and its 500 ms timer is taken as damage immunity",
             "the rest of Black Ops' multiplayer last stand entry (BlackOpsMP.exe)"
         )),
         ..game_api::DownedRules::BRIEFLY_IMMUNE

@@ -856,14 +856,37 @@ impl PlayerMovement for T5Movement {
     /// Black Ops' last stand entry: raises the stance-to-last-stand animation
     /// event (`CROUCH_TO_LAST_STAND` when ducked, `PRONE_TO_LAST_STAND` when
     /// prone, else `STAND_TO_LAST_STAND`) and detaches a turret or vehicle.
+    /// In multiplayer (Second Chance) a weapon on a turret or deployed goes
+    /// back to ready, and a grenade being pulled back or held is let go: its
+    /// throw starts at once (`fireTime`, `fireDelay`).
     fn enter_last_stand(
         &self,
         player: &mut MovePlayer,
-        _weapons: &dyn game_api::movement::WeaponTable,
+        weapons: &dyn game_api::movement::WeaponTable,
     ) -> MoveOutcome {
         use movement_t5::events::anim;
-        use movement_t5::state::e_flags;
+        use movement_t5::state::{e_flags, weap_flags};
+        use movement_t5::weapon::state as ws;
         let (mut ps, mut last) = unpack(player);
+        if !self.zombies {
+            if ps.e_flags & e_flags::TURRET != 0
+                || (ws::DEPLOYING..=ws::BREAKING_DOWN).contains(&ps.weaponstate)
+            {
+                ps.weaponstate = ws::READY;
+            }
+            if matches!(
+                ps.weaponstate,
+                ws::OFFHAND_INIT | ws::OFFHAND_PREPARE | ws::OFFHAND_HOLD
+            ) && let Some(def) = weapons
+                .weapon(ps.offhand_index)
+                .and_then(|w| WeaponDefView::new(&w.def, &w.variant))
+            {
+                ps.weaponstate = ws::OFFHAND_START;
+                ps.weapon_time = def.fire_time();
+                ps.weap_flags |= weap_flags::OFFHAND_ACTIVE;
+                ps.weapon_delay = def.fire_delay();
+            }
+        }
         ps.pm_type = pm_type::LAST_STAND;
         let event = if ps.pm_flags & pm_flags::DUCKED != 0 {
             anim::CROUCH_TO_LAST_STAND
