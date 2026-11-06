@@ -684,6 +684,34 @@ pub(crate) fn sound_to(
     );
 }
 
+/// A sound alias event whose second alias plays once the first stops (Black
+/// Ops' battle chatter: the lead-in, then the place).
+pub(crate) fn sound_then_to(
+    world: &mut World,
+    audience: crate::EventAudience,
+    [first, then]: [&str; 2],
+    number: i32,
+    origin: [f32; 3],
+) {
+    let tick = world.resource::<crate::step::StepRequest>().tick;
+    let mut frame = crate::frame::FrameWorld::from_world(world);
+    let first = frame.sound_alias_index(first);
+    let then = frame.sound_alias_index(then);
+    frame.push_entity_event(
+        tick,
+        audience,
+        EntityEventKind::SOUND_ALIAS,
+        crate::EntityEventPayload {
+            number,
+            event_parm: i32::from(first),
+            other_entity_num: i32::from(then),
+            simulation_flags: crate::SOUND_THEN_ALIAS,
+            origin,
+            ..Default::default()
+        },
+    );
+}
+
 /// A sound at a point that only one client hears.
 pub(crate) fn sound_to_client(
     world: &mut World,

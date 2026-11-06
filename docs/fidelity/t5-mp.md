@@ -124,7 +124,12 @@ Each open section names the issue that works it.
       `objective_setcolor` are not implemented.
 - [ ] **G** `map_restart` on a multiplayer map reinstalls the scripts but
       the scene never reports spawned again, so a command after it waits
-      out the console's gate (#646).
+      out the console's gate (#646). Seen on `mp_nuked` (2026-11-06): the
+      restart's world spawn reaches its GPU wait with every image resident
+      and every pipeline warm (2769/2769), but the colour pass records no
+      draws (`ColourWorkingSet::hits` 0), so `WorldGpuReady::pipelines`
+      (which needs a hit) never turns true and the wait never goes quiet.
+      A renderer lifecycle fault, not a game rule.
 
 ## Gametypes (#653, #654, #655)
 
@@ -866,8 +871,12 @@ Each open section names the issue that works it.
 - [ ] **A** Leader dialog, match music and battle chatter
       (`_globallogic_audio.gsc`, `_battlechatter_mp.gsc`, `_music.gsc`) run
       with no script fault, and `playBattleChatterToTeam` plays its first
-      alias on the speaker to that team. Its second alias (the temp event
-      carries both) is not read. On `mp_nuked` (tdm, two console bots, a
+      alias on the speaker to that team; its second alias (the place) rides
+      in the same sound event and the client starts it at the same entity
+      and place once the first sound stops, as Black Ops' client queue does
+      (eight slots, a full queue drops it). IW4L frees a slot when its
+      second sound starts (Black Ops when it stops: only the eight-slot cap
+      differs). On `mp_nuked` (tdm, two console bots, a
       kill) the sound trace shows the announcer (`vox_rus_tdm_start`,
       `vox_ops_tdm_start`, `vox_rus_lead_taken`, `vox_*_generic_boost`), the
       chatter (`vox_rus_1_inform_kill_infantry`, `vox_ops_1_threat_infantry`)
