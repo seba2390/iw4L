@@ -59,6 +59,7 @@ pub fn observe_focused(
         ammo_clip: meta.ammo_clip,
         ammo_stock: meta.ammo_stock,
         team,
+        hand: world.bot_hand(ps, bot),
     };
     let inventory = own_inventory(ps, meta, world);
     let mut seen = Vec::new();

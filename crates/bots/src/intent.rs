@@ -44,6 +44,10 @@ pub struct BotIntent {
     /// view, in place of walking to `move_goal`.
     pub strafe: Option<(i8, i8)>,
     pub melee: bool,
+    /// Hold an offhand's button: 0 the lethal slot, 1 the tactical.
+    pub offhand: Option<usize>,
+    /// The view pitch to turn to in place of `look_at`'s (Black Ops' throw).
+    pub pitch: Option<f32>,
 }
 
 /// Black Ops' bot turn: each 50 ms the view covers the angle left times the
@@ -72,6 +76,8 @@ impl Default for BotIntent {
             ads: false,
             strafe: None,
             melee: false,
+            offhand: None,
+            pitch: None,
         }
     }
 }

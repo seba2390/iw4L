@@ -228,6 +228,11 @@ pub trait WorldQuery {
     ) -> Option<crate::observation::WeaponAction> {
         None
     }
+    /// What the game's own bot code reads of the bot's hands, when the match
+    /// runs the game's weapon rules.
+    fn bot_hand(&self, _ps: &crate::motor::PlayerState, _client: ClientId) -> Option<sim::BotHand> {
+        None
+    }
 }
 
 /// Counts the collision operations a composite check issues without charging
@@ -286,6 +291,9 @@ impl<W: WorldQuery> WorldQuery for Primitives<'_, W> {
         client: ClientId,
     ) -> Option<crate::observation::WeaponAction> {
         self.world.weapon_action(ps, client)
+    }
+    fn bot_hand(&self, ps: &crate::motor::PlayerState, client: ClientId) -> Option<sim::BotHand> {
+        self.world.bot_hand(ps, client)
     }
 }
 
@@ -383,6 +391,9 @@ impl<W: WorldQuery> WorldQuery for Budgeted<'_, W> {
     ) -> Option<crate::observation::WeaponAction> {
         self.world.weapon_action(ps, client)
     }
+    fn bot_hand(&self, ps: &crate::motor::PlayerState, client: ClientId) -> Option<sim::BotHand> {
+        self.world.bot_hand(ps, client)
+    }
 }
 
 impl WorldQuery for SimWorld {
@@ -455,6 +466,10 @@ impl WorldQuery for SimWorld {
         } else {
             WeaponAction::Ready
         })
+    }
+
+    fn bot_hand(&self, ps: &crate::motor::PlayerState, client: ClientId) -> Option<sim::BotHand> {
+        self.game_bot_hand(&ps.move_player(client.0 as i32, false))
     }
 
     fn weapon_facts(&self, weapon: u16) -> Option<WeaponFacts> {

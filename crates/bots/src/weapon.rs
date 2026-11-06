@@ -213,6 +213,11 @@ fn held_slot(obs: &BotObservation) -> WeaponSlot {
 /// and switching are then compared on the simulator's own timings, with a
 /// visible threat deciding whether speed outranks keeping the current gun.
 fn choose(obs: &BotObservation, press_reload: bool) -> Option<WeaponAct> {
+    if obs.tuning.is_some()
+        && let Some(hand) = obs.self_state.hand
+    {
+        return black_ops_choose(obs, hand, press_reload);
+    }
     let me = &obs.self_state;
     if !me.weapon_action.is_settled() {
         return None;
@@ -248,3 +253,75 @@ fn choose(obs: &BotObservation, press_reload: bool) -> Option<WeaponAct> {
         (None, None) => None,
     }
 }
+
+/// Black Ops' bot weapon, with the weapon ready or just raised: it keeps the
+/// one in hand while that has rounds anywhere unless it fires only once locked on (its targets
+/// are players); else it takes the first held weapon, in the game's slot
+/// order, that fires bullets or projectiles, is not a turret's, does not
+/// need a lock and has rounds; else the first such with none. The reload
+/// press is Black Ops' own (`black_ops_reload`).
+fn black_ops_choose(
+    obs: &BotObservation,
+    hand: sim::BotHand,
+    press_reload: bool,
+) -> Option<WeaponAct> {
+    let me = &obs.self_state;
+    if !(hand.weaponstate == 0
+        || (BO_RAISED_STATES.0..=BO_RAISED_STATES.1).contains(&hand.weaponstate))
+    {
+        return None;
+    }
+    let rounds = |weapon: u32| {
+        u16::try_from(weapon)
+            .ok()
+            .and_then(|w| obs.slot(w))
+            .map_or(0, |slot| slot.clip + slot.stock)
+    };
+    let lockon = |weapon: u32| {
+        hand.held
+            .iter()
+            .position(|held| *held == weapon)
+            .is_some_and(|at| hand.lockon_only & (1 << at) != 0)
+    };
+    let current = u32::from(me.weapon);
+    if current != 0 && !lockon(current) && rounds(current) > 0 {
+        // An empty clip with rounds left reloads: the host's bot does not
+        // pull the trigger on an empty clip, where the game would reload.
+        let held = held_slot(obs);
+        return ((press_reload || me.ammo_clip == 0)
+            && me.ammo_stock > 0
+            && me.ammo_clip < held.facts.clip_size)
+            .then_some(WeaponAct::Reload);
+    }
+    let usable = |weapon: u32| {
+        u16::try_from(weapon)
+            .ok()
+            .and_then(|w| obs.slot(w))
+            .is_some_and(|slot| {
+                matches!(
+                    slot.facts.weap_type,
+                    BO_WEAPTYPE_BULLET | BO_WEAPTYPE_PROJECTILE
+                ) && slot.facts.weap_class != BO_WEAPCLASS_TURRET
+            })
+    };
+    let candidates = || {
+        hand.held
+            .iter()
+            .copied()
+            .filter(|w| *w != 0 && *w != current && usable(*w))
+    };
+    let to = candidates()
+        .find(|w| !lockon(*w) && rounds(*w) > 0)
+        .or_else(|| candidates().next())?;
+    Some(WeaponAct::Switch {
+        to: u16::try_from(to).ok()?,
+    })
+}
+
+/// Black Ops' weapon states in which the bot picks its weapon besides
+/// ready (just raised), its bullet and projectile weapon types and its
+/// turret class (as IW4L's weapon facts number it).
+const BO_RAISED_STATES: (i32, i32) = (0x1c, 0x1e);
+const BO_WEAPTYPE_BULLET: i32 = 0;
+const BO_WEAPTYPE_PROJECTILE: i32 = 2;
+const BO_WEAPCLASS_TURRET: i32 = 8;

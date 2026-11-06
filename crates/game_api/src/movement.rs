@@ -265,6 +265,42 @@ pub struct WeaponActivity {
     pub switching: bool,
 }
 
+/// What a game's own bot code reads of its player's hands: the weapon
+/// state, the grenade in hand and the offhands it can throw.
+#[derive(Clone, Copy, Debug, Default, PartialEq)]
+pub struct BotHand {
+    /// The game's own weapon state number (0 is ready).
+    pub weaponstate: i32,
+    /// The fuse left on a cooked grenade, in milliseconds.
+    pub grenade_time_left: i32,
+    /// A grenade can be thrown back.
+    pub throwback: bool,
+    /// The player has the game's faster reload perk.
+    pub fast_reload: bool,
+    /// The player's gravity.
+    pub gravity: i32,
+    /// The held offhands of the game's lethal and tactical slots, in the
+    /// order the player holds them.
+    pub offhands: [Option<BotOffhand>; 6],
+    /// Every held weapon in the game's own slot order (0: empty slot), and
+    /// by bit those that fire only once locked on.
+    pub held: [u32; 15],
+    pub lockon_only: u16,
+}
+
+/// One offhand a bot can throw and the weapon fields its throw reads.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub struct BotOffhand {
+    pub weapon: u32,
+    /// The game's `offhandSlot`: 1 lethal, 2 tactical.
+    pub slot: i32,
+    pub projectile_speed: i32,
+    pub explosion_radius: i32,
+    /// The grenade cooks while the button is held.
+    pub cook: bool,
+    pub rotate_type: i32,
+}
+
 /// A jump, landing or movement sound event, with the surface's name.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum JumpLand {
@@ -803,6 +839,12 @@ pub trait PlayerMovement: Sync {
     /// What the player's weapon is doing, as the game's script builtins
     /// test it.
     fn weapon_activity(&self, player: &MovePlayer) -> WeaponActivity;
+
+    /// What the game's own bot code reads of the player's hands; `None` for
+    /// a game whose bots are the host's.
+    fn bot_hand(&self, _player: &MovePlayer, _weapons: &dyn WeaponTable) -> Option<BotHand> {
+        None
+    }
 
     /// Whether the player's weapon is in one of the game's reload states.
     fn weapon_reloading(&self, _player: &MovePlayer) -> bool {

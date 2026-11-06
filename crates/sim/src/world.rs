@@ -935,6 +935,18 @@ impl SimState {
         ))
     }
 
+    /// What the game's own bot code reads of a player's hands.
+    pub fn game_bot_hand(
+        &self,
+        player: &game_api::movement::MovePlayer,
+    ) -> Option<game_api::movement::BotHand> {
+        let mode = self.bootstrap.mode?;
+        let game_api::Rule::Known(game_api::MovementRules::Game(movement)) = mode.movement else {
+            return None;
+        };
+        movement.bot_hand(player, self.content.as_ref())
+    }
+
     pub fn weapon_script_name(&self, weapon: u32) -> &str {
         self.content
             .weapons()

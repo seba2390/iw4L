@@ -97,6 +97,11 @@ pub struct HostController {
     /// The path's lookahead direction and the distance left on it, as the
     /// scripts' `GetLookaheadDir`/`GetLookaheadDist` read them.
     lookahead: Option<([f32; 3], f32)>,
+    /// Black Ops' throw in hand (bot flags 0x400/0x800): the offhand slot
+    /// (0 lethal, 1 tactical) and the view pitch it throws at (+0x448), and
+    /// the level time it may try a throw again (+0x444).
+    throw: Option<(usize, f32)>,
+    grenade_next_ms: i32,
 }
 
 /// The target record Black Ops' bot keeps: the client, how centred and how
@@ -162,6 +167,8 @@ impl HostController {
             strafe_until_ms: 0,
             strafe_target: None,
             lookahead: None,
+            throw: None,
+            grenade_next_ms: 0,
         }
     }
 
@@ -550,6 +557,224 @@ impl HostController {
         obs.self_state.ammo_clip == 0 || (0..THINK_PERIOD_TICKS).any(|_| self.roll_unit() < 0.75)
     }
 
+    /// Black Ops' bot's offhands, each server frame before it fires: a
+    /// grenade that can be thrown back is, nine frames in ten; a throw in
+    /// hand holds its button with the view turning to the throw's pitch and
+    /// lets go once the view is within 5° of it with the throw primed and
+    /// the bot hurt, the grenade not cooked by holding, or its fuse down to
+    /// 1.7–2.5 s; otherwise a new throw starts when `wants_grenade` says
+    /// so. While a throw is in hand or an offhand is out, the bot stands
+    /// and tries no other throw for 2 s. Either way it neither fires, knifes
+    /// nor aims down its sights that frame.
+    fn black_ops_offhand(
+        &mut self,
+        obs: &BotObservation,
+        world: &mut impl WorldQuery,
+        intent: &mut BotIntent,
+    ) {
+        let (Some(tuning), Some(hand)) = (obs.tuning, obs.self_state.hand) else {
+            self.throw = None;
+            return;
+        };
+        let now = obs.time_ms;
+        let hold = |intent: &mut BotIntent, slot: usize| {
+            intent.offhand = Some(slot);
+            intent.fire = false;
+            intent.melee = false;
+            intent.ads = false;
+            intent.sprint = false;
+        };
+        if hand.throwback && self.roll_unit() < 0.9 {
+            hold(intent, 0);
+            return;
+        }
+        let offhand_out =
+            hand.weaponstate > OFFHAND_STATES.0 && hand.weaponstate < OFFHAND_STATES.1;
+        if self.throw.is_some() || offhand_out {
+            intent.strafe = Some((0, 0));
+            self.grenade_next_ms = now + 2000;
+        }
+        let target_at = self.bo_target.map(|t| {
+            if t.seen_ms == now {
+                obs.position(t.id).unwrap_or(t.seen_at)
+            } else {
+                t.seen_at
+            }
+        });
+        if let Some((slot, pitch)) = self.throw {
+            hold(intent, slot);
+            self.aim_throw(obs, intent, target_at, pitch);
+            let off = math_iw4::angle_subtract(obs.self_state.viewangles[0], pitch);
+            let hurt = self.hurt_ms != 0 && now - self.hurt_ms <= 480;
+            let grenade = offhand_slots(obs, hand)[slot];
+            if off.abs() < 5.0
+                && hand.weaponstate > PRIMED_STATE
+                && (hurt
+                    || grenade.is_none_or(|g| !g.cook)
+                    || hand.grenade_time_left <= self.roll_ms((1700, 2500)))
+            {
+                intent.offhand = None;
+                self.throw = None;
+            }
+            return;
+        }
+        if !self.wants_grenade(obs, tuning, hand) {
+            return;
+        }
+        let Some((slot, target)) = self.pick_offhand(obs, hand).zip(self.bo_target) else {
+            self.grenade_next_ms = now + 2000;
+            return;
+        };
+        let Some(grenade) = offhand_slots(obs, hand)[slot] else {
+            return;
+        };
+        let at = target_at.unwrap_or(target.seen_at);
+        let here = obs.self_state.origin;
+        let distance = dist2(here, at).sqrt();
+        if slot == 0 && distance < grenade.explosion_radius as f32 {
+            return;
+        }
+        let height = at[2] - here[2];
+        let Some(arc) = throw_pitch(distance, height, grenade.projectile_speed, hand.gravity)
+        else {
+            return;
+        };
+        let spread = if grenade.rotate_type == 1 {
+            (1.0, 3.0)
+        } else if height > -5.0 && height < 5.0 {
+            (10.0, 13.0)
+        } else {
+            (7.0, 10.0)
+        };
+        let pitch = arc + spread.0 + (spread.1 - spread.0) * self.roll_unit();
+        // The throw's first 384 units at that pitch, from the eye along the
+        // view's yaw, must be clear.
+        let (forward, _, _) = math_iw4::angle_vectors([
+            pitch,
+            obs.self_state.viewangles[1],
+            obs.self_state.viewangles[2],
+        ]);
+        let eye = obs.eye();
+        let end = std::array::from_fn(|i| eye[i] + forward[i] * 384.0);
+        if world.sight_ray(eye, end, obs.self_state.id) != Ok(SightSample::Clear) {
+            self.grenade_next_ms = now + 2000;
+            return;
+        }
+        self.throw = Some((slot, pitch));
+        hold(intent, slot);
+        self.aim_throw(obs, intent, target_at, pitch);
+    }
+
+    /// While it throws, the bot keeps turning toward its target (where it
+    /// last saw it) and its pitch toward the throw's.
+    fn aim_throw(
+        &self,
+        obs: &BotObservation,
+        intent: &mut BotIntent,
+        target_at: Option<[f32; 3]>,
+        pitch: f32,
+    ) {
+        let now = obs.time_ms;
+        let seen_recently = self
+            .bo_target
+            .is_some_and(|t| t.seen_ms != 0 && now - t.seen_ms < 5000);
+        if seen_recently && let Some(at) = target_at {
+            intent.look_at = Some(at);
+        } else if intent.look_at.is_none() {
+            let (forward, _, _) = math_iw4::angle_vectors([0.0, obs.self_state.viewangles[1], 0.0]);
+            let eye = obs.eye();
+            intent.look_at = Some(std::array::from_fn(|i| eye[i] + forward[i] * 256.0));
+        }
+        intent.pitch = Some(pitch);
+    }
+
+    /// Black Ops' grenade decision, each frame: grenades allowed, the weapon
+    /// ready and a live target. With the target out of sight, not seen in
+    /// the last 5 s and the bot not hurt, none. Then only with the target in
+    /// the sight cone and the retry time passed, and only with an empty clip
+    /// or the target at least `sv_botCloseDistance` away: a target out of
+    /// sight for longer than a roll of `sv_botMinGrenadeTime` to
+    /// `sv_botMaxGrenadeTime` (but seen in 5 s) three times in four (else
+    /// wait 2 s); one in sight beyond the weapon's `minDamageRange` one
+    /// frame in four; with the sights up, one frame in 200 unhurt with
+    /// rounds in the clip, one in 100 hurt; with an empty clip and no
+    /// faster reload one frame in four (else wait 2 s); one out of sight
+    /// while the bot is hurt.
+    fn wants_grenade(
+        &mut self,
+        obs: &BotObservation,
+        tuning: sim::BotTuning,
+        hand: sim::BotHand,
+    ) -> bool {
+        let now = obs.time_ms;
+        if !tuning.allow_grenades || hand.weaponstate != 0 {
+            return false;
+        }
+        let Some(target) = self.bo_target.filter(|t| !obs.fallen.contains(&t.id)) else {
+            return false;
+        };
+        let hurt = self.hurt_ms != 0 && now - self.hurt_ms <= 480;
+        let visible = target.seen_ms == now;
+        let seen_recently = !visible && target.seen_ms != 0 && now - target.seen_ms < 5000;
+        if !visible && !seen_recently && !hurt {
+            return false;
+        }
+        let cone = (tuning.fov * 0.5).to_radians().cos();
+        let in_cone = target.dot >= if target.dist2 < 3025.0 { 0.7 } else { cone };
+        if !in_cone || self.grenade_next_ms > now {
+            return false;
+        }
+        let empty = obs.self_state.ammo_clip < 1;
+        if !empty && target.dist2 < tuning.close_distance * tuning.close_distance {
+            return false;
+        }
+        if seen_recently && self.roll_ms(tuning.grenade_ms) < now - target.seen_ms {
+            if self.roll_unit() < 0.75 {
+                return true;
+            }
+            self.grenade_next_ms = now + 2000;
+            return false;
+        }
+        if visible {
+            let min_range = obs.held().map_or(0, |slot| slot.facts.min_damage_range) as f32;
+            if target.dist2 > min_range * min_range && self.roll_unit() < 0.25 {
+                return true;
+            }
+            if self.ads_held && !empty && !hurt && self.roll_unit() < 0.005 {
+                return true;
+            }
+            if self.ads_held && hurt && self.roll_unit() < 0.01 {
+                return true;
+            }
+            if empty {
+                if !hand.fast_reload && self.roll_unit() < 0.25 {
+                    return true;
+                }
+                self.grenade_next_ms = now + 2000;
+            }
+            return false;
+        }
+        hurt
+    }
+
+    /// Black Ops' choice of offhand: with the target out of sight the lethal
+    /// one (unless its `rotateType` is 1) else the tactical; in sight the
+    /// lethal one, else the tactical one frame in a hundred.
+    fn pick_offhand(&mut self, obs: &BotObservation, hand: sim::BotHand) -> Option<usize> {
+        let visible = self.bo_target.is_some_and(|t| t.seen_ms == obs.time_ms);
+        let [lethal, tactical] = offhand_slots(obs, hand);
+        if !visible {
+            if lethal.is_some_and(|g| g.rotate_type != 1) {
+                return Some(0);
+            }
+            return tactical.map(|_| 1);
+        }
+        if lethal.is_some() {
+            return Some(0);
+        }
+        (self.roll_unit() < 0.01 && tactical.is_some()).then_some(1)
+    }
+
     /// A roll between the two, both included.
     fn roll_ms(&mut self, (low, high): (i32, i32)) -> i32 {
         self.rng ^= self.rng << 13;
@@ -823,7 +1048,9 @@ impl HostController {
                 }
             }
         }
-        let cmd = self.motor.drive(obs, &self.intent, dt_ms);
+        let mut intent = self.intent;
+        self.black_ops_offhand(obs, world, &mut intent);
+        let cmd = self.motor.drive(obs, &intent, dt_ms);
         self.report = self.motor.report(obs, &self.intent, &cmd);
         self.last_cmd = cmd;
         cmd
@@ -2129,6 +2356,10 @@ const SCRIPTED_GOAL_UTILITY: f32 = 200.0;
 /// A server frame, and how far above its feet a standing target's eyes are.
 const TICK_MS: u32 = 50;
 const TARGET_EYE_HEIGHT: f32 = 60.0;
+/// Black Ops' weapon states between which an offhand is out (exclusive),
+/// and the state past which a held grenade is primed.
+const OFFHAND_STATES: (i32, i32) = (0x14, 0x1b);
+const PRIMED_STATE: i32 = 0x16;
 /// Black Ops' `impactType` shotgun, and its `weaponClass` rocketlauncher
 /// (6) as the combat facts number it (the capture maps Black Ops' classes
 /// onto Modern Warfare 2's numbering).
@@ -2339,4 +2570,34 @@ fn dist_xy(a: [f32; 3], b: [f32; 3]) -> f32 {
     let dx = a[0] - b[0];
     let dy = a[1] - b[1];
     (dx * dx + dy * dy).sqrt()
+}
+
+/// Black Ops' throw pitch for a target `distance` away and `height` above:
+/// the low arc at the grenade's `projectileSpeed` under `gravity`, as a view
+/// pitch (up is negative). None when the arc does not reach.
+fn throw_pitch(distance: f32, height: f32, speed: i32, gravity: i32) -> Option<f32> {
+    let g = gravity as f32;
+    let gd = g * distance;
+    if gd == 0.0 {
+        return None;
+    }
+    let v2 = speed as f32 * speed as f32;
+    let angle = ((v2 - (v2 * v2 - (gd * distance + v2 * height * 2.0) * g).sqrt()) / gd).atan();
+    angle.is_finite().then_some(-angle.to_degrees())
+}
+
+/// Black Ops' offhand per slot (lethal, tactical): the first held weapon of
+/// that `offhandSlot` with rounds, a lethal one also while a grenade can be
+/// thrown back.
+fn offhand_slots(obs: &BotObservation, hand: sim::BotHand) -> [Option<sim::BotOffhand>; 2] {
+    [1, 2].map(|slot| {
+        hand.offhands.into_iter().flatten().find(|offhand| {
+            offhand.slot == slot
+                && ((hand.throwback && slot == 1)
+                    || u16::try_from(offhand.weapon)
+                        .ok()
+                        .and_then(|w| obs.slot(w))
+                        .is_some_and(|s| s.clip + s.stock > 0))
+        })
+    })
 }
