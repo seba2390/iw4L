@@ -216,6 +216,8 @@ pub struct SelfState {
     pub ammo_clip: i32,
     pub ammo_stock: i32,
     pub team: i32,
+    /// The game's own bot code's view of the bot's hands (Black Ops').
+    pub hand: Option<sim::BotHand>,
 }
 
 pub const DEFAULT_OBJECTIVE_RADIUS: f32 = 96.0;

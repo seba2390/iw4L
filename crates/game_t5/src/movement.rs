@@ -1121,6 +1121,56 @@ impl PlayerMovement for T5Movement {
         }
     }
 
+    /// Black Ops' bot reads the weapon state, the cooked grenade's fuse,
+    /// the throwback time and its held lethal and tactical offhands.
+    fn bot_hand(
+        &self,
+        player: &MovePlayer,
+        weapons: &dyn game_api::movement::WeaponTable,
+    ) -> Option<game_api::movement::BotHand> {
+        use game_api::movement::{BotHand, BotOffhand};
+        let mut player = *player;
+        let (ps, _) = unpack(&mut player);
+        let throwback = ps.throw_back_grenade_time_left > 0;
+        let mut offhands = [None; 6];
+        let held = ps.held_weapons.iter().filter_map(|held| {
+            let weapon = weapons.weapon(held.weapon).filter(|_| held.weapon != 0)?;
+            let def = WeaponDefView::new(&weapon.def, &weapon.variant)?;
+            matches!(def.offhand_slot(), 1 | 2).then(|| BotOffhand {
+                weapon: held.weapon,
+                slot: def.offhand_slot(),
+                projectile_speed: def.projectile_speed(),
+                explosion_radius: def.explosion_radius(),
+                cook: def.cook_off_hold(),
+                rotate_type: def.rotate_type(),
+            })
+        });
+        for (at, offhand) in held.take(offhands.len()).enumerate() {
+            offhands[at] = Some(offhand);
+        }
+        let mut held = [0; 15];
+        let mut lockon_only = 0u16;
+        for (at, slot) in ps.held_weapons.iter().take(held.len()).enumerate() {
+            held[at] = slot.weapon;
+            if let Some(weapon) = weapons.weapon(slot.weapon).filter(|_| slot.weapon != 0)
+                && WeaponDefView::new(&weapon.def, &weapon.variant)
+                    .is_some_and(|def| def.require_lockon_to_fire())
+            {
+                lockon_only |= 1 << at;
+            }
+        }
+        Some(BotHand {
+            weaponstate: ps.weaponstate,
+            grenade_time_left: ps.grenade_time_left,
+            throwback,
+            fast_reload: self.has_perk(&player, "specialty_fastreload"),
+            gravity: ps.gravity,
+            offhands,
+            held,
+            lockon_only,
+        })
+    }
+
     fn weapon_reloading(&self, player: &MovePlayer) -> bool {
         let mut player = *player;
         let (ps, _) = unpack(&mut player);

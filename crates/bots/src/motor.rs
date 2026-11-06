@@ -99,7 +99,10 @@ impl Motor {
             ));
             self.pitch = bot_turn(
                 self.pitch,
-                desire[0].clamp(-PITCH_LIMIT, PITCH_LIMIT),
+                intent
+                    .pitch
+                    .unwrap_or(desire[0])
+                    .clamp(-PITCH_LIMIT, PITCH_LIMIT),
                 turn.pitch_speed,
                 dt,
             );
@@ -201,6 +204,11 @@ impl Motor {
         }
         if intent.crouch {
             cmd.buttons |= buttons::CROUCH;
+        }
+        match intent.offhand {
+            Some(0) => cmd.buttons |= buttons::FRAG,
+            Some(_) => cmd.buttons |= buttons::SMOKE,
+            None => {}
         }
         cmd
     }

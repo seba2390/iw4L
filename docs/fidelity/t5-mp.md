@@ -743,9 +743,36 @@ Each open section names the issue that works it.
       the engine's traversal handling (flags 0x380, its jump and use
       presses) and its stuck rule (a bot not moving drops its path)
       are IW4L's own unstick; the sights' "all the way up" is the bot's
-      sights hold; a dead target is not walked to while kept. Grenades
-      (`sv_botAllowGrenades`) and the weapon choice are not
-      ported (#913). How they react,
+      sights hold; a dead target is not walked to while kept. Grenades are
+      Black Ops' own (#913): each frame a grenade that can be thrown back
+      is, nine frames in ten; otherwise, with `sv_botAllowGrenades`, the
+      weapon ready and a live target in the sight cone past the 2 s retry,
+      with an empty clip or the target beyond `sv_botCloseDistance`, the bot
+      throws at a target out of sight longer than a roll of
+      `sv_botMinGrenadeTime` to `sv_botMaxGrenadeTime` (seen in 5 s) three
+      times in four, at one in sight beyond its weapon's `minDamageRange`
+      one frame in four, with its sights up one in 200 (unhurt) or 100
+      (hurt), with an empty clip and no Sleight of Hand one in four, and
+      at one out of sight while hurt. It takes its lethal offhand (out of
+      sight: the tactical when the lethal's `rotateType` is 1; in sight:
+      the tactical one frame in a hundred when it has no lethal), not
+      inside the lethal's `explosionRadius`; the pitch is the low arc at
+      the grenade's `projectileSpeed` under gravity plus 1–3° (`rotateType`
+      1), 10–13° (level within 5 units) or 7–10°, and the first 384 units
+      along it must be clear. It holds the button, stands and turns its
+      pitch there, and lets go within 5° once primed, hurt, the grenade not
+      cooked by holding, or its fuse down to 1.7–2.5 s. The weapon choice is
+      Black Ops' too: the weapon in hand while it has rounds and needs no
+      lock, else the first held bullet or projectile weapon in slot order,
+      not a turret's, needing no lock, with rounds, else the first such.
+      IW4L's own there: the throw's clear-line trace is the bots' sight
+      trace (Black Ops' mask 0x806881 not matched), "sights up" is the
+      sights hold, an empty clip with rounds left is reloaded (the host's
+      bot does not pull the trigger on an empty clip, where the game
+      reloads), the throw gate on the scripts' enemy and the attack think's
+      first rule (a player flag 0x10000 with a timed entity: a knife one
+      frame in a hundred) are not read, and the turret and vehicle target
+      rules have no target here (players only). How they react,
       fire and aim is Black Ops' own once `_bot.gsc` has set its `sv_bot*`
       dvars by difficulty (#870): a target inside `sv_botCloseDistance` is shot
       at once and another after `sv_botMinReactionTime` to
