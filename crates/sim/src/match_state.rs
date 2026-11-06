@@ -22,11 +22,11 @@ mod loadout;
 mod snapshot_meta;
 
 pub use client_view::{
-    CLIENT_VISION_TAIL, ClientLightOverride, ClientScreen, EntityScriptVectors, GUMP_SLOTS,
-    HideFade, KillcamHud, LinkedWeaponView, LocationSelection, LodScaleRigid, MENU_COMMAND_TAIL,
-    MenuCommand, MenuCommandKind, MenuPopUp, PopUpText, RadarMode, RemoteMissile,
-    SPAWNED_DYN_ENT_TAIL, ScriptBlur, ScriptDepthOfField, ScriptSeat, SpawnedDynEntLaunch,
-    ViewEffects, VisionChange, VisionLerp, is_postfx_dvar,
+    CLIENT_VISION_TAIL, ClientLightOverride, ClientScreen, EntityScriptVectors, FakeFirePing,
+    GUMP_SLOTS, HideFade, KillcamHud, LinkedWeaponView, LocationSelection, LodScaleRigid,
+    MENU_COMMAND_TAIL, MenuCommand, MenuCommandKind, MenuPopUp, PopUpText, RadarMode,
+    RemoteMissile, SPAWNED_DYN_ENT_TAIL, ScriptBlur, ScriptDepthOfField, ScriptSeat,
+    SpawnedDynEntLaunch, ViewEffects, VisionChange, VisionLerp, is_postfx_dvar,
 };
 pub use events::{
     EntityEventPayload, EntityEventRecord, EventAudience, EventRecord, PelletFxRecord,

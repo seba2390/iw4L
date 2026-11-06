@@ -236,6 +236,23 @@ pub struct ClientScreen {
     /// The CTF flags the client scripts mark away (`SetFlagAsAway`): the
     /// allies' flag, then the axis'.
     pub flags_away: [bool; 2],
+    /// Black Ops' fake fire records (`fakefire`, a decoy's shots): two per
+    /// owning player, the latest of each entity.
+    pub fake_fires: Vec<FakeFirePing>,
+}
+
+/// One fake fire record as Black Ops' client keeps it: where and which way
+/// the entity was, the entity, its owner, the level time it fired, whether
+/// its owner is an enemy and whether the viewer's satellite was up then.
+#[derive(Clone, Copy, Debug, Default, PartialEq)]
+pub struct FakeFirePing {
+    pub pos: [f32; 2],
+    pub yaw: f32,
+    pub entity: i32,
+    pub owner: u8,
+    pub time_ms: i32,
+    pub enemy: bool,
+    pub directional: bool,
 }
 
 /// The script vector rows an entity's draws take (`mapshaderconstant`,

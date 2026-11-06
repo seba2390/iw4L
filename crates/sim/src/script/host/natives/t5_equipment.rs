@@ -185,7 +185,7 @@ pub(crate) fn register(registry: &mut NativeRegistry) {
         }
         let id = super::engine::entity_id(world, receiver)?;
         let number = world.resource::<crate::script::RoundScript>().entities[&id].number;
-        super::player::client_of(world, &args[0])
+        let owner = super::player::client_of(world, &args[0])
             .map_err(|_| String::from("Owner entity is not a player"))?;
         let origin = vector(args, 1)?;
         let weapon = string(args, 2)?;
@@ -207,6 +207,7 @@ pub(crate) fn register(registry: &mut NativeRegistry) {
                 origin,
             });
         }
+        record_fake_fire(world, receiver, owner, number);
         Ok(Value::Undefined)
     });
     // `makeGrenadeDud`: the grenade's fuse no longer explodes it.
@@ -274,4 +275,81 @@ fn spawn_timed_fx(world: &mut World, _: &Value, args: &[Value]) -> Result<Value,
     frame.report_game_gap(timed_fx_unknown());
     super::engine::play_fx_at(world, index, at, dir, [0.0; 3]);
     Ok(Value::Undefined)
+}
+
+/// Black Ops' client record of a fake fire event (each viewer's): none for a
+/// spectating owner; an enemy's when the owner is on another team (or, with
+/// teams off, another player), marked directional while the viewer's
+/// satellite is up; per owner two slots, the entity's own slot again else
+/// the older one; stamped with the level time.
+fn record_fake_fire(world: &mut World, receiver: &Value, owner: crate::ClientId, number: i32) {
+    let Value::Object(id) = *receiver else {
+        return;
+    };
+    let origin = match super::super::players::entity_field(world, id, "origin") {
+        Value::Vector(v) => v,
+        _ => return,
+    };
+    let yaw = match super::super::players::entity_field(world, id, "angles") {
+        Value::Vector(v) => v[1],
+        _ => 0.0,
+    };
+    let now = super::super::players::now_ms(world) as i32;
+    let mut frame = FrameWorld::from_world(world);
+    let Some(owner_team) = frame.client_meta(owner).map(|m| m.client_state_team) else {
+        return;
+    };
+    if owner_team == TEAM_SPECTATOR {
+        return;
+    }
+    for viewer in frame.client_ids_sorted() {
+        let meta = frame.client_meta_mut(viewer);
+        let team = meta.client_state_team;
+        let enemy = !(owner_team == team && (team != 0 || owner == viewer));
+        let ping = sim_fake_fire(
+            origin,
+            yaw,
+            number,
+            owner.0 as u8,
+            now,
+            enemy,
+            meta.radar_levels[1] > 0,
+        );
+        let records = &mut meta.view_effects.client_screen.fake_fires;
+        let mine: Vec<usize> = records
+            .iter()
+            .enumerate()
+            .filter(|(_, r)| r.owner == ping.owner)
+            .map(|(at, _)| at)
+            .collect();
+        if let Some(&at) = mine.iter().find(|&&at| records[at].entity == number) {
+            records[at] = ping;
+        } else if mine.len() < 2 {
+            records.push(ping);
+        } else if let Some(&at) = mine.iter().min_by_key(|&&at| records[at].time_ms) {
+            records[at] = ping;
+        }
+    }
+}
+
+const TEAM_SPECTATOR: i32 = 3;
+
+fn sim_fake_fire(
+    origin: [f32; 3],
+    yaw: f32,
+    entity: i32,
+    owner: u8,
+    time_ms: i32,
+    enemy: bool,
+    directional: bool,
+) -> crate::FakeFirePing {
+    crate::FakeFirePing {
+        pos: [origin[0], origin[1]],
+        yaw,
+        entity,
+        owner,
+        time_ms,
+        enemy,
+        directional,
+    }
 }
