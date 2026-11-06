@@ -86,14 +86,13 @@ Each open section names the issue that works it.
       `default_private.cfg`); their `reset`, `restoreDvars`,
       `resetCustomGametype` and `if ( … )` lines (client stats, menus)
       are not run, and the front end itself is #664.
-- [ ] **G** Spawn selection (#929): `_spawning.gsc` runs on the spawn
-      influencer builtins (`addsphereinfluencer`, `addcylinderinfluencer`,
-      `setspawnpointsbaseweight`, `setspawnpointrandomvariation`,
-      `getsortedspawnpoints`), but their scoring is IW4L's own (each enabled
-      influencer's score summed, a facing bonus, a random term), not
-      BlackOpsMP.exe's: its per-category extremes and sums, the reach and
-      curve of each shape, the per-team cache and sort are decoded in #929
-      and not ported.
+- [ ] **G** `t5.mp.spawn_influencer_turn`: a cylinder influencer made on
+      an entity follows the entity's origin but keeps the axis and length it
+      was made with. Black Ops turns its axes with the entity's angles (a
+      weapon influencer with the player's view) and makes a vehicle's length
+      half the radius plus the given length times the vehicle's speed. The
+      base game's scripts make one only for vehicles (the player and weapon
+      cylinders are commented out).
 - [ ] **G** `ghost`, `killserver`, `ban`, `endparty`, `endlobby`,
       `sethostmigrationstatus` are refused.
 - [ ] **V** A spectator's free look (`+use`, spectate type free) is not
@@ -1597,3 +1596,21 @@ Each open section names the issue that works it.
       master: both rows read 0 — the loopback ack lands within the frame
       that sent the snapshot, which Black Ops' frame-time rule also reads as
       0; a non-zero ping needs latency between two machines.
+- [x] **V** Spawn selection (#929): `getsortedspawnpoints` scores and sorts
+      as BlackOpsMP.exe does. Each influencer reaches a sphere's radius or a
+      cylinder centred half its length along its `<up>` axis (half the
+      length either way along it, the radius across), and its curve runs on
+      distance / radius. Scores add up by influencer type, except that a
+      player influencer keeps only the strongest friend and, unless
+      `spawnsystem_enemy_influencer_stacking` (registered 1), the strongest
+      enemy, a game-mode influencer the largest, and an enemy-spawned one
+      the most negative (`spawnsystem_*_stacking` sums them). A player's own
+      player influencers are skipped; points outside an influencer's reach
+      along x (the exe's sort axis) are not scored by it. The point's base
+      from `setspawnpointsbaseweight` (set, not added, for the masked teams:
+      the score when the point faces within the angle of the objective,
+      else 0) is added; `setspawnpointrandomvariation` is stored and never
+      read, so there is no random term. Points sort highest first. An
+      influencer whose entity goes away stays while its timeout runs. Seen
+      in a Team Deathmatch on `mp_nuked` with `_bot.gsc` bots: respawns
+      took the best-scored points near teammates and away from enemies.

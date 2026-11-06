@@ -8,6 +8,7 @@ use crate::script::Namespace::{Function, Method};
 use crate::script::{Arc, BTreeMap, NativeRegistry, RoundScript, StringTable, Value};
 use crate::world::ClientId;
 use bevy_ecs::prelude::World;
+use game_api::{Unknown, unknown};
 
 /// Which blood effect a bullet impact on a flesh entity plays (`bloodimpact`).
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
@@ -34,8 +35,9 @@ pub(crate) struct T5State {
     influencers: BTreeMap<i32, Influencer>,
     next_influencer: i32,
     spawn_points: BTreeMap<Arc<str>, Vec<Value>>,
-    randomness: f32,
-    base_weights: Vec<(i32, [f32; 3], f32, f32)>,
+    /// Each spawn point's base weight per team (free, axis, allies), set by
+    /// `setspawnpointsbaseweight`.
+    base_weights: BTreeMap<u64, [f32; 3]>,
     pub(crate) client_flags: BTreeMap<u64, u16>,
     /// `SpawnPlane`'s planes and the player each names as its owner in
     /// its entity state.
@@ -71,6 +73,8 @@ impl T5State {
 
 #[derive(Clone, Debug)]
 struct Influencer {
+    /// `eINFLUENCER_TYPE_*` (0–7): how its score combines with others.
+    kind: i32,
     shape: Shape,
     origin: [f32; 3],
     score: f32,
@@ -86,12 +90,17 @@ enum Shape {
     Sphere {
         radius: f32,
     },
+    /// Runs `length` from the origin along `axis` (the script's `<up>`).
     Cylinder {
-        forward: [f32; 3],
+        axis: [f32; 3],
         radius: f32,
         length: f32,
     },
 }
+
+const INFLUENCER_TYPE_PLAYER: i32 = 1;
+const INFLUENCER_TYPE_GAME_MODE: i32 = 6;
+const INFLUENCER_TYPE_ENEMY_SPAWNED: i32 = 7;
 
 const CURVE_LINEAR: i32 = 1;
 const CURVE_STEEP: i32 = 2;
@@ -131,7 +140,7 @@ fn dot(a: [f32; 3], b: [f32; 3]) -> f32 {
     a[0] * b[0] + a[1] * b[1] + a[2] * b[2]
 }
 
-fn length(a: [f32; 3]) -> f32 {
+fn length_of(a: [f32; 3]) -> f32 {
     dot(a, a).sqrt()
 }
 
@@ -154,8 +163,8 @@ fn axes(angles: [f32; 3]) -> [[f32; 3]; 3] {
     ]
 }
 
+/// BlackOpsMP.exe's curve: `fraction` is distance / radius, below 1.
 fn curve_weight(curve: i32, fraction: f32) -> f32 {
-    let fraction = fraction.clamp(0.0, 1.0);
     match curve {
         CURVE_LINEAR => 1.0 - fraction,
         CURVE_STEEP => (1.0 - fraction) * (1.0 - fraction),
@@ -166,27 +175,52 @@ fn curve_weight(curve: i32, fraction: f32) -> f32 {
 }
 
 impl Influencer {
-    fn score_at(&self, point: [f32; 3]) -> Option<f32> {
-        let offset = sub(point, self.origin);
-        let fraction = match self.shape {
-            Shape::Sphere { radius } => {
-                let distance = length(offset);
-                (distance <= radius).then(|| distance / radius.max(1.0))?
-            }
-            Shape::Cylinder {
-                forward,
+    /// The score at `point`: 0 outside the shape. A sphere reaches its
+    /// radius; a cylinder is centred half its length along its axis, reaches
+    /// half its length either way along the axis and its radius across, and
+    /// the curve runs on the distance across.
+    fn score_at(&self, point: [f32; 3]) -> f32 {
+        let (radius, distance_sq) = match self.shape {
+            Shape::Sphere { radius } => (
                 radius,
-                length: reach,
+                dot(sub(point, self.origin), sub(point, self.origin)),
+            ),
+            Shape::Cylinder {
+                axis,
+                radius,
+                length,
             } => {
-                let along = dot(offset, forward);
-                if !(0.0..=reach).contains(&along) {
-                    return None;
+                let half = length * 0.5;
+                let centre = [
+                    self.origin[0] + axis[0] * half,
+                    self.origin[1] + axis[1] * half,
+                    self.origin[2] + axis[2] * half,
+                ];
+                let offset = sub(point, centre);
+                let norm = length_of(axis);
+                let norm = if norm <= 0.0 { 1.0 } else { norm };
+                let along = (dot(axis, offset) / norm).abs();
+                if along >= half {
+                    return 0.0;
                 }
-                let across = length(sub(offset, forward.map(|f| f * along)));
-                (across <= radius).then(|| along / reach.max(1.0))?
+                (radius, dot(offset, offset) - along * along)
             }
         };
-        Some(self.score * curve_weight(self.curve, fraction))
+        let reach_sq = radius * radius;
+        if distance_sq >= reach_sq {
+            return 0.0;
+        }
+        self.score * curve_weight(self.curve, (distance_sq / reach_sq).sqrt())
+    }
+
+    /// The extent along x the exe sorts its influencer list by: a point
+    /// whose x is outside it is never scored by this influencer.
+    fn x_reach(&self) -> (f32, f32) {
+        let reach = match self.shape {
+            Shape::Sphere { radius } => radius,
+            Shape::Cylinder { radius, length, .. } => radius + length * 0.5,
+        };
+        (self.origin[0] - reach, self.origin[0] + reach)
     }
 }
 
@@ -216,11 +250,19 @@ fn add_influencer(world: &mut World, influencer: Influencer) -> Value {
     Value::Int(id)
 }
 
+/// A timeout above a millisecond is kept in whole milliseconds.
 fn timeout(world: &World, args: &[Value], index: usize) -> Result<Option<i64>, String> {
-    let seconds = optional(args, index, float)?.unwrap_or(0.0);
-    Ok((seconds > 0.0).then(|| now_ms(world) + (seconds * 1000.0) as i64))
+    let seconds = optional(args, index, key_number)?.unwrap_or(0.0);
+    let ms = if seconds > 0.001 {
+        (seconds * 1000.0) as i64
+    } else {
+        0
+    };
+    Ok((ms != 0).then(|| now_ms(world) + ms))
 }
 
+/// Influencers follow their entity. When the entity is gone, one whose
+/// timeout is still running stays where it was; the others go with it.
 fn settle_influencers(world: &mut World) {
     let now = now_ms(world);
     let owners: Vec<(i32, u64)> = world
@@ -234,8 +276,12 @@ fn settle_influencers(world: &mut World) {
         let live = world.resource::<RoundScript>().live(&owner);
         let origin = live.then(|| origin_of(world, &Value::Object(owner)));
         let state = t5(world);
+        let Some(influencer) = state.influencers.get_mut(&id) else {
+            continue;
+        };
         match origin {
-            Some(origin) => state.influencers.get_mut(&id).unwrap().origin = origin,
+            Some(origin) => influencer.origin = origin,
+            None if influencer.expires_ms.is_some_and(|at| at > now) => influencer.owner = None,
             None => {
                 state.influencers.remove(&id);
             }
@@ -250,6 +296,78 @@ pub(crate) fn random_unit(world: &mut World) -> f32 {
     (super::math::random(world) % 10_000) as f32 / 10_000.0
 }
 
+fn team_index(team: &str) -> usize {
+    match team {
+        "axis" => 1,
+        "allies" => 2,
+        _ => 0,
+    }
+}
+
+fn dvar_on(world: &World, name: &str, default: bool) -> bool {
+    crate::script::host::actor_nav::dvar_f32(world, name, f32::from(u8::from(default))) != 0.0
+}
+
+/// One spawn point's score for `team` against the influencers of
+/// `influencer_team`, as BlackOpsMP.exe sums it: each type's scores add
+/// up, but a player influencer keeps only its strongest friend and (unless
+/// `spawnsystem_enemy_influencer_stacking`) its strongest enemy, a game-mode
+/// influencer only its largest, and an enemy-spawned one only its most
+/// negative. A player's own player influencers are skipped.
+fn point_score(
+    state: &T5State,
+    point: [f32; 3],
+    influencer_mask: i32,
+    player: Option<u64>,
+    stacking: [bool; 3],
+) -> f32 {
+    let [friend_stacking, enemy_stacking, spawned_stacking] = stacking;
+    let mut sums = [0.0f32; 9];
+    let (mut friend, mut enemy, mut spawned) = (0.0f32, 0.0f32, 0.0f32);
+    for influencer in state.influencers.values() {
+        let (low, high) = influencer.x_reach();
+        if !influencer.enabled
+            || influencer.team_mask & influencer_mask == 0
+            || point[0] > high
+            || point[0] < low
+        {
+            continue;
+        }
+        if player.is_some()
+            && influencer.kind == INFLUENCER_TYPE_PLAYER
+            && influencer.owner == player
+        {
+            continue;
+        }
+        let score = influencer.score_at(point);
+        let kind = influencer.kind as usize;
+        match influencer.kind {
+            INFLUENCER_TYPE_PLAYER if score <= 0.0 => {
+                if enemy_stacking {
+                    sums[kind] += score;
+                } else {
+                    enemy = enemy.min(score);
+                }
+            }
+            INFLUENCER_TYPE_PLAYER => {
+                if friend_stacking {
+                    sums[kind] += score;
+                } else {
+                    friend = friend.max(score);
+                }
+            }
+            INFLUENCER_TYPE_GAME_MODE => {
+                if score != 0.0 && sums[kind].abs() < score.abs() {
+                    sums[kind] = score;
+                }
+            }
+            INFLUENCER_TYPE_ENEMY_SPAWNED if !spawned_stacking => spawned = spawned.min(score),
+            _ => sums[kind] += score,
+        }
+    }
+    sums.iter().sum::<f32>() + spawned + enemy + friend
+}
+
 fn sorted_spawn_points(
     world: &mut World,
     point_team: &str,
@@ -262,39 +380,66 @@ fn sorted_spawn_points(
         .get(point_team)
         .cloned()
         .unwrap_or_else(Vec::new);
-    let mask = team_mask(influencer_team);
+    let stacking = [
+        dvar_on(world, "spawnsystem_friend_influencer_stacking", false),
+        dvar_on(world, "spawnsystem_enemy_influencer_stacking", true),
+        dvar_on(
+            world,
+            "spawnsystem_enemy_spawned_influencer_stacking",
+            false,
+        ),
+    ];
+    let influencer_mask = team_mask(influencer_team);
+    let team = team_index(point_team);
     let mut scored = Vec::with_capacity(points.len());
     for point in points {
         let origin = origin_of(world, &point);
-        let yaw = vector_field(world, &point, "angles")[1].to_radians();
-        let forward = [yaw.cos(), yaw.sin(), 0.0];
         let state = &world.resource::<RoundScript>().t5;
-        let mut score: f32 = state
-            .influencers
-            .values()
-            .filter(|i| {
-                i.enabled && i.team_mask & mask != 0 && (player.is_none() || i.owner != player)
-            })
-            .filter_map(|i| i.score_at(origin))
-            .sum();
-        for (weight_mask, at, facing, bonus) in &state.base_weights {
-            let to = sub(*at, origin);
-            let flat = length([to[0], to[1], 0.0]);
-            let cos = if flat > 0.0 {
-                dot(to, forward) / flat
-            } else {
-                1.0
-            };
-            if weight_mask & mask != 0 && cos >= facing.to_radians().cos() {
-                score += bonus;
-            }
-        }
-        let randomness = state.randomness;
-        score += randomness * random_unit(world);
+        let base = object_of(&point)
+            .and_then(|id| state.base_weights.get(&id))
+            .map_or(0.0, |weights| weights[team]);
+        let score = base + point_score(state, origin, influencer_mask, player, stacking);
         scored.push((score, point));
     }
     scored.sort_by(|a, b| b.0.total_cmp(&a.0));
     new_array(world, scored.into_iter().map(|(_, p)| p).collect())
+}
+
+/// `setspawnpointsbaseweight`: every spawn point facing within `angle`
+/// degrees of the objective takes `score` as its base for the masked
+/// teams (none = all three), the others 0.
+fn set_base_weights(world: &mut World, mask: i32, objective: [f32; 3], angle: f32, score: f32) {
+    let mask = if mask == 0 { 7 } else { mask };
+    let threshold = (angle * 0.017_453_292).cos();
+    let mut seen = std::collections::BTreeSet::new();
+    let points: Vec<Value> = t5(world)
+        .spawn_points
+        .values()
+        .flatten()
+        .filter(|p| object_of(p).is_some_and(|id| seen.insert(id)))
+        .cloned()
+        .collect();
+    for point in points {
+        let Some(id) = object_of(&point) else {
+            continue;
+        };
+        let origin = origin_of(world, &point);
+        let forward = axes(vector_field(world, &point, "angles"))[0];
+        let to = sub(objective, origin);
+        let distance = length_of(to);
+        let scale = if distance <= 0.0 { 1.0 } else { 1.0 / distance };
+        let weight = if dot(to, forward) * scale < threshold {
+            0.0
+        } else {
+            score
+        };
+        let weights = t5(world).base_weights.entry(id).or_insert([0.0; 3]);
+        for (team, slot) in weights.iter_mut().enumerate() {
+            if mask & (1 << team) != 0 {
+                *slot = weight;
+            }
+        }
+    }
 }
 
 fn players_on(world: &mut World, team: &str, except: Option<u32>) -> Vec<u32> {
@@ -985,16 +1130,54 @@ fn key_number(args: &[Value], index: usize) -> Result<f32, String> {
     }
 }
 
+/// An entity's cylinder influencer moves with the entity but keeps the axis
+/// it was made with.
+fn turning_cylinder_unknown() -> &'static Unknown {
+    unknown!(
+        "t5.mp.spawn_influencer_turn",
+        "a cylinder influencer on an entity keeps its first axis and length; Black Ops turns it with the entity (a weapon influencer with the player's view) and stretches a vehicle's with its speed",
+        "Black Ops' per-entity influencer update: axes from the entity's angles, vehicle length = radius / 2 + length x speed"
+    )
+}
+
+/// The influencer type: 0–7 (the exe's usage text says 0–6, but
+/// `eINFLUENCER_TYPE_ENEMY_SPAWNED` is 7 and is accepted).
+fn influencer_type(args: &[Value], name: &str) -> Result<i32, String> {
+    let kind = int(args, 0)?;
+    if !(0..=7).contains(&kind) {
+        return Err(format!("USAGE: {name} type must be a value from 0 to 6\n"));
+    }
+    Ok(kind)
+}
+
+fn influencer_curve(args: &[Value], index: usize, name: &str) -> Result<i32, String> {
+    let curve = optional(args, index, int)?.unwrap_or(0);
+    if !(0..=4).contains(&curve) {
+        return Err(format!("USAGE: {name} curve must be a value from 0 to 4\n"));
+    }
+    Ok(curve)
+}
+
+/// A team mask of 0 means every team.
+fn influencer_mask(args: &[Value], index: usize) -> Result<i32, String> {
+    let mask = int(args, index)?;
+    Ok(if mask == 0 { 7 } else { mask })
+}
+
 fn register_spawning(registry: &mut NativeRegistry) {
     registry.register(Function, "addsphereinfluencer", |world, _, args| {
+        if !(6..=9).contains(&args.len()) {
+            return Err("USAGE: addsphereinfluencer( <type>, <origin>, <radius>, <score>, <team mask>, <description>, <curve>, <timeout>, <entity> )\n".into());
+        }
         let influencer = Influencer {
+            kind: influencer_type(args, "addsphereinfluencer")?,
             origin: vector(args, 1)?,
             shape: Shape::Sphere {
                 radius: key_number(args, 2)?,
             },
             score: key_number(args, 3)?,
-            team_mask: int(args, 4)?,
-            curve: optional(args, 6, int)?.unwrap_or(0),
+            team_mask: influencer_mask(args, 4)?,
+            curve: influencer_curve(args, 6, "addsphereinfluencer")?,
             expires_ms: timeout(world, args, 7)?,
             owner: args.get(8).and_then(object_of),
             enabled: true,
@@ -1002,22 +1185,28 @@ fn register_spawning(registry: &mut NativeRegistry) {
         Ok(add_influencer(world, influencer))
     });
     registry.register(Function, "addcylinderinfluencer", |world, _, args| {
-        let forward = vector(args, 2)?;
-        let norm = length(forward).max(f32::EPSILON);
+        if !(9..=12).contains(&args.len()) {
+            return Err("USAGE: addcylinderinfluencer( <type>, <origin>, <forward>, <up>, <radius>, <axis length>, <score>, <team mask>, <description>, <curve>, <timeout>, <entity> )\n".into());
+        }
         let influencer = Influencer {
+            kind: influencer_type(args, "addcylinderinfluencer")?,
             origin: vector(args, 1)?,
             shape: Shape::Cylinder {
-                forward: forward.map(|f| f / norm),
+                axis: vector(args, 3)?,
                 radius: key_number(args, 4)?,
                 length: key_number(args, 5)?,
             },
             score: key_number(args, 6)?,
-            team_mask: int(args, 7)?,
-            curve: optional(args, 9, int)?.unwrap_or(0),
+            team_mask: influencer_mask(args, 7)?,
+            curve: influencer_curve(args, 9, "addcylinderinfluencer")?,
             expires_ms: timeout(world, args, 10)?,
             owner: args.get(11).and_then(object_of),
             enabled: true,
         };
+        if influencer.owner.is_some() {
+            let gap = turning_cylinder_unknown();
+            diag::warn!(Sim, "unknown!{}: {}", gap.id, gap.what);
+        }
         Ok(add_influencer(world, influencer))
     });
     registry.register(Function, "removeinfluencer", |world, _, args| {
@@ -1040,33 +1229,37 @@ fn register_spawning(registry: &mut NativeRegistry) {
         Ok(Value::Undefined)
     });
     registry.register(Function, "clearspawnpoints", |world, _, _| {
-        t5(world).spawn_points.clear();
+        let state = t5(world);
+        state.spawn_points.clear();
+        state.base_weights.clear();
         Ok(Value::Undefined)
     });
     registry.register(Function, "addspawnpoints", |world, _, args| {
         let team: Arc<str> = string(args, 0)?.into();
         let points = array_values(world, arg(args, 1)?)?;
-        t5(world)
-            .spawn_points
-            .entry(team)
-            .or_default()
-            .extend(points);
+        // The exe marks each point with the team's bit: a point added twice
+        // is still one point.
+        let list = t5(world).spawn_points.entry(team).or_default();
+        for point in points {
+            let id = object_of(&point);
+            if id.is_none() || !list.iter().any(|p| object_of(p) == id) {
+                list.push(point);
+            }
+        }
         Ok(Value::Undefined)
     });
-    registry.register(
-        Function,
-        "setspawnpointrandomvariation",
-        |world, _, args| {
-            t5(world).randomness = float(args, 0)?;
-            Ok(Value::Undefined)
-        },
-    );
+    // BlackOpsMP.exe stores the variation and never reads it.
+    registry.register(Function, "setspawnpointrandomvariation", |_, _, args| {
+        float(args, 0)?;
+        Ok(Value::Undefined)
+    });
     registry.register(Function, "setspawnpointsbaseweight", |world, _, args| {
+        if args.len() != 4 {
+            return Err("USAGE: setspawnpointsbaseweight( <team mask>, <objective position>, <angle>, <score> )\n".into());
+        }
         let mask = int(args, 0)?;
-        let origin = vector(args, 1)?;
-        let facing = float(args, 2)?;
-        let bonus = float(args, 3)?;
-        t5(world).base_weights.push((mask, origin, facing, bonus));
+        let objective = vector(args, 1)?;
+        set_base_weights(world, mask, objective, float(args, 2)?, float(args, 3)?);
         Ok(Value::Undefined)
     });
     registry.register(Function, "getsortedspawnpoints", |world, _, args| {
