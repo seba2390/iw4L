@@ -103,3 +103,9 @@ Before porting a builtin, `cargo xtask port-graph builtin <name>…` shows its
 catalog rows, the native that serves it and (locally) the handler, its
 decompiled callees, journal sections and script call sites in one view;
 `unimplemented --game <g>` lists what is left ([`docs/DECODING.md`](docs/DECODING.md)).
+
+Before reading a Black Ops executable in Ghidra, follow
+[`docs/GHIDRA.md`](docs/GHIDRA.md): it sets up `~/iw4l-re/kit` on whichever of
+the maintainer's two Macs you are on, builds the readable project (unpacked
+executable, every known name, register arguments, struct layouts) and says
+what not to turn on.

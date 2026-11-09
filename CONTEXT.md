@@ -41,6 +41,11 @@ Decompiling goes through a warm Ghidra daemon that keeps the executable open
 redoes it), falling back to a one-shot headless run, and rebuilding the port
 graph after.
 
+The readable Black Ops projects live outside the repository and outside
+`context/`, in `~/iw4l-re/kit` (its own `setup.sh`, `build_t6.sh`, `dec.sh`),
+because they must work on both of the maintainer's Macs:
+[`docs/GHIDRA.md`](docs/GHIDRA.md).
+
 ## Glossary
 
 * **artifact** — a folder `context/artifacts/YYYY-MM-DD-<slug>/` holding one

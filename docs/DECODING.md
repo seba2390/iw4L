@@ -40,7 +40,10 @@ only from the game itself ([`CONTEXT.md`](../CONTEXT.md), glossary).
 
 **Tools.** Steam / `steamcmd` for the owner's install; throwaway Rust probes
 and Python scripts outside the tree (an artifact under `context/` keeps them);
-Capstone, `pefile`, Ghidra; a UTM VM for the Windows-only games.
+Capstone, `pefile`, Ghidra; a UTM VM for the Windows-only games. Ghidra on the
+Black Ops executables goes through the kit in `~/iw4l-re/kit` (outside the
+tree, on either Mac): [`GHIDRA.md`](GHIDRA.md) sets it up and lists what makes
+the output readable.
 
 **Port graph.** `cargo xtask port-graph <cmd>` (`scripts/port_graph.py`) is one
 SQLite index of a builtin's catalog rows, the native that serves it per game,
