@@ -68,7 +68,7 @@ says `ready`, or marks what is missing with `!!`.
    `openssl@3` with Homebrew, creates `venv/` with `pefile` and `capstone`, and
    checks the game files and `data/`.
 4. `./build_t6.sh` (below). The projects are rebuilt on each Mac, not copied:
-   they are gigabytes, and a build takes about ten minutes.
+   they are gigabytes, and a build takes about five minutes.
 
 **Keeping the two Macs in sync.** Only `data/` (and `inputs/`) carry knowledge.
 After adding names or structs on one Mac, copy `data/` to the other with the
@@ -79,12 +79,16 @@ one Mac at a time; the copy overwrites.
 
 ```sh
 cd ~/iw4l-re/kit
-./build_t6.sh              # t6zm (Zombies): about 10 minutes
+./build_t6.sh              # t6zm (Zombies): about 5 minutes
 ./build_t6.sh vt t6mp      # optional: Multiplayer, names carried over from t6zm
 ./build_t6.sh vt t6sp      # optional: campaign
 ```
 
-`proj/t6/t6.gpr` then holds `t6zm.unpacked.exe` (and the others). Decompile:
+A good build prints, for t6zm, about 4,300 functions created from data
+pointers, about 3,300 functions named, 6 struct types with 2 getters and 2
+globals typed, and about 380 calling-convention fixes applied (`logs/` has the
+full output). `proj/t6/t6.gpr` then holds `t6zm.unpacked.exe` (and the others).
+Decompile:
 
 ```sh
 ./dec.sh <addr> <addr> ...         # Zombies; writes out/t6zm/<addr>.c
@@ -92,8 +96,9 @@ cd ~/iw4l-re/kit
 ```
 
 Addresses are the same as in the memory image, the notes and the older
-decompile cache: the unpacked code is byte-for-byte the code in the image. Each
-`dec.sh` call starts Ghidra (about a minute), so batch addresses. To browse
+decompile cache: the unpacked code is byte-for-byte the code in the image.
+`dec.sh` opens the project read-only, so decompiling never changes it; twenty
+functions take a few seconds. To browse
 instead, run `ghidraRun` and open `~/iw4l-re/kit/proj/t6/t6.gpr`, but close the
 window before the next `dec.sh` or build: a project opens in one place at a time.
 
@@ -116,11 +121,12 @@ window before the next `dec.sh` or build: a project opens in one place at a time
    that show a real name goes from **3% to 25%**, and unnamed globals drop 23%.
 3. **Copy names between the BO2 builds.** Version Tracking matches the Zombies
    exe against Multiplayer and the campaign. With functions found from data
-   pointers first and looser matching (`SetLooseVTOptions.java`), about 2,300
-   names reached Multiplayer automatically, 99.8% of them correct when checked
-   against Multiplayer's own builtin tables (79% of its builtin handlers named).
-   Ghidra's default options alone reach only 13%. The campaign was only run with
-   the default options so far (427 names).
+   pointers first and looser matching (`SetLooseVTOptions.java`), about 2,400
+   names reach Multiplayer automatically (`./build_t6.sh vt t6mp`), 99.7% of them
+   correct when checked against Multiplayer's own builtin tables, naming 82% of
+   its builtin handlers. Ghidra's default options alone reach only 13%. The
+   campaign (`vt t6sp`) has not been measured with these options yet; with the
+   default ones it got 427 names.
 4. **Fix how values are passed between functions.** The compiler passes some
    arguments in registers and returns floats in XMM0; Ghidra misses both, so
    calls lose arguments and float functions look like they return nothing.
