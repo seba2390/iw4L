@@ -146,7 +146,10 @@ window before the next `dec.sh` or build: a project opens in one place at a time
 
 * **A name:** append `<addr>\t<name>\tfunc` to `data/names_everything.tsv`
   (`data`, `dword`, `float`, `ushort` for globals), then `./build_t6.sh fixes`.
-  Names already set by hand are not overwritten.
+  `fixes` is safe to rerun, but it only fills names Ghidra made up: a
+  function that already has a name keeps it. To change a name that is already
+  applied, rename it in the Ghidra window, or rebuild from scratch
+  (`rm -rf proj && ./build_t6.sh`).
 * **A struct type:** add the layout to `data/structs.tsv` and a line to
   `data/type_rules.tsv`: `ret <addr> <Type>*` (a function returns it),
   `param <addr> <index> <Type>*`, or `global <addr> <Type> <count>`. Prefer a
